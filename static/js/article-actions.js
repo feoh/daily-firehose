@@ -1,5 +1,7 @@
 const articleCards = () => Array.from(document.querySelectorAll("[data-article-card]"));
+const feedItems = () => Array.from(document.querySelectorAll("[data-feed-list-item]"));
 let selectedArticleIndex = -1;
+let selectedFeedIndex = -1;
 
 const selectedArticle = () => {
   const cards = articleCards();
@@ -42,6 +44,47 @@ const moveSelection = (offset) => {
   selectArticle(currentIndex + offset);
 };
 
+const selectedFeed = () => {
+  const items = feedItems();
+  if (items.length === 0) {
+    return null;
+  }
+  if (selectedFeedIndex < 0 || selectedFeedIndex >= items.length) {
+    selectedFeedIndex = 0;
+  }
+  return items[selectedFeedIndex];
+};
+
+const selectFeed = (index, { focus = true } = {}) => {
+  const items = feedItems();
+  if (items.length === 0) {
+    selectedFeedIndex = -1;
+    return null;
+  }
+
+  selectedFeedIndex = Math.max(0, Math.min(index, items.length - 1));
+  items.forEach((item, itemIndex) => {
+    item.classList.toggle("is-selected", itemIndex === selectedFeedIndex);
+    item.setAttribute("aria-current", itemIndex === selectedFeedIndex ? "true" : "false");
+  });
+
+  const item = items[selectedFeedIndex];
+  if (focus) {
+    item.focus({ preventScroll: true });
+    item.scrollIntoView({ block: "nearest" });
+  }
+  return item;
+};
+
+const moveFeedSelection = (offset) => {
+  const items = feedItems();
+  if (items.length === 0) {
+    return;
+  }
+  const currentIndex = selectedFeedIndex < 0 ? 0 : selectedFeedIndex;
+  selectFeed(currentIndex + offset);
+};
+
 const openKeyboardHelp = () => {
   const help = document.querySelector("#keyboard-help");
   if (!help) {
@@ -58,6 +101,7 @@ const closeKeyboardHelp = () => {
   }
   help.hidden = true;
   selectedArticle()?.focus({ preventScroll: true });
+  selectedFeed()?.focus({ preventScroll: true });
 };
 
 const isTypingTarget = (target) => {
@@ -71,6 +115,9 @@ document.addEventListener("DOMContentLoaded", () => {
   if (articleCards().length > 0) {
     selectArticle(0, { focus: false });
   }
+  if (feedItems().length > 0) {
+    selectFeed(0, { focus: false });
+  }
 });
 
 document.addEventListener("click", (event) => {
@@ -83,6 +130,14 @@ document.addEventListener("click", (event) => {
     const index = articleCards().indexOf(card);
     if (index >= 0) {
       selectArticle(index, { focus: false });
+    }
+  }
+
+  const feedItem = event.target.closest("[data-feed-list-item]");
+  if (feedItem) {
+    const index = feedItems().indexOf(feedItem);
+    if (index >= 0) {
+      selectFeed(index, { focus: false });
     }
   }
 });
@@ -108,26 +163,39 @@ document.addEventListener("keydown", (event) => {
     return;
   }
 
-  const card = selectedArticle();
-  if (!card) {
+  const navigationLink = document.querySelector(`[data-keyboard-nav='${event.key}']`);
+  if (navigationLink) {
+    event.preventDefault();
+    window.location.href = navigationLink.href;
     return;
   }
 
+  const card = selectedArticle();
+  const feed = selectedFeed();
+
   if (event.key === "j") {
     event.preventDefault();
-    moveSelection(1);
+    if (card) {
+      moveSelection(1);
+    } else if (feed) {
+      moveFeedSelection(1);
+    }
   } else if (event.key === "k") {
     event.preventDefault();
-    moveSelection(-1);
+    if (card) {
+      moveSelection(-1);
+    } else if (feed) {
+      moveFeedSelection(-1);
+    }
   } else if (event.key === "s") {
     event.preventDefault();
-    card.querySelector("form[data-action-type='save']")?.requestSubmit();
+    card?.querySelector("form[data-action-type='save']")?.requestSubmit();
   } else if (event.key === "m") {
     event.preventDefault();
-    card.querySelector("form[data-action-type='mark-read']")?.requestSubmit();
+    card?.querySelector("form[data-action-type='mark-read']")?.requestSubmit();
   } else if (event.key === "o") {
     event.preventDefault();
-    const link = card.querySelector("[data-open-article]");
+    const link = card?.querySelector("[data-open-article]") || feed?.querySelector("[data-open-feed]");
     if (link) {
       window.location.href = link.href;
     }

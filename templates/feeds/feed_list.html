@@ -22,8 +22,8 @@
     <h2 id="current-feeds-heading">Current feeds</h2>
     <ul class="feed-list">
       {% for feed in feeds %}
-        <li>
-          <a href="{% url 'feed-detail' feed.id %}">{{ feed.title }}</a>
+        <li class="feed-list-item" tabindex="-1" data-feed-list-item>
+          <a href="{% url 'feed-detail' feed.id %}" data-open-feed>{{ feed.title }}</a>
           {% if feed.category %}<span> — {{ feed.category.name }}</span>{% endif %}
           <span class="article-meta">{{ feed.feed_url }}</span>
         </li>
