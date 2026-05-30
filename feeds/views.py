@@ -73,8 +73,9 @@ def _article_cards(user, articles: QuerySet[Article]) -> list[dict]:
         )
     )
     return [
-        {"article": article, "is_read": article.id in read_ids, "is_saved": article.id in saved_ids}
+        {"article": article, "is_read": False, "is_saved": False}
         for article in articles
+        if article.id not in read_ids and article.id not in saved_ids
     ]
 
 
