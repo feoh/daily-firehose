@@ -84,6 +84,10 @@ def _preferences(user) -> UserPreference:
     return preferences
 
 
+def _wants_json(request: HttpRequest) -> bool:
+    return request.headers.get("x-requested-with") == "XMLHttpRequest"
+
+
 @login_required
 def today(request: HttpRequest) -> HttpResponse:
     current = timezone.localdate()
@@ -222,6 +226,10 @@ def mark_article(request: HttpRequest, article_id: int) -> HttpResponse:
     user_id = request.user.id
     assert user_id is not None
     ArticleReadState.objects.update_or_create(user_id=user_id, article=article, defaults={"is_read": is_read})
+    message = "Marked article read." if is_read else "Marked article unread."
+    if _wants_json(request):
+        return JsonResponse({"message": message, "level": "success", "remove": is_read})
+    messages.success(request, message)
     return redirect(request.POST.get("next") or reverse("today"))
 
 
@@ -274,9 +282,17 @@ def save_article_view(request: HttpRequest, article_id: int) -> HttpResponse:
         token=settings.LINKDING_TOKEN,
     )
     if saved.linkding_saved:
-        messages.success(request, "Saved article to Linkding and Daily Firehose.")
+        message = "Saved article to Linkding and Daily Firehose."
+        level = "success"
     else:
-        messages.warning(request, f"Saved locally, but Linkding failed: {saved.linkding_error}")
+        message = f"Saved locally, but Linkding failed: {saved.linkding_error}"
+        level = "warning"
+    if _wants_json(request):
+        return JsonResponse({"message": message, "level": level, "remove": True})
+    if saved.linkding_saved:
+        messages.success(request, message)
+    else:
+        messages.warning(request, message)
     return redirect(request.POST.get("next") or reverse("today"))
 
 

@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Daily Firehose{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'css/site.css' %}">
+  <script src="{% static 'js/article-actions.js' %}" defer></script>
 </head>
 <body class="theme-{{ preferences.theme|default:'system' }}{% if preferences.compact %} compact{% endif %}">
   <a class="skip-link" href="#main-content">Skip to main content</a>

@@ -10,12 +10,12 @@
   {% if article.summary %}<p>{{ article.summary|striptags|truncatewords:55 }}</p>{% endif %}
   <div class="article-actions" aria-label="Actions for {{ article.title }}">
     <a class="button-link" href="{{ article.url }}">Open article</a>
-    <form method="post" action="{% url 'save-article' article.id %}">
+    <form method="post" action="{% url 'save-article' article.id %}" data-article-action>
       {% csrf_token %}
       <input type="hidden" name="next" value="{{ request.get_full_path }}">
       <button type="submit">Save to Linkding</button>
     </form>
-    <form method="post" action="{% url 'mark-article' article.id %}">
+    <form method="post" action="{% url 'mark-article' article.id %}" data-article-action>
       {% csrf_token %}
       <input type="hidden" name="next" value="{{ request.get_full_path }}">
       <input type="hidden" name="state" value="{% if is_read %}unread{% else %}read{% endif %}">

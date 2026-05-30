@@ -248,6 +248,10 @@ button,
   border-color: var(--warning);
 }
 
+.inline-message {
+  margin-block: 0;
+}
+
 .empty-state {
   font-size: 1.25rem;
   font-weight: 700;

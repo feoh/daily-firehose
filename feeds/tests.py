@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -64,3 +66,34 @@ class DigestArticleVisibilityTests(TestCase):
         self.assertEqual(response.status_code, 200)
         titles = [article["title"] for article in response.json()["articles"]]
         self.assertEqual(titles, ["Unread article"])
+
+    def test_ajax_mark_read_returns_inline_message_payload(self) -> None:
+        response = self.client.post(
+            reverse("mark-article", args=[self.unread_article.id]),
+            {"state": "read"},
+            headers={"x-requested-with": "XMLHttpRequest"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {"message": "Marked article read.", "level": "success", "remove": True},
+        )
+
+    @patch("feeds.services.save_to_linkding")
+    def test_ajax_save_returns_inline_message_payload(self, mock_save_to_linkding) -> None:
+        response = self.client.post(
+            reverse("save-article", args=[self.unread_article.id]),
+            headers={"x-requested-with": "XMLHttpRequest"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                "message": "Saved article to Linkding and Daily Firehose.",
+                "level": "success",
+                "remove": True,
+            },
+        )
+        mock_save_to_linkding.assert_called_once()
