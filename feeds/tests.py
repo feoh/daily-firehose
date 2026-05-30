@@ -7,7 +7,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import Article, ArticleReadState, Feed, SavedArticle
+from .models import Article, ArticleReadState, Category, Feed, SavedArticle
 
 
 @override_settings(
@@ -97,3 +97,33 @@ class DigestArticleVisibilityTests(TestCase):
             },
         )
         mock_save_to_linkding.assert_called_once()
+
+
+@override_settings(
+    STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
+)
+class FeedListGroupingTests(TestCase):
+    def setUp(self) -> None:
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(username="reader", password="password")
+        self.client.force_login(self.user)
+
+    def test_feeds_are_grouped_by_category(self) -> None:
+        tech = Category.objects.create(name="Tech", slug="tech")
+        news = Category.objects.create(name="News", slug="news")
+        Feed.objects.create(title="Python Weekly", feed_url="https://example.com/python.xml", category=tech)
+        Feed.objects.create(title="Local News", feed_url="https://example.com/news.xml", category=news)
+        Feed.objects.create(title="Loose Feed", feed_url="https://example.com/loose.xml")
+
+        response = self.client.get(reverse("feeds"))
+        content = response.content.decode()
+
+        self.assertContains(response, "News")
+        self.assertContains(response, "Tech")
+        self.assertContains(response, "Uncategorized")
+        self.assertLess(content.index("News"), content.index("Local News"))
+        self.assertLess(content.index("Tech"), content.index("Python Weekly"))
+        self.assertLess(content.index("Uncategorized"), content.index("Loose Feed"))

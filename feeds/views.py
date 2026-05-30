@@ -173,7 +173,11 @@ def feed_list(request: HttpRequest) -> HttpResponse:
     return render(
         request,
         "feeds/feed_list.html",
-        {"feeds": Feed.objects.select_related("category"), "form": form, "preferences": _preferences(request.user)},
+        {
+            "feeds": Feed.objects.select_related("category").order_by("category__name", "title", "feed_url"),
+            "form": form,
+            "preferences": _preferences(request.user),
+        },
     )
 
 

@@ -20,16 +20,23 @@
 
   <section aria-labelledby="current-feeds-heading">
     <h2 id="current-feeds-heading">Current feeds</h2>
-    <ul class="feed-list">
-      {% for feed in feeds %}
-        <li class="feed-list-item" tabindex="-1" data-feed-list-item>
-          <a href="{% url 'feed-detail' feed.id %}" data-open-feed>{{ feed.title }}</a>
-          {% if feed.category %}<span> — {{ feed.category.name }}</span>{% endif %}
-          <span class="article-meta">{{ feed.feed_url }}</span>
-        </li>
-      {% empty %}
-        <li>No feeds yet.</li>
-      {% endfor %}
-    </ul>
+    {% regroup feeds by category as category_groups %}
+    {% for category_group in category_groups %}
+      <section class="feed-category" aria-labelledby="feed-category-{{ forloop.counter }}">
+        <h3 id="feed-category-{{ forloop.counter }}">
+          {% if category_group.grouper %}{{ category_group.grouper.name }}{% else %}Uncategorized{% endif %}
+        </h3>
+        <ul class="feed-list">
+          {% for feed in category_group.list %}
+            <li class="feed-list-item" tabindex="-1" data-feed-list-item>
+              <a href="{% url 'feed-detail' feed.id %}" data-open-feed>{{ feed.title }}</a>
+              <span class="article-meta">{{ feed.feed_url }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% empty %}
+      <p class="empty-state">No feeds yet.</p>
+    {% endfor %}
   </section>
 {% endblock %}
