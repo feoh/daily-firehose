@@ -11,7 +11,7 @@ Daily Firehose is a personal, accessible Django RSS reader for daily information
 - Save articles to Linkding and track local saved-article metadata for future recommendations.
 - Expose agent-friendly digest JSON.
 
-## Setup
+## Local setup with uv
 
 ```bash
 cd ~/src/personal/daily-firehose
@@ -23,6 +23,24 @@ uv run python manage.py runserver
 
 Open <http://127.0.0.1:8000/> and sign in.
 
+## Docker Compose setup
+
+The compose stack includes the Django web app, PostgreSQL, and a simple feed-refresh loop.
+
+```bash
+cp .env.example .env
+# Edit .env, especially DJANGO_SECRET_KEY and LINKDING_TOKEN.
+docker compose up --build
+```
+
+Create a superuser in the running web container:
+
+```bash
+docker compose exec web python manage.py createsuperuser
+```
+
+Open <http://127.0.0.1:8000/> and sign in.
+
 ## Configuration
 
 Environment variables:
@@ -30,6 +48,7 @@ Environment variables:
 - `DJANGO_SECRET_KEY` — production secret key.
 - `DJANGO_DEBUG` — defaults to `true` for local development.
 - `DJANGO_ALLOWED_HOSTS` — comma-separated host list, defaults to `localhost,127.0.0.1`.
+- `DATABASE_URL` — optional database URL. Defaults to local SQLite for uv development; compose sets this to PostgreSQL.
 - `LINKDING_URL` — defaults to `https://linkding.reedfish-regulus.ts.net`.
 - `LINKDING_TOKEN` — API token used by **Save to Linkding**.
 

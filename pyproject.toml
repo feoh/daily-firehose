@@ -5,9 +5,13 @@ description = "Accessible Django RSS reader for daily information flow."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "dj-database-url>=3.1.2",
     "django>=5.0,<6.0",
     "feedparser>=6.0.12",
+    "gunicorn>=26.0.0",
+    "psycopg[binary]>=3.3.4",
     "requests>=2.34.2",
+    "whitenoise>=6.12.0",
 ]
 
 [dependency-groups]
