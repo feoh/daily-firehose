@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block title %}Sign in — Daily Firehose{% endblock %}
+
+{% block content %}
+  <section class="auth-panel" aria-labelledby="login-heading">
+    <h1 id="login-heading">Sign in to Daily Firehose</h1>
+    <form method="post">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <button type="submit">Sign in</button>
+    </form>
+  </section>
+{% endblock %}

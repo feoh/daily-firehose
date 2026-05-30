@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Feeds — Daily Firehose{% endblock %}
+
+{% block content %}
+  <section class="page-heading" aria-labelledby="feeds-heading">
+    <p class="eyebrow">Subscriptions</p>
+    <h1 id="feeds-heading">Feeds</h1>
+    <p><a href="{% url 'opml-import' %}">Import OPML</a> · <a href="{% url 'opml-export' %}">Export OPML</a></p>
+  </section>
+
+  <section class="form-panel" aria-labelledby="add-feed-heading">
+    <h2 id="add-feed-heading">Add a feed URL</h2>
+    <form method="post">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <button type="submit">Add feed</button>
+    </form>
+  </section>
+
+  <section aria-labelledby="current-feeds-heading">
+    <h2 id="current-feeds-heading">Current feeds</h2>
+    <ul class="feed-list">
+      {% for feed in feeds %}
+        <li>
+          <a href="{% url 'feed-detail' feed.id %}">{{ feed.title }}</a>
+          {% if feed.category %}<span> — {{ feed.category.name }}</span>{% endif %}
+          <span class="article-meta">{{ feed.feed_url }}</span>
+        </li>
+      {% empty %}
+        <li>No feeds yet.</li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endblock %}

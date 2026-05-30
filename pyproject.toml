@@ -1,0 +1,29 @@
+[project]
+name = "daily-firehose"
+version = "0.1.0"
+description = "Accessible Django RSS reader for daily information flow."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "django>=5.0,<6.0",
+    "feedparser>=6.0.12",
+    "requests>=2.34.2",
+]
+
+[dependency-groups]
+dev = [
+    "django-stubs>=6.0.5",
+    "mypy>=2.1.0",
+    "pre-commit>=4.6.0",
+    "types-requests>=2.33.0.20260518",
+]
+
+[tool.uv]
+package = false
+
+[tool.mypy]
+plugins = ["mypy_django_plugin.main"]
+ignore_missing_imports = true
+
+[tool.django-stubs]
+django_settings_module = "daily_firehose.settings"

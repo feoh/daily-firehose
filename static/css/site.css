@@ -1,0 +1,250 @@
+:root,
+.theme-system,
+.theme-light {
+  color-scheme: light;
+  --background: #f8f7f4;
+  --surface: #ffffff;
+  --text: #17202a;
+  --muted: #44515c;
+  --link: #004f9e;
+  --accent: #7c2d12;
+  --border: #8a96a3;
+  --focus: #b45309;
+  --success: #0f6b2f;
+  --warning: #8a4b00;
+}
+
+.theme-dark {
+  color-scheme: dark;
+  --background: #111827;
+  --surface: #1f2937;
+  --text: #f9fafb;
+  --muted: #d1d5db;
+  --link: #93c5fd;
+  --accent: #fbbf24;
+  --border: #9ca3af;
+  --focus: #f59e0b;
+  --success: #86efac;
+  --warning: #fcd34d;
+}
+
+.theme-catppuccin-mocha {
+  color-scheme: dark;
+  --background: #1e1e2e;
+  --surface: #313244;
+  --text: #f5e0dc;
+  --muted: #cdd6f4;
+  --link: #89b4fa;
+  --accent: #f9e2af;
+  --border: #bac2de;
+  --focus: #fab387;
+  --success: #a6e3a1;
+  --warning: #f9e2af;
+}
+
+@media (prefers-color-scheme: dark) {
+  .theme-system {
+    color-scheme: dark;
+    --background: #111827;
+    --surface: #1f2937;
+    --text: #f9fafb;
+    --muted: #d1d5db;
+    --link: #93c5fd;
+    --accent: #fbbf24;
+    --border: #9ca3af;
+    --focus: #f59e0b;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--text);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 1.125rem;
+  line-height: 1.65;
+}
+
+.site-header,
+main {
+  width: min(72rem, calc(100% - 2rem));
+  margin: 0 auto;
+}
+
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1.5rem 0;
+  border-bottom: 0.125rem solid var(--border);
+}
+
+.site-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+main {
+  padding: 2rem 0;
+}
+
+a {
+  color: var(--link);
+  font-weight: 700;
+}
+
+button,
+input,
+select,
+textarea {
+  max-width: 100%;
+  font: inherit;
+}
+
+input,
+select,
+textarea {
+  border: 0.125rem solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--text);
+  padding: 0.45rem 0.65rem;
+}
+
+button,
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0.5rem 1rem;
+  border: 0.125rem solid var(--text);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+:focus-visible {
+  outline: 0.25rem solid var(--focus);
+  outline-offset: 0.2rem;
+}
+
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: 1rem;
+  transform: translateY(-200%);
+  padding: 0.5rem 1rem;
+  background: var(--surface);
+  border: 0.125rem solid var(--text);
+  z-index: 2;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--accent);
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.site-tagline,
+.article-meta {
+  color: var(--muted);
+}
+
+.site-tagline {
+  margin: 0.25rem 0 0;
+}
+
+.page-heading,
+.form-panel,
+.auth-panel,
+.article-card,
+.message {
+  background: var(--surface);
+  border: 0.125rem solid var(--border);
+  border-radius: 1rem;
+  padding: 1.5rem;
+}
+
+.page-heading,
+.form-panel,
+.auth-panel {
+  margin-bottom: 1.5rem;
+}
+
+.article-grid {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.article-card h2 {
+  margin-block: 0.35rem;
+  font-size: clamp(1.35rem, 3vw, 2rem);
+  line-height: 1.25;
+}
+
+.article-card.is-read {
+  opacity: 0.78;
+}
+
+.article-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.article-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.feed-list {
+  padding-left: 1.25rem;
+}
+
+.feed-list li + li {
+  margin-top: 0.75rem;
+}
+
+.message.success {
+  border-color: var(--success);
+}
+
+.message.warning,
+.message.error {
+  border-color: var(--warning);
+}
+
+.empty-state {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.compact .article-card {
+  padding: 1rem;
+}
+
+.compact .article-card h2 {
+  font-size: 1.35rem;
+}

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} — Daily Firehose{% endblock %}
+
+{% block content %}
+  <section class="page-heading" aria-labelledby="digest-heading">
+    <p class="eyebrow">{{ period_label }}</p>
+    <h1 id="digest-heading">{{ title }}</h1>
+    <p>{{ cards|length }} articles in this view.</p>
+    <form method="post" action="{% url 'mark-period-read' %}">
+      {% csrf_token %}
+      <input type="hidden" name="scope" value="{{ scope }}">
+      <input type="hidden" name="period_start" value="{{ period_start|date:'Y-m-d' }}">
+      <input type="hidden" name="period_end" value="{{ period_end|date:'Y-m-d' }}">
+      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+      <button type="submit">Mark this period read</button>
+    </form>
+  </section>
+
+  <section class="article-grid" aria-label="Articles">
+    {% for card in cards %}
+      {% include "feeds/includes/article_card.html" with article=card.article is_read=card.is_read is_saved=card.is_saved %}
+    {% empty %}
+      <p class="empty-state">No articles here yet. The hose is quiet.</p>
+    {% endfor %}
+  </section>
+{% endblock %}

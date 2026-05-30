@@ -1,0 +1,43 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Daily Firehose{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'css/site.css' %}">
+</head>
+<body class="theme-{{ preferences.theme|default:'system' }}{% if preferences.compact %} compact{% endif %}">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <header class="site-header">
+    <div>
+      <p class="eyebrow">Daily Firehose</p>
+      <p class="site-tagline">Readable daily feed flow.</p>
+    </div>
+    {% if request.user.is_authenticated %}
+      <nav class="site-nav" aria-label="Primary">
+        <a href="{% url 'today' %}">Today</a>
+        <a href="{% url 'week' %}">Week</a>
+        <a href="{% url 'month' %}">Month</a>
+        <a href="{% url 'feeds' %}">Feeds</a>
+        <a href="{% url 'preferences' %}">Preferences</a>
+        <a href="{% url 'digest-json' %}">JSON</a>
+      </nav>
+      <form method="post" action="{% url 'logout' %}">
+        {% csrf_token %}
+        <button type="submit">Sign out</button>
+      </form>
+    {% endif %}
+  </header>
+  <main id="main-content" tabindex="-1">
+    {% if messages %}
+      <div class="messages" aria-live="polite">
+        {% for message in messages %}
+          <p class="message {{ message.tags }}">{{ message }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

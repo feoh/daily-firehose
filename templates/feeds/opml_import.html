@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}Import OPML — Daily Firehose{% endblock %}
+
+{% block content %}
+  <section class="form-panel" aria-labelledby="opml-heading">
+    <p class="eyebrow">Subscriptions</p>
+    <h1 id="opml-heading">Import OPML</h1>
+    <p>Upload an OPML file exported from another feed reader.</p>
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <button type="submit">Import OPML</button>
+    </form>
+  </section>
+{% endblock %}

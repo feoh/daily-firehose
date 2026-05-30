@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}{{ feed.title }} — Daily Firehose{% endblock %}
+
+{% block content %}
+  <section class="page-heading" aria-labelledby="feed-heading">
+    <p class="eyebrow">Feed</p>
+    <h1 id="feed-heading">{{ feed.title }}</h1>
+    {% if feed.description %}<p>{{ feed.description }}</p>{% endif %}
+    <p><a href="{{ feed.feed_url }}">Feed URL</a>{% if feed.site_url %} · <a href="{{ feed.site_url }}">Website</a>{% endif %}</p>
+    <form method="post" action="{% url 'mark-feed-read' feed.id %}">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+      <button type="submit">Mark feed read</button>
+    </form>
+  </section>
+
+  <section class="article-grid" aria-label="Articles from {{ feed.title }}">
+    {% for card in cards %}
+      {% include "feeds/includes/article_card.html" with article=card.article is_read=card.is_read is_saved=card.is_saved %}
+    {% empty %}
+      <p>No articles have been fetched for this feed yet.</p>
+    {% endfor %}
+  </section>
+{% endblock %}
