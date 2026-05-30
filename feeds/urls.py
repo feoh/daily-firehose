@@ -12,6 +12,7 @@ urlpatterns = [
     path("opml/import/", views.opml_import, name="opml-import"),
     path("opml/export/", views.opml_export, name="opml-export"),
     path("preferences/", views.preferences, name="preferences"),
+    path("refresh/", views.refresh_feeds, name="refresh-feeds"),
     path("articles/<int:article_id>/mark/", views.mark_article, name="mark-article"),
     path("articles/<int:article_id>/save/", views.save_article_view, name="save-article"),
     path("mark-period-read/", views.mark_period_read, name="mark-period-read"),

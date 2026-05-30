@@ -14,7 +14,7 @@ from django.views.decorators.http import require_POST
 
 from .forms import FeedForm, OPMLImportForm, ThemeForm
 from .models import Article, ArticleReadState, BulkReadMarker, Feed, ReadScope, SavedArticle, UserPreference
-from .services import discover_feed_metadata, export_opml, import_opml, save_article
+from .services import discover_feed_metadata, export_opml, import_opml, refresh_active_feeds, save_article
 
 
 def _week_bounds(day: date) -> tuple[date, date]:
@@ -198,6 +198,19 @@ def preferences(request: HttpRequest) -> HttpResponse:
         messages.success(request, "Preferences saved.")
         return redirect("preferences")
     return render(request, "feeds/preferences.html", {"form": form, "preferences": prefs})
+
+
+@require_POST
+@login_required
+def refresh_feeds(request: HttpRequest) -> HttpResponse:
+    results = refresh_active_feeds()
+    created = sum(result.created for result in results)
+    updated = sum(result.updated for result in results)
+    messages.success(
+        request,
+        f"Refreshed {len(results)} feeds: {created} new articles, {updated} updated articles.",
+    )
+    return redirect(request.POST.get("next") or reverse("today"))
 
 
 @require_POST

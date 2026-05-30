@@ -10,9 +10,12 @@
 <body class="theme-{{ preferences.theme|default:'system' }}{% if preferences.compact %} compact{% endif %}">
   <a class="skip-link" href="#main-content">Skip to main content</a>
   <header class="site-header">
-    <div>
-      <p class="eyebrow">Daily Firehose</p>
-      <p class="site-tagline">Readable daily feed flow.</p>
+    <div class="brand-lockup">
+      <img class="masthead-image" src="{% static 'img/firehose-masthead.svg' %}" alt="Red firehose spraying blue water">
+      <div>
+        <p class="eyebrow">Daily Firehose</p>
+        <p class="site-tagline">Readable daily feed flow.</p>
+      </div>
     </div>
     {% if request.user.is_authenticated %}
       <nav class="site-nav" aria-label="Primary">
@@ -23,6 +26,11 @@
         <a href="{% url 'preferences' %}">Preferences</a>
         <a href="{% url 'digest-json' %}">JSON</a>
       </nav>
+      <form method="post" action="{% url 'refresh-feeds' %}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <button type="submit">Refresh feeds</button>
+      </form>
       <form method="post" action="{% url 'logout' %}">
         {% csrf_token %}
         <button type="submit">Sign out</button>

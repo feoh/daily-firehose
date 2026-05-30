@@ -85,6 +85,18 @@ main {
   border-bottom: 0.125rem solid var(--border);
 }
 
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.masthead-image {
+  width: clamp(6rem, 18vw, 12rem);
+  height: auto;
+  flex: 0 0 auto;
+}
+
 .site-nav {
   display: flex;
   flex-wrap: wrap;
@@ -247,4 +259,15 @@ button,
 
 .compact .article-card h2 {
   font-size: 1.35rem;
+}
+
+@media (max-width: 42rem) {
+  .brand-lockup {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .masthead-image {
+    width: min(14rem, 100%);
+  }
 }
