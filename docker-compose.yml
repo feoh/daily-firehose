@@ -20,7 +20,8 @@ services:
              gunicorn daily_firehose.wsgi:application --bind 0.0.0.0:8000"
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-daily_firehose}:${POSTGRES_PASSWORD:-daily_firehose_dev_password}@db:5432/${POSTGRES_DB:-daily_firehose}
-      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0,daily-firehose.reedfish-regulus.ts.net}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-https://daily-firehose.reedfish-regulus.ts.net}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-true}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-compose-development-key-change-me}
       LINKDING_TOKEN: ${LINKDING_TOKEN:-}
@@ -40,7 +41,8 @@ services:
              done"
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-daily_firehose}:${POSTGRES_PASSWORD:-daily_firehose_dev_password}@db:5432/${POSTGRES_DB:-daily_firehose}
-      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0,daily-firehose.reedfish-regulus.ts.net}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-https://daily-firehose.reedfish-regulus.ts.net}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-true}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-compose-development-key-change-me}
       FEED_REFRESH_SECONDS: ${FEED_REFRESH_SECONDS:-3600}

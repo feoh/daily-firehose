@@ -47,7 +47,8 @@ Environment variables:
 
 - `DJANGO_SECRET_KEY` — production secret key.
 - `DJANGO_DEBUG` — defaults to `true` for local development.
-- `DJANGO_ALLOWED_HOSTS` — comma-separated host list, defaults to `localhost,127.0.0.1`.
+- `DJANGO_ALLOWED_HOSTS` — comma-separated host list, defaults to `localhost,127.0.0.1,daily-firehose.reedfish-regulus.ts.net`.
+- `DJANGO_CSRF_TRUSTED_ORIGINS` — comma-separated trusted origins for proxied HTTPS, defaults to `https://daily-firehose.reedfish-regulus.ts.net`.
 - `DATABASE_URL` — optional database URL. Defaults to local SQLite for uv development; compose sets this to PostgreSQL.
 - `LINKDING_URL` — defaults to `https://linkding.reedfish-regulus.ts.net`.
 - `LINKDING_TOKEN` — API token used by **Save to Linkding**.
