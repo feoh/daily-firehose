@@ -10,7 +10,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .models import ApiToken, Article, ArticleReadState, Category, Feed, SavedArticle
-from .services import RefreshResult, import_opml
+from .services import LINKDING_TOREAD_TAG, RefreshResult, import_opml, save_to_linkding
 
 
 def model_id(model: Any) -> int:
@@ -112,6 +112,21 @@ class DigestArticleVisibilityTests(TestCase):
             },
         )
         mock_save_to_linkding.assert_called_once()
+
+    @patch("feeds.services.requests.post")
+    def test_linkding_save_applies_toread_tag(self, mock_post) -> None:
+        mock_post.return_value.raise_for_status.return_value = None
+
+        save_to_linkding(
+            base_url="https://linkding.example.com",
+            token="x",
+            article=self.unread_article,
+        )
+
+        mock_post.assert_called_once()
+        self.assertEqual(
+            mock_post.call_args.kwargs["json"]["tag_names"], [LINKDING_TOREAD_TAG]
+        )
 
 
 @override_settings(

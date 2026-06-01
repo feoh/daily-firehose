@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone as datetime_timezone
 from email.utils import parsedate_to_datetime
-from typing import Any
+from typing import Any, cast
 from xml.etree import ElementTree
 
 import feedparser
@@ -12,6 +12,8 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 from .models import Article, Category, Feed, SavedArticle
+
+LINKDING_TOREAD_TAG = "toread"
 
 
 @dataclass(frozen=True)
@@ -47,13 +49,23 @@ def _aware_datetime(value: Any) -> datetime:
 
 
 def refresh_feed(feed: Feed) -> RefreshResult:
-    parsed = feedparser.parse(feed.feed_url)
+    parsed = cast(Any, feedparser.parse(feed.feed_url))
     feed_info = parsed.get("feed", {})
     feed.title = feed_info.get("title") or feed.title or feed.feed_url
     feed.site_url = feed_info.get("link") or feed.site_url
-    feed.description = feed_info.get("subtitle") or feed_info.get("description") or feed.description
+    feed.description = (
+        feed_info.get("subtitle") or feed_info.get("description") or feed.description
+    )
     feed.last_fetched_at = timezone.now()
-    feed.save(update_fields=["title", "site_url", "description", "last_fetched_at", "updated_at"])
+    feed.save(
+        update_fields=[
+            "title",
+            "site_url",
+            "description",
+            "last_fetched_at",
+            "updated_at",
+        ]
+    )
 
     created = 0
     updated = 0
@@ -67,7 +79,12 @@ def refresh_feed(feed: Feed) -> RefreshResult:
             "url": url,
             "author": entry.get("author", ""),
             "summary": entry.get("summary", ""),
-            "published_at": _aware_datetime(entry.get("published_parsed") or entry.get("updated_parsed") or entry.get("published") or entry.get("updated")),
+            "published_at": _aware_datetime(
+                entry.get("published_parsed")
+                or entry.get("updated_parsed")
+                or entry.get("published")
+                or entry.get("updated")
+            ),
         }
         _, was_created = Article.objects.update_or_create(
             feed=feed,
@@ -86,7 +103,7 @@ def refresh_active_feeds() -> list[RefreshResult]:
 
 
 def discover_feed_metadata(feed_url: str) -> dict[str, str]:
-    parsed = feedparser.parse(feed_url)
+    parsed = cast(Any, feedparser.parse(feed_url))
     info = parsed.get("feed", {})
     return {
         "title": info.get("title") or feed_url,
@@ -95,7 +112,9 @@ def discover_feed_metadata(feed_url: str) -> dict[str, str]:
     }
 
 
-def _opml_outlines(element: ElementTree.Element, category_name: str = "") -> list[tuple[ElementTree.Element, str]]:
+def _opml_outlines(
+    element: ElementTree.Element, category_name: str = ""
+) -> list[tuple[ElementTree.Element, str]]:
     outlines = []
     for child in element:
         if not child.tag.lower().endswith("outline"):
@@ -105,7 +124,9 @@ def _opml_outlines(element: ElementTree.Element, category_name: str = "") -> lis
         if feed_url:
             outlines.append((child, category_name))
         else:
-            child_category = child.attrib.get("title") or child.attrib.get("text") or category_name
+            child_category = (
+                child.attrib.get("title") or child.attrib.get("text") or category_name
+            )
             outlines.extend(_opml_outlines(child, child_category))
     return outlines
 
@@ -139,7 +160,12 @@ def import_opml(content: bytes) -> ImportResult:
         category = _category_from_name(category_name)
         _, was_created = Feed.objects.update_or_create(
             feed_url=feed_url,
-            defaults={"title": title, "site_url": site_url, "category": category, "is_active": True},
+            defaults={
+                "title": title,
+                "site_url": site_url,
+                "category": category,
+                "is_active": True,
+            },
         )
         if was_created:
             created += 1
@@ -185,7 +211,17 @@ def save_article(*, user: Any, article: Article, base_url: str, token: str) -> S
     else:
         saved.linkding_saved = True
         saved.linkding_error = ""
-    saved.save(update_fields=["url", "title", "feed", "category", "linkding_saved", "linkding_error", "updated_at"])
+    saved.save(
+        update_fields=[
+            "url",
+            "title",
+            "feed",
+            "category",
+            "linkding_saved",
+            "linkding_error",
+            "updated_at",
+        ]
+    )
     return saved
 
 
@@ -199,6 +235,7 @@ def save_to_linkding(*, base_url: str, token: str, article: Article) -> None:
             "url": article.url,
             "title": article.title,
             "description": article.summary,
+            "tag_names": [LINKDING_TOREAD_TAG],
         },
         timeout=15,
     )
