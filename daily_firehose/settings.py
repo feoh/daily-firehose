@@ -157,6 +157,8 @@ LOGOUT_REDIRECT_URL = 'login'
 
 LINKDING_URL = os.environ.get("LINKDING_URL", "https://linkding.reedfish-regulus.ts.net")
 LINKDING_TOKEN = os.environ.get("LINKDING_TOKEN", "")
+AGENT_LINK_SECRET = os.environ.get("AGENT_LINK_SECRET", "")
+AGENT_LINK_USERNAME = os.environ.get("AGENT_LINK_USERNAME", "")
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

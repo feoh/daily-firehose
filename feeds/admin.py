@@ -1,6 +1,23 @@
 from django.contrib import admin
 
-from .models import Article, ArticleReadState, BulkReadMarker, Category, Feed, SavedArticle, UserPreference
+from .models import (
+    ApiToken,
+    Article,
+    ArticleReadState,
+    BulkReadMarker,
+    Category,
+    Feed,
+    SavedArticle,
+    UserPreference,
+)
+
+
+@admin.register(ApiToken)
+class ApiTokenAdmin(admin.ModelAdmin):
+    list_display = ["name", "user", "prefix", "is_active", "created_at", "last_used_at"]
+    list_filter = ["is_active", "created_at", "last_used_at"]
+    search_fields = ["name", "user__username", "prefix"]
+    readonly_fields = ["key_hash", "prefix", "created_at", "last_used_at"]
 
 
 @admin.register(Category)
@@ -42,7 +59,14 @@ class ArticleReadStateAdmin(admin.ModelAdmin):
 
 @admin.register(BulkReadMarker)
 class BulkReadMarkerAdmin(admin.ModelAdmin):
-    list_display = ["user", "scope", "feed", "period_start", "period_end", "marked_read_at"]
+    list_display = [
+        "user",
+        "scope",
+        "feed",
+        "period_start",
+        "period_end",
+        "marked_read_at",
+    ]
     list_filter = ["scope", "marked_read_at"]
     search_fields = ["user__username", "feed__title"]
 

@@ -24,6 +24,8 @@ services:
       DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-https://daily-firehose.reedfish-regulus.ts.net}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-true}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-compose-development-key-change-me}
+      AGENT_LINK_SECRET: ${AGENT_LINK_SECRET:-}
+      AGENT_LINK_USERNAME: ${AGENT_LINK_USERNAME:-}
       LINKDING_TOKEN: ${LINKDING_TOKEN:-}
       LINKDING_URL: ${LINKDING_URL:-https://linkding.reedfish-regulus.ts.net}
     ports:
@@ -46,6 +48,8 @@ services:
       DJANGO_DEBUG: ${DJANGO_DEBUG:-true}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-compose-development-key-change-me}
       FEED_REFRESH_SECONDS: ${FEED_REFRESH_SECONDS:-3600}
+      AGENT_LINK_SECRET: ${AGENT_LINK_SECRET:-}
+      AGENT_LINK_USERNAME: ${AGENT_LINK_USERNAME:-}
       LINKDING_TOKEN: ${LINKDING_TOKEN:-}
       LINKDING_URL: ${LINKDING_URL:-https://linkding.reedfish-regulus.ts.net}
     depends_on:

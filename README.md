@@ -74,10 +74,21 @@ uv run python manage.py refresh_feeds
 
 When an article is saved, Daily Firehose records the article URL, title, feed, category, timestamp, and Linkding status locally. This preserves a history that can later be used to highlight articles likely to be interesting.
 
-## Agent-friendly output
+## Agent-friendly API
 
-Today’s digest JSON is available at:
+Create a bearer token for an agent or other program:
 
-```text
-/api/digest/today.json
+```bash
+uv run python manage.py create_api_token <username> --name morning-agent
 ```
+
+Use it with `Authorization: Bearer <token>` against `/api/v1/` endpoints. Common morning workflow:
+
+- `GET /api/v1/briefing/morning/` — today’s unread, unsaved articles plus action URLs.
+- `GET /api/v1/articles/?period=today|week|month` — article lists; optional `include_read=true`, `include_saved=true`, `feed_id=...`, or `start=YYYY-MM-DD&end=YYYY-MM-DD`.
+- `POST /api/v1/articles/<id>/read/` with `{"is_read": true}` — mark read or unread.
+- `POST /api/v1/articles/<id>/saved/` with `{"is_saved": true, "notes": "..."}` — save locally and to Linkding when configured. `DELETE` the same URL to unsave locally.
+- `POST /api/v1/mark-period-read/` with `{"scope": "day"}` — mark day/week/month read.
+- `GET/POST/PATCH /api/v1/feeds/…`, `GET/POST /api/v1/categories/`, `GET/PATCH /api/v1/preferences/`, and `POST /api/v1/refresh/` expose feed/category/preference/refresh controls.
+
+The older session-authenticated today digest remains available at `/api/digest/today.json`.
