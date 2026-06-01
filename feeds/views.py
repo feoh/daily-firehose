@@ -215,9 +215,14 @@ def refresh_feeds(request: HttpRequest) -> HttpResponse:
     results = refresh_active_feeds()
     created = sum(result.created for result in results)
     updated = sum(result.updated for result in results)
+    feeds_with_new_articles = sum(1 for result in results if result.created > 0)
     messages.success(
         request,
-        f"Refreshed {len(results)} feeds: {created} new articles, {updated} updated articles.",
+        (
+            f"Refresh complete: checked {len(results)} feeds; "
+            f"{feeds_with_new_articles} feeds had new articles; "
+            f"{created} new articles; {updated} existing articles updated."
+        ),
     )
     return redirect(request.POST.get("next") or reverse("today"))
 

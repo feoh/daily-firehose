@@ -7,6 +7,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+from .services import RefreshResult, import_opml
 from .models import Article, ArticleReadState, Category, Feed, SavedArticle
 
 
@@ -127,3 +128,92 @@ class FeedListGroupingTests(TestCase):
         self.assertLess(content.index("News"), content.index("Local News"))
         self.assertLess(content.index("Tech"), content.index("Python Weekly"))
         self.assertLess(content.index("Uncategorized"), content.index("Loose Feed"))
+        self.assertContains(response, "data-feed-list-item", count=3)
+        self.assertContains(response, "data-open-feed", count=3)
+
+
+@override_settings(
+    STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
+)
+class RefreshFeedsFeedbackTests(TestCase):
+    def setUp(self) -> None:
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(username="reader", password="password")
+        self.feed_with_new_articles = Feed.objects.create(
+            title="Feed with new articles",
+            feed_url="https://example.com/new.xml",
+        )
+        self.feed_without_new_articles = Feed.objects.create(
+            title="Feed without new articles",
+            feed_url="https://example.com/old.xml",
+        )
+        self.client.force_login(self.user)
+
+    @patch("feeds.views.refresh_active_feeds")
+    def test_refresh_feedback_includes_feeds_with_new_articles(self, mock_refresh_active_feeds) -> None:
+        mock_refresh_active_feeds.return_value = [
+            RefreshResult(feed=self.feed_with_new_articles, created=3, updated=2),
+            RefreshResult(feed=self.feed_without_new_articles, created=0, updated=4),
+        ]
+
+        response = self.client.post(reverse("refresh-feeds"), follow=True)
+
+        self.assertContains(
+            response,
+            "Refresh complete: checked 2 feeds; 1 feeds had new articles; 3 new articles; 6 existing articles updated.",
+        )
+        mock_refresh_active_feeds.assert_called_once_with()
+
+
+class OPMLImportCategoryTests(TestCase):
+    def test_import_uses_parent_outlines_as_categories(self) -> None:
+        content = b"""
+        <opml version="2.0">
+          <body>
+            <outline text="Python">
+              <outline title="PyPI Blog" text="PyPI Blog" xmlUrl="https://blog.pypi.org/feed.xml" htmlUrl="https://blog.pypi.org/" />
+            </outline>
+          </body>
+        </opml>
+        """
+
+        result = import_opml(content)
+
+        self.assertEqual(result.created, 1)
+        feed = Feed.objects.get(feed_url="https://blog.pypi.org/feed.xml")
+        self.assertIsNotNone(feed.category)
+        assert feed.category is not None
+        self.assertEqual(feed.category.name, "Python")
+
+    def test_reimport_updates_existing_feed_without_duplicate(self) -> None:
+        old_category = Category.objects.create(name="Unknown Category", slug="unknown-category")
+        Feed.objects.create(
+            title="Old title",
+            feed_url="https://example.com/feed.xml",
+            site_url="https://old.example.com/",
+            category=old_category,
+        )
+        content = b"""
+        <opml version="2.0">
+          <body>
+            <outline text="Updated Category">
+              <outline title="New title" text="New title" xmlUrl="https://example.com/feed.xml" htmlUrl="https://new.example.com/" />
+            </outline>
+          </body>
+        </opml>
+        """
+
+        result = import_opml(content)
+
+        self.assertEqual(result.created, 0)
+        self.assertEqual(result.updated, 1)
+        self.assertEqual(Feed.objects.filter(feed_url="https://example.com/feed.xml").count(), 1)
+        feed = Feed.objects.get(feed_url="https://example.com/feed.xml")
+        self.assertEqual(feed.title, "New title")
+        self.assertEqual(feed.site_url, "https://new.example.com/")
+        self.assertIsNotNone(feed.category)
+        assert feed.category is not None
+        self.assertEqual(feed.category.name, "Updated Category")

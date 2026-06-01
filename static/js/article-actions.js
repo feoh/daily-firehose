@@ -70,7 +70,8 @@ const selectFeed = (index, { focus = true } = {}) => {
 
   const item = items[selectedFeedIndex];
   if (focus) {
-    item.focus({ preventScroll: true });
+    const link = item.querySelector("[data-open-feed]");
+    (link || item).focus({ preventScroll: true });
     item.scrollIntoView({ block: "nearest" });
   }
   return item;
@@ -170,22 +171,23 @@ document.addEventListener("keydown", (event) => {
     return;
   }
 
+  const hasFeeds = feedItems().length > 0;
   const card = selectedArticle();
   const feed = selectedFeed();
 
   if (event.key === "j") {
     event.preventDefault();
-    if (card) {
-      moveSelection(1);
-    } else if (feed) {
+    if (hasFeeds) {
       moveFeedSelection(1);
+    } else if (card) {
+      moveSelection(1);
     }
   } else if (event.key === "k") {
     event.preventDefault();
-    if (card) {
-      moveSelection(-1);
-    } else if (feed) {
+    if (hasFeeds) {
       moveFeedSelection(-1);
+    } else if (card) {
+      moveSelection(-1);
     }
   } else if (event.key === "s") {
     event.preventDefault();
@@ -199,6 +201,18 @@ document.addEventListener("keydown", (event) => {
     if (link) {
       window.location.href = link.href;
     }
+  }
+});
+
+document.addEventListener("submit", (event) => {
+  const form = event.target.closest("form[data-refresh-form]");
+  if (!form) {
+    return;
+  }
+  const button = form.querySelector("[data-refresh-button]");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Refreshing…";
   }
 });
 

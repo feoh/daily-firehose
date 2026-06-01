@@ -9,8 +9,9 @@ from xml.etree import ElementTree
 import feedparser
 import requests
 from django.utils import timezone
+from django.utils.text import slugify
 
-from .models import Article, Feed, SavedArticle
+from .models import Article, Category, Feed, SavedArticle
 
 
 @dataclass(frozen=True)
@@ -94,30 +95,51 @@ def discover_feed_metadata(feed_url: str) -> dict[str, str]:
     }
 
 
-def _opml_outlines(element: ElementTree.Element) -> list[ElementTree.Element]:
+def _opml_outlines(element: ElementTree.Element, category_name: str = "") -> list[tuple[ElementTree.Element, str]]:
     outlines = []
     for child in element:
-        if child.tag.lower().endswith("outline") and (
-            child.attrib.get("xmlUrl") or child.attrib.get("xmlurl")
-        ):
-            outlines.append(child)
-        outlines.extend(_opml_outlines(child))
+        if not child.tag.lower().endswith("outline"):
+            outlines.extend(_opml_outlines(child, category_name))
+            continue
+        feed_url = child.attrib.get("xmlUrl") or child.attrib.get("xmlurl")
+        if feed_url:
+            outlines.append((child, category_name))
+        else:
+            child_category = child.attrib.get("title") or child.attrib.get("text") or category_name
+            outlines.extend(_opml_outlines(child, child_category))
     return outlines
+
+
+def _category_from_name(name: str) -> Category | None:
+    if not name:
+        return None
+    base_slug = slugify(name) or "category"
+    slug = base_slug
+    suffix = 2
+    while True:
+        category = Category.objects.filter(slug=slug).first()
+        if category is None:
+            return Category.objects.create(name=name, slug=slug)
+        if category.name == name:
+            return category
+        slug = f"{base_slug}-{suffix}"
+        suffix += 1
 
 
 def import_opml(content: bytes) -> ImportResult:
     root = ElementTree.fromstring(content)
     created = updated = skipped = 0
-    for outline in _opml_outlines(root):
+    for outline, category_name in _opml_outlines(root):
         feed_url = outline.attrib.get("xmlUrl") or outline.attrib.get("xmlurl")
         if not feed_url:
             skipped += 1
             continue
         title = outline.attrib.get("title") or outline.attrib.get("text") or feed_url
         site_url = outline.attrib.get("htmlUrl") or outline.attrib.get("htmlurl") or ""
+        category = _category_from_name(category_name)
         _, was_created = Feed.objects.update_or_create(
             feed_url=feed_url,
-            defaults={"title": title, "site_url": site_url, "is_active": True},
+            defaults={"title": title, "site_url": site_url, "category": category, "is_active": True},
         )
         if was_created:
             created += 1
