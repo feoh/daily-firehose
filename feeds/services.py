@@ -192,7 +192,9 @@ def export_opml() -> str:
     return ElementTree.tostring(root, encoding="unicode", xml_declaration=True)
 
 
-def save_article(*, user: Any, article: Article, base_url: str, token: str) -> SavedArticle:
+def save_article(
+    *, user: Any, article: Article, base_url: str, token: str
+) -> SavedArticle:
     saved, _ = SavedArticle.objects.update_or_create(
         user=user,
         article=article,
