@@ -9,7 +9,16 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import ApiToken, Article, ArticleReadState, Category, Feed, SavedArticle
+from .models import (
+    ApiToken,
+    Article,
+    ArticleReadState,
+    BulkReadMarker,
+    Category,
+    Feed,
+    ReadScope,
+    SavedArticle,
+)
 from .services import LINKDING_TOREAD_TAG, RefreshResult, import_opml, save_to_linkding
 
 
@@ -304,6 +313,35 @@ class ApiTests(TestCase):
         self.assertEqual(response.headers["Location"], self.article.url)
         self.assertTrue(
             SavedArticle.objects.filter(user=self.user, article=self.article).exists()
+        )
+
+    @override_settings(
+        AGENT_LINK_SECRET="test-secret",
+        AGENT_LINK_USERNAME="api-reader",
+    )
+    def test_signed_mark_period_read_link_marks_today_read(self) -> None:
+        signature = hmac.new(
+            b"test-secret",
+            b"mark-period-read:day",
+            "sha256",
+        ).hexdigest()
+
+        response = self.client.get(
+            reverse("api-mark-period-read-and-go"),
+            {"scope": "day", "sig": signature},
+        )
+
+        today = timezone.localdate()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], reverse("today"))
+        self.assertTrue(
+            BulkReadMarker.objects.filter(
+                user=self.user,
+                scope=ReadScope.DAY,
+                feed=None,
+                period_start=today,
+                period_end=today,
+            ).exists()
         )
 
 

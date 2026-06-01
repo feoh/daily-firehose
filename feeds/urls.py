@@ -45,6 +45,11 @@ urlpatterns = [
         api.mark_period_read_api,
         name="api-mark-period-read",
     ),
+    path(
+        "api/v1/mark-period-read-and-go/",
+        api.mark_period_read_and_go,
+        name="api-mark-period-read-and-go",
+    ),
     path("api/v1/feeds/", api.feed_collection, name="api-feeds"),
     path("api/v1/feeds/<int:feed_id>/", api.feed_detail_api, name="api-feed-detail"),
     path(

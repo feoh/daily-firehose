@@ -244,6 +244,14 @@ def _agent_link_signature(article_id: int) -> str:
     ).hexdigest()
 
 
+def _agent_link_period_read_signature(scope: str) -> str:
+    return hmac.new(
+        settings.AGENT_LINK_SECRET.encode("utf-8"),
+        f"mark-period-read:{scope}".encode(),
+        "sha256",
+    ).hexdigest()
+
+
 def _agent_link_user():
     if not settings.AGENT_LINK_SECRET or not settings.AGENT_LINK_USERNAME:
         return None
@@ -278,6 +286,46 @@ def article_save_and_go(request: HttpRequest, article_id: int) -> HttpResponse:
         token=settings.LINKDING_TOKEN,
     )
     return redirect(article.url)
+
+
+def mark_period_read_and_go(request: HttpRequest) -> HttpResponse:
+    """Mark a day, week, or month read from a signed GET link."""
+
+    scope = request.GET.get("scope", ReadScope.DAY)
+    if scope not in {ReadScope.DAY, ReadScope.WEEK, ReadScope.MONTH}:
+        return _json_error(
+            "scope must be one of: day, week, month.", status=400, code="bad_request"
+        )
+    signature = request.GET.get("sig", "")
+    if not settings.AGENT_LINK_SECRET or not hmac.compare_digest(
+        signature, _agent_link_period_read_signature(scope)
+    ):
+        return _json_error(
+            "Invalid period read link.", status=403, code="forbidden"
+        )
+    user = _agent_link_user()
+    if user is None:
+        return _json_error(
+            "Agent link marking is not configured.",
+            status=503,
+            code="not_configured",
+        )
+    if scope == ReadScope.DAY:
+        period = "today"
+    elif scope == ReadScope.WEEK:
+        period = "week"
+    else:
+        period = "month"
+    start, end = _article_window(period)
+    BulkReadMarker.objects.update_or_create(
+        user=user,
+        scope=scope,
+        feed=None,
+        period_start=start,
+        period_end=end,
+        defaults={},
+    )
+    return redirect("today")
 
 
 @api_view({"POST", "PATCH"})
