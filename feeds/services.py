@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone as datetime_timezone
 from email.utils import parsedate_to_datetime
+from html.parser import HTMLParser
 from typing import Any, cast
 from xml.etree import ElementTree
 
@@ -14,6 +15,18 @@ from django.utils.text import slugify
 from .models import Article, Category, Feed, SavedArticle
 
 LINKDING_TOREAD_TAG = "toread"
+
+
+class _TextExtractor(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:
+        self.parts.append(data)
+
+    def text(self) -> str:
+        return " ".join(part.strip() for part in self.parts if part.strip())
 
 
 @dataclass(frozen=True)
@@ -70,7 +83,7 @@ def refresh_feed(feed: Feed) -> RefreshResult:
     created = 0
     updated = 0
     for entry in parsed.get("entries", []):
-        url = entry.get("link") or entry.get("id")
+        url = _entry_article_url(entry)
         if not url:
             continue
         guid = entry.get("id") or url
@@ -96,6 +109,20 @@ def refresh_feed(feed: Feed) -> RefreshResult:
         else:
             updated += 1
     return RefreshResult(feed=feed, created=created, updated=updated)
+
+
+def _entry_article_url(entry: Any) -> str:
+    """Return the article URL from a parsed feed entry, avoiding comments links."""
+
+    entry_id = str(entry.get("id") or "")
+    entry_link = str(entry.get("link") or "")
+    for link in entry.get("links", []):
+        href = str(link.get("href") or "")
+        if not href or href == entry_id:
+            continue
+        if link.get("rel") == "alternate" and link.get("type") == "text/html":
+            return href
+    return entry_link or entry_id
 
 
 def refresh_active_feeds() -> list[RefreshResult]:
@@ -227,6 +254,17 @@ def save_article(
     return saved
 
 
+def _linkding_description(article: Article) -> str:
+    """Return a Linkding description without feed-only comments links."""
+
+    parser = _TextExtractor()
+    parser.feed(article.summary or "")
+    description = parser.text()
+    if description.lower() == "comments":
+        return ""
+    return description
+
+
 def save_to_linkding(*, base_url: str, token: str, article: Article) -> None:
     if not token:
         raise ValueError("LINKDING_TOKEN is not configured")
@@ -236,7 +274,7 @@ def save_to_linkding(*, base_url: str, token: str, article: Article) -> None:
         json={
             "url": article.url,
             "title": article.title,
-            "description": article.summary,
+            "description": _linkding_description(article),
             "tag_names": [LINKDING_TOREAD_TAG],
         },
         timeout=15,

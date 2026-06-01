@@ -19,7 +19,13 @@ from .models import (
     ReadScope,
     SavedArticle,
 )
-from .services import LINKDING_TOREAD_TAG, RefreshResult, import_opml, save_to_linkding
+from .services import (
+    LINKDING_TOREAD_TAG,
+    RefreshResult,
+    import_opml,
+    refresh_feed,
+    save_to_linkding,
+)
 
 
 def model_id(model: Any) -> int:
@@ -123,7 +129,7 @@ class DigestArticleVisibilityTests(TestCase):
         mock_save_to_linkding.assert_called_once()
 
     @patch("feeds.services.requests.post")
-    def test_linkding_save_applies_toread_tag(self, mock_post) -> None:
+    def test_linkding_save_uses_article_url_and_toread_tag(self, mock_post) -> None:
         mock_post.return_value.raise_for_status.return_value = None
 
         save_to_linkding(
@@ -133,9 +139,54 @@ class DigestArticleVisibilityTests(TestCase):
         )
 
         mock_post.assert_called_once()
-        self.assertEqual(
-            mock_post.call_args.kwargs["json"]["tag_names"], [LINKDING_TOREAD_TAG]
+        payload = mock_post.call_args.kwargs["json"]
+        self.assertEqual(payload["url"], "https://example.com/unread")
+        self.assertEqual(payload["tag_names"], [LINKDING_TOREAD_TAG])
+
+    @patch("feeds.services.requests.post")
+    def test_linkding_save_omits_comments_only_summary(self, mock_post) -> None:
+        mock_post.return_value.raise_for_status.return_value = None
+        self.unread_article.summary = (
+            '<p><a href="https://lobste.rs/s/vkoa7r/story">Comments</a></p>'
         )
+
+        save_to_linkding(
+            base_url="https://linkding.example.com",
+            token="x",
+            article=self.unread_article,
+        )
+
+        self.assertEqual(mock_post.call_args.kwargs["json"]["description"], "")
+
+    @patch("feeds.services.feedparser.parse")
+    def test_refresh_feed_prefers_article_url_over_comments_guid(self, mock_parse) -> None:
+        feed = Feed.objects.create(
+            title="Lobsters", feed_url="https://lobste.rs/rss"
+        )
+        mock_parse.return_value = {
+            "feed": {"title": "Lobsters"},
+            "entries": [
+                {
+                    "id": "https://lobste.rs/s/vkoa7r",
+                    "link": "https://example.com/article",
+                    "links": [
+                        {
+                            "rel": "alternate",
+                            "type": "text/html",
+                            "href": "https://example.com/article",
+                        }
+                    ],
+                    "title": "An article",
+                    "summary": '<p><a href="https://lobste.rs/s/vkoa7r/story">Comments</a></p>',
+                }
+            ],
+        }
+
+        refresh_feed(feed)
+
+        article = Article.objects.get(feed=feed, title="An article")
+        self.assertEqual(article.url, "https://example.com/article")
+        self.assertEqual(article.guid, "https://lobste.rs/s/vkoa7r")
 
 
 @override_settings(
