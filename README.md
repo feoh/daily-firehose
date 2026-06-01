@@ -2,6 +2,10 @@
 
 Daily Firehose is a personal, accessible Django RSS reader for daily information flow.
 
+## Screenshot
+
+![Daily Firehose article reading view showing today’s articles and read/save controls](docs/images/article-reading-view.png)
+
 ## Goals
 
 - Show Today’s Firehose, plus week/month/feed views.
