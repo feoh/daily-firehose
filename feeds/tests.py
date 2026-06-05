@@ -188,6 +188,37 @@ class DigestArticleVisibilityTests(TestCase):
         self.assertEqual(article.url, "https://example.com/article")
         self.assertEqual(article.guid, "https://lobste.rs/s/vkoa7r")
 
+    @patch("feeds.services.feedparser.parse")
+    def test_refresh_feed_prefers_alternate_original_url_over_intermediary_link(
+        self, mock_parse
+    ) -> None:
+        feed = Feed.objects.create(
+            title="Example Aggregator", feed_url="https://example.com/rss"
+        )
+        mock_parse.return_value = {
+            "feed": {"title": "Example Aggregator"},
+            "entries": [
+                {
+                    "id": "https://original.example.com/article",
+                    "link": "https://daily-firehose.example.com/articles/123/",
+                    "links": [
+                        {
+                            "rel": "alternate",
+                            "type": "text/html",
+                            "href": "https://original.example.com/article",
+                        }
+                    ],
+                    "title": "An article",
+                }
+            ],
+        }
+
+        refresh_feed(feed)
+
+        article = Article.objects.get(feed=feed, title="An article")
+        self.assertEqual(article.url, "https://original.example.com/article")
+        self.assertEqual(article.guid, "https://original.example.com/article")
+
 
 @override_settings(
     STORAGES={

@@ -112,15 +112,19 @@ def refresh_feed(feed: Feed) -> RefreshResult:
 
 
 def _entry_article_url(entry: Any) -> str:
-    """Return the article URL from a parsed feed entry, avoiding comments links."""
+    """Return the canonical article URL from a parsed feed entry.
+
+    Some feed generators expose their local/permalink URL as ``entry.link`` while
+    putting the original article URL in an ``alternate`` link. Prefer the
+    explicit HTML alternate link so downstream Linkding saves bookmark the
+    original article rather than a Daily Firehose/intermediary URL.
+    """
 
     entry_id = str(entry.get("id") or "")
     entry_link = str(entry.get("link") or "")
     for link in entry.get("links", []):
         href = str(link.get("href") or "")
-        if not href or href == entry_id:
-            continue
-        if link.get("rel") == "alternate" and link.get("type") == "text/html":
+        if href and link.get("rel") == "alternate" and link.get("type") == "text/html":
             return href
     return entry_link or entry_id
 
