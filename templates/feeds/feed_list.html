@@ -1,53 +1,45 @@
-{% extends "base.html" %} {% block title %}Feeds — Daily Firehose{% endblock %}
+{% extends "base.html" %}
+
+{% block title %}Feeds — Daily Firehose{% endblock %}
+
 {% block content %}
-<section class="page-heading" aria-labelledby="feeds-heading">
-  <p class="eyebrow">Subscriptions</p>
-  <h1 id="feeds-heading">Feeds</h1>
-  <p>
-    <a href="{% url 'opml-import' %}">Import OPML</a> ·
-    <a href="{% url 'opml-export' %}">Export OPML</a>
-  </p>
-</section>
-
-<section class="form-panel" aria-labelledby="add-feed-heading">
-  <h2 id="add-feed-heading">Add a feed URL</h2>
-  {% if postmark_inbound_email %}
-  <p class="article-meta">
-    To add a newsletter, subscribe it to
-    <strong>{{ postmark_inbound_email }}</strong>.
-  </p>
-  {% endif %}
-  <form method="post">
-    {% csrf_token %} {{ form.as_p }}
-    <button type="submit">Add feed</button>
-  </form>
-</section>
-
-<section aria-labelledby="current-feeds-heading">
-  <h2 id="current-feeds-heading">Current feeds</h2>
-  {% regroup feeds by category as category_groups %} {% for category_group in
-  category_groups %}
-  <section
-    class="feed-category"
-    aria-labelledby="feed-category-{{ forloop.counter }}"
-  >
-    <h3 id="feed-category-{{ forloop.counter }}">
-      {% if category_group.grouper %}{{ category_group.grouper.name }}{% else
-      %}Uncategorized{% endif %}
-    </h3>
-    <ul class="feed-list">
-      {% for feed in category_group.list %}
-      <li class="feed-list-item" tabindex="-1" data-feed-list-item>
-        <a href="{% url 'feed-detail' feed.id %}" data-open-feed
-          >{{ feed.title }}</a
-        >
-        <span class="article-meta">{{ feed.feed_url }}</span>
-      </li>
-      {% endfor %}
-    </ul>
+  <section class="page-heading" aria-labelledby="feeds-heading">
+    <p class="eyebrow">Subscriptions</p>
+    <h1 id="feeds-heading">Feeds</h1>
+    <p><a href="{% url 'opml-import' %}">Import OPML</a> · <a href="{% url 'opml-export' %}">Export OPML</a></p>
   </section>
-  {% empty %}
-  <p class="empty-state">No feeds yet.</p>
-  {% endfor %}
-</section>
+
+  <section class="form-panel" aria-labelledby="add-feed-heading">
+    <h2 id="add-feed-heading">Add a feed URL</h2>
+    {% if postmark_inbound_email %}
+      <p class="article-meta">To add a newsletter, subscribe it to <strong>{{ postmark_inbound_email }}</strong>.</p>
+    {% endif %}
+    <form method="post">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <button type="submit">Add feed</button>
+    </form>
+  </section>
+
+  <section aria-labelledby="current-feeds-heading">
+    <h2 id="current-feeds-heading">Current feeds</h2>
+    {% regroup feeds by category as category_groups %}
+    {% for category_group in category_groups %}
+      <section class="feed-category" aria-labelledby="feed-category-{{ forloop.counter }}">
+        <h3 id="feed-category-{{ forloop.counter }}">
+          {% if category_group.grouper %}{{ category_group.grouper.name }}{% else %}Uncategorized{% endif %}
+        </h3>
+        <ul class="feed-list">
+          {% for feed in category_group.list %}
+            <li class="feed-list-item" tabindex="-1" data-feed-list-item>
+              <a href="{% url 'feed-detail' feed.id %}" data-open-feed>{{ feed.title }}</a>
+              <span class="article-meta">{{ feed.feed_url }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% empty %}
+      <p class="empty-state">No feeds yet.</p>
+    {% endfor %}
+  </section>
 {% endblock %}
