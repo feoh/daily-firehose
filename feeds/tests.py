@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hmac
+from datetime import timedelta
 from typing import Any, cast
 from unittest.mock import patch
 
@@ -95,6 +96,22 @@ class DigestArticleVisibilityTests(TestCase):
         self.assertEqual(response.status_code, 200)
         titles = [article["title"] for article in response.json()["articles"]]
         self.assertEqual(titles, ["Unread article"])
+
+    def test_bulk_read_marker_does_not_hide_articles_fetched_later(self) -> None:
+        today = timezone.localdate()
+        marker = BulkReadMarker.objects.create(
+            user=self.user,
+            scope=ReadScope.WEEK,
+            period_start=today - timedelta(days=today.weekday()),
+            period_end=today + timedelta(days=6 - today.weekday()),
+        )
+        BulkReadMarker.objects.filter(id=model_id(marker)).update(
+            marked_read_at=self.unread_article.fetched_at - timedelta(seconds=1)
+        )
+
+        response = self.client.get(reverse("today"))
+
+        self.assertContains(response, "Unread article")
 
     def test_ajax_mark_read_returns_inline_message_payload(self) -> None:
         response = self.client.post(

@@ -85,6 +85,8 @@ def _read_article_ids(user, articles: QuerySet[Article]) -> set[int]:
     for marker in bulk_markers:
         marker_feed_id = _model_field_id(marker, "feed_id")
         for article in articles:
+            if article.fetched_at > marker.marked_read_at:
+                continue
             article_id = _pk(article)
             published_day = timezone.localtime(article.published_at).date()
             feed_marked = (
