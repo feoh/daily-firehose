@@ -9,12 +9,14 @@
   <p class="article-meta">Published {{ article.published_at|date:"M j, Y, g:i A" }}</p>
   {% if article.summary %}<p>{{ article.summary|striptags|truncatewords:55 }}</p>{% endif %}
   <div class="article-actions" aria-label="Actions for {{ article.title }}">
-    <a class="button-link" href="{{ article.url }}">Open article</a>
-    <form method="post" action="{% url 'save-article' article.id %}" data-article-action data-action-type="save">
-      {% csrf_token %}
-      <input type="hidden" name="next" value="{{ request.get_full_path }}">
-      <button type="submit">Save to Linkding</button>
-    </form>
+    <a class="button-link" href="{{ article.url }}">{% if article.newsletter_issue %}Read newsletter{% else %}Open article{% endif %}</a>
+    {% if not article.newsletter_issue %}
+      <form method="post" action="{% url 'save-article' article.id %}" data-article-action data-action-type="save">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <button type="submit">Save to Linkding</button>
+      </form>
+    {% endif %}
     <form method="post" action="{% url 'mark-article' article.id %}" data-article-action data-action-type="mark-read">
       {% csrf_token %}
       <input type="hidden" name="next" value="{{ request.get_full_path }}">

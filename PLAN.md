@@ -1,99 +1,86 @@
+# Plan: Postmark inbound newsletters for Daily Firehose
+
 ## Context
 
-The project is a personal information-flow app named **Daily Firehose**. Personal projects generally live in `~/src/personal` and use GitHub repositories under the `feoh` GitHub user, so the likely local path is `~/src/personal/daily-firehose` and the likely repository is `feoh/daily-firehose`.
-
-Daily Firehose will start as a Django-based RSS reader web app. It should fetch feeds, show new articles for the current day, and eventually support broader daily/weekly/monthly reading workflows. The initial output target is an accessible web page, with additional agent-friendly outputs such as structured JSON or Markdown planned. The UI should prioritize readability because WCAG AA accessibility is critical. The preferred initial visual direction is a spacious reading-card layout, with user-selectable themes including Catppuccin Mocha.
+Daily Firehose currently ingests RSS/Atom feeds and lets articles be saved to Linkding. The goal is to add newsletter ingestion without running mail infrastructure. Daily Firehose is already reachable on the public internet via Tailscale Funnel over HTTPS, so a hosted inbound email provider can POST to the app without exposing SMTP. We agreed to use Postmark’s generated inbound email address, archive newsletter issues in Daily Firehose, render HTML newsletter bodies publicly, hide the existing generic “Save to Linkding” action for newsletter items, and avoid private-content assumptions.
 
 ## Goals / Non-goals
 
-### Goals
-
-- Create a Django web app for reading RSS feeds.
-- Use built-in Django authentication.
-- Store feeds, articles, and read state locally, likely with SQLite initially.
-- Allow manually adding feed URLs and importing/exporting feed subscriptions as OPML files.
-- Provide views for Today, week, month, and individual feed detail pages.
-- Allow marking a day, week, month, feed, or individual article as read.
-- Provide a clear **Save to Linkding** action for articles, integrating with the Linkding instance at `https://linkding.reedfish-regulus.ts.net`.
-- Store and track saved articles, including article URL, title, feed, category, and timestamps, so future versions can highlight articles likely to be interesting.
-- Keep the implementation simple and maintainable.
-- Use a highly readable, WCAG AA-oriented UI with semantic HTML, large readable typography, visible focus states, high contrast, and clear labels.
-- Include user-selectable light and dark themes, including Catppuccin Mocha as a preferred dark theme.
-- Provide agent-ingestible outputs later, such as JSON and/or Markdown digest endpoints.
-
-### Non-goals
-
-- Do not build a complex background-worker system for the first version.
-- Do not prioritize whimsical action labels over clarity; controls should use direct labels such as **Mark read**, **Mark feed read**, **Mark today read**, **Save to Linkding**, and **Open article**.
-- Do not make security the primary design driver beyond using Django auth and reasonable configuration practices.
-- Do not assume the first version needs multi-user product polish beyond what Django auth naturally supports.
+- Goals:
+  - Receive inbound newsletter email from Postmark via an HTTPS webhook.
+  - Store inbound newsletters as a distinct archived newsletter issue linked to a normal `Article` so they appear in Today/Week/Month/feed views.
+  - Use a synthetic “Email Newsletters” feed for newsletter-backed articles.
+  - Expose public, unguessable newsletter archive pages and mark them `noindex`.
+  - Render sanitized HTML email content, with text fallback.
+  - Hide the normal “Save to Linkding” button for newsletter-backed article cards.
+  - Use Postmark’s generated inbound address to avoid DNS/MX setup.
+- Non-goals:
+  - Running or exposing an SMTP server.
+  - Making newsletter pages login-required.
+  - Saving newsletter archive pages to Linkding in the initial implementation.
+  - Implementing per-link extraction/save-to-Linkding behavior in the initial implementation.
 
 ## Files to change
 
-- `~/src/personal/daily-firehose/` — create the new personal project directory.
-- Django project package, likely `daily_firehose/` — project settings, URL routing, and shared configuration.
-- Django app package, likely for feeds/readers — models, views, forms, services, and URLs for feed and article workflows.
-- Templates — accessible server-rendered HTML for Today’s Firehose, week/month views, feed detail pages, OPML import/export, login/logout, and article actions.
-- Static CSS — theme variables, Catppuccin Mocha support, accessible typography, spacing, focus states, and card layout styles.
-- Management command — scheduled feed refresh command intended for cron or systemd timer.
-- Linkding integration module/service — backend code to save article links to Linkding using configurable URL/token values.
-- API or renderer endpoints — later JSON and/or Markdown digest outputs for pi or other agents to ingest.
-- Project metadata and docs — dependency configuration, README, and basic setup/run instructions.
+- `pyproject.toml` / `uv.lock` — add an HTML sanitization dependency such as `bleach`.
+- `daily_firehose/settings.py` — add `POSTMARK_INBOUND_SECRET` and any newsletter archive/base URL settings needed.
+- `.env.example` — document `POSTMARK_INBOUND_SECRET`.
+- `feeds/models.py` — add a newsletter/archive model linked one-to-one to `Article`, with UUID slug and Postmark/message metadata plus HTML/text bodies.
+- `feeds/migrations/` — add migrations for the newsletter model and related constraints/indexes.
+- `feeds/services.py` — add helpers to create/get the synthetic newsletter feed, parse Postmark payloads, create/update newsletter-backed articles, sanitize newsletter HTML, and de-dupe by message id.
+- `feeds/views.py` — add a public newsletter detail view that renders sanitized HTML/text and returns `noindex`; adjust card context if needed.
+- `feeds/api.py` — add a CSRF-exempt Postmark inbound webhook endpoint authenticated by the shared secret path segment.
+- `feeds/urls.py` — add routes for the Postmark webhook and public newsletter archive page.
+- `templates/feeds/includes/article_card.html` — detect newsletter-backed articles, label the open action as “Read newsletter,” and hide “Save to Linkding.”
+- `templates/feeds/newsletter_detail.html` — render the public newsletter archive page with sanitized HTML or text fallback and `noindex` metadata.
+- `feeds/admin.py` — optionally expose newsletter issues for inspection/debugging.
+- `feeds/tests.py` — add tests for webhook authentication, de-dupe, article creation, newsletter page rendering, sanitization, and hidden Linkding action.
 
 ## Ordered steps
 
-1. Create the local project at `~/src/personal/daily-firehose` and initialize it as a Git repository intended for `feoh/daily-firehose`.
-2. Start a Django project using package name `daily_firehose`.
-3. Add a Django app for feed/article functionality.
-4. Configure built-in Django authentication, SQLite for initial storage, templates, static files, and environment-based configuration.
-5. Define initial data models for feeds, articles, saved articles, categories, and read-state markers that can support individual article read state plus day/week/month/feed-level mark-read behavior.
-6. Add Django admin support for managing feeds and inspecting articles.
-7. Implement manual feed URL management plus OPML import/export for subscriptions.
-8. Implement feed fetching/parsing as a simple service plus a Django management command suitable for cron or systemd timer usage.
-9. Build the first web views:
-   - Today’s Firehose
-   - week view
-   - month view
-   - feed detail view
-   - OPML import/export
-   - login/logout
-10. Implement article and bulk read actions:
-   - mark article read/unread
-   - mark feed read
-   - mark day read
-   - mark week read
-   - mark month read
-11. Implement the spacious reading-card layout as the default UI.
-12. Add accessible theme support with CSS custom properties, including user-selectable light/dark themes and Catppuccin Mocha.
-13. Add Linkding configuration and a **Save to Linkding** backend action for article cards.
-14. Add initial agent-friendly digest output endpoints or renderers, likely JSON first and Markdown later.
-15. Write setup and usage documentation, including how to configure feeds, OPML import/export, Linkding, auth, and scheduled refresh.
+1. Add the HTML sanitization dependency using the project’s `uv` workflow and update lockfile.
+2. Add `POSTMARK_INBOUND_SECRET` to settings and `.env.example`.
+3. Add the newsletter issue model with:
+   - one-to-one link to `Article`
+   - UUID public slug
+   - unique Postmark/message id for de-duping
+   - sender/recipient/subject metadata
+   - raw HTML body and text body fields
+   - timestamps
+4. Create and apply the Django migration.
+5. Implement service helpers to:
+   - get or create the synthetic “Email Newsletters” feed
+   - parse the relevant Postmark inbound payload fields
+   - create/update the linked `Article`
+   - build the public newsletter archive URL for `Article.url`
+   - sanitize stored HTML for rendering
+6. Add the CSRF-exempt Postmark inbound webhook endpoint at a secret-bearing URL such as `/api/postmark/inbound/<secret>/`.
+7. Add the public newsletter detail route, preferably using the UUID slug, and return `X-Robots-Tag: noindex` plus a template-level robots meta tag.
+8. Update article card rendering so newsletter-backed articles open as “Read newsletter” and do not show the generic “Save to Linkding” form.
+9. Add tests for successful Postmark ingestion, rejected bad secrets, message-id de-dupe, newsletter detail HTML rendering/sanitization, noindex behavior, and hidden Linkding action.
+10. Configure Postmark’s generated inbound address to POST to the deployed HTTPS webhook URL using the configured secret.
+11. Deploy with the existing Docker Compose process after validation passes.
 
 ## Validation
 
-- Run Django checks and migrations.
-- Verify login/logout works using Django auth.
-- Verify feeds can be added through Django admin and the web UI.
-- Verify OPML import creates feed subscriptions and OPML export returns the configured subscriptions.
-- Verify the feed refresh management command fetches and stores articles.
-- Verify Today, week, month, and feed detail pages render correctly.
-- Verify marking individual articles, feeds, days, weeks, and months as read updates what appears as unread.
-- Verify **Save to Linkding** sends the correct article URL/title/metadata using configured Linkding settings and records the save locally with feed/category metadata.
-- Validate accessibility manually against WCAG AA expectations:
-  - readable font sizing and line height
-  - sufficient color contrast
-  - semantic headings and landmarks
-  - keyboard navigation
-  - visible focus states
-  - clear button/link labels
-- Check Catppuccin Mocha and light theme readability, overriding palette choices where needed for contrast.
-- Verify JSON and/or Markdown digest output is easy for pi or other agents to ingest once implemented.
+- Run Django tests, including the new newsletter tests:
+  - `uv run python manage.py test feeds`
+- Run project validation before declaring done:
+  - `uv run pre-commit run --all-files`
+  - `uv run mypy .`
+- Run Django checks:
+  - `uv run python manage.py check`
+- Manual checks:
+  - POST a representative Postmark inbound payload locally and confirm a newsletter issue and article are created.
+  - Visit Today/Week views and confirm the newsletter appears as an article card.
+  - Confirm the newsletter card says “Read newsletter” and does not show “Save to Linkding.”
+  - Visit the newsletter archive URL without logging in and confirm sanitized HTML renders and `noindex` is present.
+  - Send a test email through Postmark’s generated inbound address after deployment and confirm it appears in Daily Firehose.
 
 ## Risks & unknowns
 
-- Exact data model for efficient day/week/month/feed mark-read behavior needs to be finalized during implementation.
-- Exact agent-friendly output format is not yet fully specified; JSON is likely, with Markdown possible later.
-- Linkding API details and authentication method need to be confirmed against the deployed Linkding instance.
-- Theme palette choices may need adjustment to meet WCAG AA contrast requirements.
-- Feed refresh scheduling mechanism should stay simple, but the exact deployment environment for cron or systemd has not been specified.
-- The app name and repository path are agreed in principle, but the repository may not yet exist.
+- Exact Postmark inbound payload field names and any available signature/auth features should be verified against Postmark docs while implementing.
+- Rendering HTML email safely requires a careful sanitizer allowlist; too strict may break newsletter formatting, too loose may create XSS risk.
+- Remote images in newsletters may load tracking pixels; we agreed to render HTML, but image proxying/blocking is not part of this initial plan.
+- Public newsletter archives are unguessable and `noindex`, but not private; anyone with a link can view them.
+- Some newsletters may not have useful HTML or may rely heavily on CSS that sanitization removes.

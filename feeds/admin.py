@@ -7,6 +7,7 @@ from .models import (
     BulkReadMarker,
     Category,
     Feed,
+    NewsletterIssue,
     SavedArticle,
     UserPreference,
 )
@@ -40,6 +41,15 @@ class ArticleAdmin(admin.ModelAdmin):
     list_filter = ["feed", "published_at"]
     search_fields = ["title", "url", "guid", "summary"]
     date_hierarchy = "published_at"
+
+
+@admin.register(NewsletterIssue)
+class NewsletterIssueAdmin(admin.ModelAdmin):
+    list_display = ["subject", "from_email", "to_email", "received_at", "created_at"]
+    list_filter = ["received_at", "created_at"]
+    search_fields = ["subject", "message_id", "from_email", "to_email", "text_body"]
+    readonly_fields = ["public_id", "created_at", "updated_at"]
+    date_hierarchy = "received_at"
 
 
 @admin.register(SavedArticle)

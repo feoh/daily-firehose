@@ -16,6 +16,7 @@ from .models import (
     BulkReadMarker,
     Category,
     Feed,
+    NewsletterIssue,
     ReadScope,
     SavedArticle,
 )
@@ -159,10 +160,10 @@ class DigestArticleVisibilityTests(TestCase):
         self.assertEqual(mock_post.call_args.kwargs["json"]["description"], "")
 
     @patch("feeds.services.feedparser.parse")
-    def test_refresh_feed_prefers_article_url_over_comments_guid(self, mock_parse) -> None:
-        feed = Feed.objects.create(
-            title="Lobsters", feed_url="https://lobste.rs/rss"
-        )
+    def test_refresh_feed_prefers_article_url_over_comments_guid(
+        self, mock_parse
+    ) -> None:
+        feed = Feed.objects.create(title="Lobsters", feed_url="https://lobste.rs/rss")
         mock_parse.return_value = {
             "feed": {"title": "Lobsters"},
             "entries": [
@@ -233,6 +234,15 @@ class FeedListGroupingTests(TestCase):
         user_model = cast(Any, get_user_model())
         self.user = cast(Any, user_model.objects).create_user(username="reader")
         self.client.force_login(self.user)
+
+    def test_feed_list_shows_postmark_inbound_email_reminder(self) -> None:
+        response = self.client.get(reverse("feeds"))
+
+        self.assertContains(
+            response,
+            "95d8c50c7df8d1ca38d7a6f55ee5a311@inbound.postmarkapp.com",
+        )
+        self.assertContains(response, "To add a newsletter")
 
     def test_feeds_are_grouped_by_category(self) -> None:
         tech = Category.objects.create(name="Tech", slug="tech")
@@ -425,6 +435,94 @@ class ApiTests(TestCase):
                 period_end=today,
             ).exists()
         )
+
+
+@override_settings(
+    POSTMARK_INBOUND_SECRET="inbound-secret",
+    STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"
+        },
+    },
+)
+class PostmarkInboundNewsletterTests(TestCase):
+    def setUp(self) -> None:
+        user_model = cast(Any, get_user_model())
+        self.user = cast(Any, user_model.objects).create_user(username="reader")
+
+    def payload(self, *, message_id: str = "message-1") -> dict[str, Any]:
+        return {
+            "MessageID": message_id,
+            "Subject": "Daily newsletter",
+            "From": "sender@example.com",
+            "FromFull": {"Name": "Newsletter Sender", "Email": "sender@example.com"},
+            "To": "reader@example.com",
+            "ToFull": [{"Name": "Reader", "Email": "reader@example.com"}],
+            "HtmlBody": '<h1>Hello</h1><script>alert("x")</script><p><a href="https://example.com/story">Story</a></p>',
+            "TextBody": "Hello\nStory: https://example.com/story",
+        }
+
+    def post_payload(self, payload: dict[str, Any], secret: str = "inbound-secret"):
+        return self.client.post(
+            reverse("postmark-inbound", args=[secret]),
+            payload,
+            content_type="application/json",
+        )
+
+    def test_webhook_rejects_bad_secret(self) -> None:
+        response = self.post_payload(self.payload(), secret="wrong")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(NewsletterIssue.objects.count(), 0)
+
+    def test_webhook_creates_newsletter_issue_and_article(self) -> None:
+        response = self.post_payload(self.payload())
+
+        self.assertEqual(response.status_code, 201)
+        issue = NewsletterIssue.objects.select_related("article", "article__feed").get()
+        self.assertEqual(issue.subject, "Daily newsletter")
+        self.assertEqual(issue.from_email, "sender@example.com")
+        self.assertEqual(issue.from_name, "Newsletter Sender")
+        self.assertEqual(issue.to_email, "reader@example.com")
+        self.assertEqual(issue.article.title, "Daily newsletter")
+        self.assertEqual(issue.article.guid, "message-1")
+        self.assertEqual(issue.article.feed.title, "Email Newsletters")
+        self.assertIn(f"/newsletters/{issue.public_id}/", issue.article.url)
+
+    def test_webhook_dedupes_by_message_id(self) -> None:
+        first = self.post_payload(self.payload())
+        second = self.post_payload(self.payload())
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(NewsletterIssue.objects.count(), 1)
+        self.assertEqual(Article.objects.count(), 1)
+        self.assertFalse(second.json()["created"])
+
+    def test_newsletter_detail_is_public_noindex_and_sanitized(self) -> None:
+        self.post_payload(self.payload())
+        issue = NewsletterIssue.objects.get()
+
+        response = self.client.get(reverse("newsletter-detail", args=[issue.public_id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["X-Robots-Tag"], "noindex")
+        self.assertContains(response, '<meta name="robots" content="noindex">')
+        self.assertContains(response, "<h1>Hello</h1>")
+        self.assertNotContains(response, 'alert("x")')
+        self.assertContains(response, 'target="_blank"')
+        self.assertContains(response, "noopener noreferrer")
+
+    def test_newsletter_card_hides_linkding_save(self) -> None:
+        self.post_payload(self.payload())
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("today"))
+
+        self.assertContains(response, "Daily newsletter")
+        self.assertContains(response, "Read newsletter")
+        self.assertNotContains(response, "Save to Linkding")
 
 
 class OPMLImportCategoryTests(TestCase):

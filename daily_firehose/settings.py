@@ -161,6 +161,11 @@ LINKDING_URL = os.environ.get(
 LINKDING_TOKEN = os.environ.get("LINKDING_TOKEN", "")
 AGENT_LINK_SECRET = os.environ.get("AGENT_LINK_SECRET", "")
 AGENT_LINK_USERNAME = os.environ.get("AGENT_LINK_USERNAME", "")
+POSTMARK_INBOUND_SECRET = os.environ.get("POSTMARK_INBOUND_SECRET", "")
+POSTMARK_INBOUND_EMAIL = os.environ.get(
+    "POSTMARK_INBOUND_EMAIL",
+    "95d8c50c7df8d1ca38d7a6f55ee5a311@inbound.postmarkapp.com",
+)
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

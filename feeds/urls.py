@@ -12,6 +12,11 @@ urlpatterns = [
     path("month/", views.month, name="month"),
     path("feeds/", views.feed_list, name="feeds"),
     path("feeds/<int:feed_id>/", views.feed_detail, name="feed-detail"),
+    path(
+        "newsletters/<uuid:public_id>/",
+        views.newsletter_detail,
+        name="newsletter-detail",
+    ),
     path("feeds/<int:feed_id>/mark-read/", views.mark_feed_read, name="mark-feed-read"),
     path("opml/import/", views.opml_import, name="opml-import"),
     path("opml/export/", views.opml_export, name="opml-export"),
@@ -23,6 +28,11 @@ urlpatterns = [
     ),
     path("mark-period-read/", views.mark_period_read, name="mark-period-read"),
     path("api/digest/today.json", views.digest_json, name="digest-json"),
+    path(
+        "api/postmark/inbound/<str:secret>/",
+        api.postmark_inbound,
+        name="postmark-inbound",
+    ),
     path("api/v1/briefing/morning/", api.morning_briefing, name="api-morning-briefing"),
     path("api/v1/articles/", api.article_list, name="api-articles"),
     path(

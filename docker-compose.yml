@@ -26,6 +26,8 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-compose-development-key-change-me}
       AGENT_LINK_SECRET: ${AGENT_LINK_SECRET:-}
       AGENT_LINK_USERNAME: ${AGENT_LINK_USERNAME:-}
+      POSTMARK_INBOUND_SECRET: ${POSTMARK_INBOUND_SECRET:-}
+      POSTMARK_INBOUND_EMAIL: ${POSTMARK_INBOUND_EMAIL:-95d8c50c7df8d1ca38d7a6f55ee5a311@inbound.postmarkapp.com}
       LINKDING_TOKEN: ${LINKDING_TOKEN:-}
       LINKDING_URL: ${LINKDING_URL:-https://linkding.reedfish-regulus.ts.net}
     ports:

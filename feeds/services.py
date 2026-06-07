@@ -2,19 +2,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone as datetime_timezone
+import uuid
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
+import re
 from typing import Any, cast
+from urllib.parse import urljoin
 from xml.etree import ElementTree
 
+import bleach
 import feedparser
 import requests
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
 
-from .models import Article, Category, Feed, SavedArticle
+from .models import Article, Category, Feed, NewsletterIssue, SavedArticle
 
 LINKDING_TOREAD_TAG = "toread"
+NEWSLETTER_FEED_URL = "https://daily-firehose.local/feeds/email-newsletters"
+NEWSLETTER_FEED_TITLE = "Email Newsletters"
 
 
 class _TextExtractor(HTMLParser):
@@ -41,6 +48,12 @@ class RefreshResult:
     feed: Feed
     created: int
     updated: int
+
+
+@dataclass(frozen=True)
+class NewsletterImportResult:
+    issue: NewsletterIssue
+    created: bool
 
 
 def _aware_datetime(value: Any) -> datetime:
@@ -131,6 +144,150 @@ def _entry_article_url(entry: Any) -> str:
 
 def refresh_active_feeds() -> list[RefreshResult]:
     return [refresh_feed(feed) for feed in Feed.objects.filter(is_active=True)]
+
+
+def newsletter_feed() -> Feed:
+    feed, _ = Feed.objects.get_or_create(
+        feed_url=NEWSLETTER_FEED_URL,
+        defaults={
+            "title": NEWSLETTER_FEED_TITLE,
+            "site_url": "",
+            "description": "Email newsletters received through Postmark inbound email.",
+            "is_active": False,
+        },
+    )
+    return feed
+
+
+def newsletter_archive_url(*, base_url: str, public_id: Any) -> str:
+    return urljoin(
+        base_url.rstrip("/") + "/",
+        reverse("newsletter-detail", args=[public_id]).lstrip("/"),
+    )
+
+
+def _postmark_address(payload: dict[str, Any], field: str) -> str:
+    full_value = payload.get(f"{field}Full")
+    if isinstance(full_value, dict):
+        email = full_value.get("Email")
+        if email:
+            return str(email)
+    if isinstance(full_value, list) and full_value:
+        first = full_value[0]
+        if isinstance(first, dict) and first.get("Email"):
+            return str(first["Email"])
+    value = payload.get(field)
+    return str(value or "")
+
+
+def _postmark_name(payload: dict[str, Any], field: str) -> str:
+    full_value = payload.get(f"{field}Full")
+    if isinstance(full_value, dict):
+        return str(full_value.get("Name") or "")
+    return ""
+
+
+def import_postmark_newsletter(
+    *, payload: dict[str, Any], base_url: str
+) -> NewsletterImportResult:
+    message_id = str(payload.get("MessageID") or payload.get("MessageId") or "")
+    if not message_id:
+        raise ValueError("Postmark payload is missing MessageID.")
+
+    subject = str(payload.get("Subject") or "Untitled newsletter")
+    received_at = _aware_datetime(payload.get("Date"))
+    existing = (
+        NewsletterIssue.objects.select_related("article")
+        .filter(message_id=message_id)
+        .first()
+    )
+    if existing is not None:
+        return NewsletterImportResult(issue=existing, created=False)
+
+    public_id = uuid.uuid4()
+    archive_url = newsletter_archive_url(base_url=base_url, public_id=public_id)
+    feed = newsletter_feed()
+    article = Article.objects.create(
+        feed=feed,
+        title=subject,
+        url=archive_url,
+        guid=message_id,
+        author=_postmark_address(payload, "From"),
+        summary=str(payload.get("TextBody") or payload.get("HtmlBody") or ""),
+        published_at=received_at,
+    )
+    issue = NewsletterIssue.objects.create(
+        article=article,
+        public_id=public_id,
+        message_id=message_id,
+        from_email=_postmark_address(payload, "From"),
+        from_name=_postmark_name(payload, "From"),
+        to_email=_postmark_address(payload, "To"),
+        subject=subject,
+        html_body=str(payload.get("HtmlBody") or ""),
+        text_body=str(payload.get("TextBody") or ""),
+        received_at=received_at,
+    )
+    return NewsletterImportResult(issue=issue, created=True)
+
+
+def sanitize_newsletter_html(html: str) -> str:
+    html = re.sub(
+        r"<\s*(script|style)\b[^>]*>.*?<\s*/\s*\1\s*>",
+        "",
+        html,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    tags = set(bleach.sanitizer.ALLOWED_TAGS) | {
+        "article",
+        "aside",
+        "br",
+        "caption",
+        "div",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "hr",
+        "img",
+        "p",
+        "section",
+        "span",
+        "table",
+        "tbody",
+        "td",
+        "tfoot",
+        "th",
+        "thead",
+        "tr",
+    }
+    attributes = {
+        **bleach.sanitizer.ALLOWED_ATTRIBUTES,
+        "a": ["href", "title", "target", "rel"],
+        "img": ["src", "alt", "title", "width", "height"],
+        "td": ["colspan", "rowspan"],
+        "th": ["colspan", "rowspan", "scope"],
+    }
+    cleaned = bleach.clean(
+        html,
+        tags=tags,
+        attributes=attributes,
+        protocols={"http", "https", "mailto"},
+        strip=True,
+    )
+    return bleach.linkify(
+        cleaned,
+        callbacks=[bleach.callbacks.nofollow, _newsletter_link_attrs],
+        skip_tags={"pre", "code"},
+    )
+
+
+def _newsletter_link_attrs(attrs, new=False):  # noqa: ANN001, ANN202
+    attrs[(None, "target")] = "_blank"
+    attrs[(None, "rel")] = "noopener noreferrer"
+    return attrs
 
 
 def discover_feed_metadata(feed_url: str) -> dict[str, str]:

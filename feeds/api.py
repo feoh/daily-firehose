@@ -26,7 +26,12 @@ from .models import (
     SavedArticle,
     UserPreference,
 )
-from .services import discover_feed_metadata, refresh_active_feeds, save_article
+from .services import (
+    discover_feed_metadata,
+    import_postmark_newsletter,
+    refresh_active_feeds,
+    save_article,
+)
 from .views import (
     _article_cards,
     _articles_between,
@@ -116,6 +121,28 @@ def api_view(
 
 def _pk(model: Any) -> int:
     return int(model.id)
+
+
+@csrf_exempt
+def postmark_inbound(request: HttpRequest, secret: str) -> JsonResponse:
+    if request.method != "POST":
+        return _json_error("Method not allowed.", status=405, code="method_not_allowed")
+    configured_secret = settings.POSTMARK_INBOUND_SECRET
+    if not configured_secret or not hmac.compare_digest(secret, configured_secret):
+        return _json_error(
+            "Invalid inbound email secret.", status=403, code="forbidden"
+        )
+    try:
+        payload = _parse_json(request)
+        result = import_postmark_newsletter(
+            payload=payload, base_url=request.build_absolute_uri("/")
+        )
+    except ValueError as exc:
+        return _json_error(str(exc))
+    return JsonResponse(
+        {"id": _pk(result.issue), "created": result.created},
+        status=201 if result.created else 200,
+    )
 
 
 def _category_payload(category: Category | None) -> dict[str, Any] | None:
@@ -300,9 +327,7 @@ def mark_period_read_and_go(request: HttpRequest) -> HttpResponse:
     if not settings.AGENT_LINK_SECRET or not hmac.compare_digest(
         signature, _agent_link_period_read_signature(scope)
     ):
-        return _json_error(
-            "Invalid period read link.", status=403, code="forbidden"
-        )
+        return _json_error("Invalid period read link.", status=403, code="forbidden")
     user = _agent_link_user()
     if user is None:
         return _json_error(

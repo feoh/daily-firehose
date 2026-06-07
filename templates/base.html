@@ -1,24 +1,31 @@
 {% load static %}
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Daily Firehose{% endblock %}</title>
-  <link rel="stylesheet" href="{% static 'css/site.css' %}">
-  <script src="{% static 'js/article-actions.js' %}" defer></script>
-</head>
-<body class="theme-{{ preferences.theme|default:'system' }}{% if preferences.compact %} compact{% endif %}">
-  <a class="skip-link" href="#main-content">Skip to main content</a>
-  <header class="site-header">
-    <div class="brand-lockup">
-      <img class="masthead-image" src="{% static 'img/firehose-masthead.svg' %}" alt="Red firehose spraying blue water">
-      <div>
-        <p class="eyebrow">Daily Firehose</p>
-        <p class="site-tagline">Readable daily feed flow.</p>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Daily Firehose{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/site.css' %}" />
+    <script src="{% static 'js/article-actions.js' %}" defer></script>
+    {% block extra_head %}{% endblock %}
+  </head>
+  <body
+    class="theme-{{ preferences.theme|default:'system' }}{% if preferences.compact %} compact{% endif %}"
+  >
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+    <header class="site-header">
+      <div class="brand-lockup">
+        <img
+          class="masthead-image"
+          src="{% static 'img/firehose-masthead.svg' %}"
+          alt="Red firehose spraying blue water"
+        />
+        <div>
+          <p class="eyebrow">Daily Firehose</p>
+          <p class="site-tagline">Readable daily feed flow.</p>
+        </div>
       </div>
-    </div>
-    {% if request.user.is_authenticated %}
+      {% if request.user.is_authenticated %}
       <nav class="site-nav" aria-label="Primary">
         <a href="{% url 'today' %}" data-keyboard-nav="T">Today</a>
         <a href="{% url 'week' %}" data-keyboard-nav="W">Week</a>
@@ -29,43 +36,79 @@
       </nav>
       <form method="post" action="{% url 'refresh-feeds' %}" data-refresh-form>
         {% csrf_token %}
-        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <input type="hidden" name="next" value="{{ request.get_full_path }}" />
         <button type="submit" data-refresh-button>Refresh feeds</button>
       </form>
       <form method="post" action="{% url 'logout' %}">
         {% csrf_token %}
         <button type="submit">Sign out</button>
       </form>
-    {% endif %}
-  </header>
-  <main id="main-content" tabindex="-1">
-    {% if messages %}
+      {% endif %}
+    </header>
+    <main id="main-content" tabindex="-1">
+      {% if messages %}
       <div class="messages" aria-live="polite">
         {% for message in messages %}
-          <p class="message {{ message.tags }}">{{ message }}</p>
+        <p class="message {{ message.tags }}">{{ message }}</p>
         {% endfor %}
       </div>
-    {% endif %}
-    {% block content %}{% endblock %}
-  </main>
-  <div class="keyboard-hint" role="status">Keyboard shortcuts: press <kbd>?</kbd> for help.</div>
-  <div class="keyboard-help" id="keyboard-help" hidden>
-    <div class="keyboard-help-panel" role="dialog" aria-modal="true" aria-labelledby="keyboard-help-heading">
-      <h2 id="keyboard-help-heading">Keyboard shortcuts</h2>
-      <dl>
-        <div><dt><kbd>j</kbd></dt><dd>Move to the next article or feed</dd></div>
-        <div><dt><kbd>k</kbd></dt><dd>Move to the previous article or feed</dd></div>
-        <div><dt><kbd>s</kbd></dt><dd>Save the selected article</dd></div>
-        <div><dt><kbd>o</kbd></dt><dd>Open the selected article</dd></div>
-        <div><dt><kbd>m</kbd></dt><dd>Mark the selected article read</dd></div>
-        <div><dt><kbd>T</kbd></dt><dd>Go to Today</dd></div>
-        <div><dt><kbd>W</kbd></dt><dd>Go to Week</dd></div>
-        <div><dt><kbd>M</kbd></dt><dd>Go to Month</dd></div>
-        <div><dt><kbd>F</kbd></dt><dd>Go to Feeds</dd></div>
-        <div><dt><kbd>Esc</kbd></dt><dd>Close this help</dd></div>
-      </dl>
-      <button type="button" data-close-keyboard-help>Close</button>
+      {% endif %} {% block content %}{% endblock %}
+    </main>
+    <div class="keyboard-hint" role="status">
+      Keyboard shortcuts: press <kbd>?</kbd> for help.
     </div>
-  </div>
-</body>
+    <div class="keyboard-help" id="keyboard-help" hidden>
+      <div
+        class="keyboard-help-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="keyboard-help-heading"
+      >
+        <h2 id="keyboard-help-heading">Keyboard shortcuts</h2>
+        <dl>
+          <div>
+            <dt><kbd>j</kbd></dt>
+            <dd>Move to the next article or feed</dd>
+          </div>
+          <div>
+            <dt><kbd>k</kbd></dt>
+            <dd>Move to the previous article or feed</dd>
+          </div>
+          <div>
+            <dt><kbd>s</kbd></dt>
+            <dd>Save the selected article</dd>
+          </div>
+          <div>
+            <dt><kbd>o</kbd></dt>
+            <dd>Open the selected article</dd>
+          </div>
+          <div>
+            <dt><kbd>m</kbd></dt>
+            <dd>Mark the selected article read</dd>
+          </div>
+          <div>
+            <dt><kbd>T</kbd></dt>
+            <dd>Go to Today</dd>
+          </div>
+          <div>
+            <dt><kbd>W</kbd></dt>
+            <dd>Go to Week</dd>
+          </div>
+          <div>
+            <dt><kbd>M</kbd></dt>
+            <dd>Go to Month</dd>
+          </div>
+          <div>
+            <dt><kbd>F</kbd></dt>
+            <dd>Go to Feeds</dd>
+          </div>
+          <div>
+            <dt><kbd>Esc</kbd></dt>
+            <dd>Close this help</dd>
+          </div>
+        </dl>
+        <button type="button" data-close-keyboard-help>Close</button>
+      </div>
+    </div>
+  </body>
 </html>

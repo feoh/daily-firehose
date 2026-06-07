@@ -5,6 +5,7 @@ description = "Accessible Django RSS reader for daily information flow."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "bleach>=6.4.0",
     "dj-database-url>=3.1.2",
     "django>=5.0,<6.0",
     "feedparser>=6.0.12",

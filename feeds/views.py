@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from typing import Any
 
 from django.conf import settings
 from django.contrib import messages
@@ -13,8 +14,24 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .forms import FeedForm, OPMLImportForm, ThemeForm
-from .models import Article, ArticleReadState, BulkReadMarker, Feed, ReadScope, SavedArticle, UserPreference
-from .services import discover_feed_metadata, export_opml, import_opml, refresh_active_feeds, save_article
+from .models import (
+    Article,
+    ArticleReadState,
+    BulkReadMarker,
+    Feed,
+    NewsletterIssue,
+    ReadScope,
+    SavedArticle,
+    UserPreference,
+)
+from .services import (
+    discover_feed_metadata,
+    export_opml,
+    import_opml,
+    refresh_active_feeds,
+    sanitize_newsletter_html,
+    save_article,
+)
 
 
 def _week_bounds(day: date) -> tuple[date, date]:
@@ -31,7 +48,18 @@ def _month_bounds(day: date) -> tuple[date, date]:
     return start, end
 
 
-def _articles_between(start: date, end: date, feed: Feed | None = None) -> QuerySet[Article]:
+def _pk(model: Any) -> int:
+    return int(model.id)
+
+
+def _model_field_id(model: Any, field_name: str) -> int | None:
+    value = getattr(model, field_name)
+    return int(value) if value is not None else None
+
+
+def _articles_between(
+    start: date, end: date, feed: Feed | None = None
+) -> QuerySet[Article]:
     queryset = Article.objects.select_related("feed", "feed__category").filter(
         published_at__date__gte=start,
         published_at__date__lte=end,
@@ -44,38 +72,47 @@ def _articles_between(start: date, end: date, feed: Feed | None = None) -> Query
 def _read_article_ids(user, articles: QuerySet[Article]) -> set[int]:
     ids = list(articles.values_list("id", flat=True))
     explicit_read = set(
-        ArticleReadState.objects.filter(user=user, article_id__in=ids, is_read=True).values_list(
-            "article_id", flat=True
-        )
+        ArticleReadState.objects.filter(
+            user=user, article_id__in=ids, is_read=True
+        ).values_list("article_id", flat=True)
     )
     explicit_unread = set(
-        ArticleReadState.objects.filter(user=user, article_id__in=ids, is_read=False).values_list(
-            "article_id", flat=True
-        )
+        ArticleReadState.objects.filter(
+            user=user, article_id__in=ids, is_read=False
+        ).values_list("article_id", flat=True)
     )
     bulk_markers = BulkReadMarker.objects.filter(user=user)
     for marker in bulk_markers:
+        marker_feed_id = _model_field_id(marker, "feed_id")
         for article in articles:
+            article_id = _pk(article)
             published_day = timezone.localtime(article.published_at).date()
-            if marker.scope == ReadScope.FEED and marker.feed_id == article.feed_id:
-                explicit_read.add(article.id)
-            elif marker.period_start and marker.period_end and marker.period_start <= published_day <= marker.period_end:
-                if marker.scope in {ReadScope.DAY, ReadScope.WEEK, ReadScope.MONTH}:
-                    explicit_read.add(article.id)
+            feed_marked = (
+                marker.scope == ReadScope.FEED
+                and marker_feed_id == _model_field_id(article, "feed_id")
+            )
+            period_marked = (
+                marker.period_start
+                and marker.period_end
+                and marker.period_start <= published_day <= marker.period_end
+                and marker.scope in {ReadScope.DAY, ReadScope.WEEK, ReadScope.MONTH}
+            )
+            if feed_marked or period_marked:
+                explicit_read.add(article_id)
     return explicit_read - explicit_unread
 
 
 def _article_cards(user, articles: QuerySet[Article]) -> list[dict]:
     read_ids = _read_article_ids(user, articles)
     saved_ids = set(
-        SavedArticle.objects.filter(user=user, article_id__in=articles.values_list("id", flat=True)).values_list(
-            "article_id", flat=True
-        )
+        SavedArticle.objects.filter(
+            user=user, article_id__in=articles.values_list("id", flat=True)
+        ).values_list("article_id", flat=True)
     )
     return [
         {"article": article, "is_read": False, "is_saved": False}
         for article in articles
-        if article.id not in read_ids and article.id not in saved_ids
+        if _pk(article) not in read_ids and _pk(article) not in saved_ids
     ]
 
 
@@ -86,6 +123,26 @@ def _preferences(user) -> UserPreference:
 
 def _wants_json(request: HttpRequest) -> bool:
     return request.headers.get("x-requested-with") == "XMLHttpRequest"
+
+
+def newsletter_detail(request: HttpRequest, public_id) -> HttpResponse:  # noqa: ANN001
+    issue = get_object_or_404(
+        NewsletterIssue.objects.select_related("article", "article__feed"),
+        public_id=public_id,
+    )
+    response = render(
+        request,
+        "feeds/newsletter_detail.html",
+        {
+            "issue": issue,
+            "article": issue.article,
+            "sanitized_html": sanitize_newsletter_html(issue.html_body)
+            if issue.html_body
+            else "",
+        },
+    )
+    response["X-Robots-Tag"] = "noindex"
+    return response
 
 
 @login_required
@@ -149,11 +206,17 @@ def month(request: HttpRequest) -> HttpResponse:
 @login_required
 def feed_detail(request: HttpRequest, feed_id: int) -> HttpResponse:
     feed = get_object_or_404(Feed, id=feed_id)
-    articles = Article.objects.select_related("feed", "feed__category").filter(feed=feed)[:100]
+    articles = Article.objects.select_related("feed", "feed__category").filter(
+        feed=feed
+    )[:100]
     return render(
         request,
         "feeds/feed_detail.html",
-        {"feed": feed, "cards": _article_cards(request.user, articles), "preferences": _preferences(request.user)},
+        {
+            "feed": feed,
+            "cards": _article_cards(request.user, articles),
+            "preferences": _preferences(request.user),
+        },
     )
 
 
@@ -174,8 +237,11 @@ def feed_list(request: HttpRequest) -> HttpResponse:
         request,
         "feeds/feed_list.html",
         {
-            "feeds": Feed.objects.select_related("category").order_by("category__name", "title", "feed_url"),
+            "feeds": Feed.objects.select_related("category").order_by(
+                "category__name", "title", "feed_url"
+            ),
             "form": form,
+            "postmark_inbound_email": settings.POSTMARK_INBOUND_EMAIL,
             "preferences": _preferences(request.user),
         },
     )
@@ -186,9 +252,16 @@ def opml_import(request: HttpRequest) -> HttpResponse:
     form = OPMLImportForm(request.POST or None, request.FILES or None)
     if request.method == "POST" and form.is_valid():
         result = import_opml(form.cleaned_data["opml_file"].read())
-        messages.success(request, f"Imported OPML: {result.created} created, {result.updated} updated, {result.skipped} skipped.")
+        messages.success(
+            request,
+            f"Imported OPML: {result.created} created, {result.updated} updated, {result.skipped} skipped.",
+        )
         return redirect("feeds")
-    return render(request, "feeds/opml_import.html", {"form": form, "preferences": _preferences(request.user)})
+    return render(
+        request,
+        "feeds/opml_import.html",
+        {"form": form, "preferences": _preferences(request.user)},
+    )
 
 
 @login_required
@@ -206,7 +279,9 @@ def preferences(request: HttpRequest) -> HttpResponse:
         form.save()
         messages.success(request, "Preferences saved.")
         return redirect("preferences")
-    return render(request, "feeds/preferences.html", {"form": form, "preferences": prefs})
+    return render(
+        request, "feeds/preferences.html", {"form": form, "preferences": prefs}
+    )
 
 
 @require_POST
@@ -232,9 +307,10 @@ def refresh_feeds(request: HttpRequest) -> HttpResponse:
 def mark_article(request: HttpRequest, article_id: int) -> HttpResponse:
     article = get_object_or_404(Article, id=article_id)
     is_read = request.POST.get("state", "read") == "read"
-    user_id = request.user.id
-    assert user_id is not None
-    ArticleReadState.objects.update_or_create(user_id=user_id, article=article, defaults={"is_read": is_read})
+    user_id = _pk(request.user)
+    ArticleReadState.objects.update_or_create(
+        user_id=user_id, article=article, defaults={"is_read": is_read}
+    )
     message = "Marked article read." if is_read else "Marked article unread."
     if _wants_json(request):
         return JsonResponse({"message": message, "level": "success", "remove": is_read})
@@ -248,8 +324,7 @@ def mark_period_read(request: HttpRequest) -> HttpResponse:
     scope = request.POST["scope"]
     start = date.fromisoformat(request.POST["period_start"])
     end = date.fromisoformat(request.POST["period_end"])
-    user_id = request.user.id
-    assert user_id is not None
+    user_id = _pk(request.user)
     BulkReadMarker.objects.update_or_create(
         user_id=user_id,
         scope=scope,
@@ -266,8 +341,7 @@ def mark_period_read(request: HttpRequest) -> HttpResponse:
 @login_required
 def mark_feed_read(request: HttpRequest, feed_id: int) -> HttpResponse:
     feed = get_object_or_404(Feed, id=feed_id)
-    user_id = request.user.id
-    assert user_id is not None
+    user_id = _pk(request.user)
     BulkReadMarker.objects.update_or_create(
         user_id=user_id,
         scope=ReadScope.FEED,
@@ -277,7 +351,9 @@ def mark_feed_read(request: HttpRequest, feed_id: int) -> HttpResponse:
         defaults={},
     )
     messages.success(request, f"Marked {feed.title} read.")
-    return redirect(request.POST.get("next") or reverse("feed-detail", args=[feed.id]))
+    return redirect(
+        request.POST.get("next") or reverse("feed-detail", args=[_pk(feed)])
+    )
 
 
 @require_POST
@@ -320,7 +396,9 @@ def digest_json(request: HttpRequest) -> JsonResponse:
                     "title": card["article"].title,
                     "url": card["article"].url,
                     "feed": card["article"].feed.title,
-                    "category": card["article"].feed.category.name if card["article"].feed.category else None,
+                    "category": card["article"].feed.category.name
+                    if card["article"].feed.category
+                    else None,
                     "published_at": card["article"].published_at.isoformat(),
                     "summary": card["article"].summary,
                     "is_read": card["is_read"],

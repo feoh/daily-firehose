@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+import uuid
 
 from django.conf import settings
 from django.db import models
@@ -65,6 +66,29 @@ class Article(models.Model):
 
     def __str__(self) -> str:
         return self.title
+
+
+class NewsletterIssue(models.Model):
+    article = models.OneToOneField(
+        Article, on_delete=models.CASCADE, related_name="newsletter_issue"
+    )
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    message_id = models.CharField(max_length=1000, unique=True)
+    from_email = models.EmailField(blank=True)
+    from_name = models.CharField(max_length=255, blank=True)
+    to_email = models.EmailField(blank=True)
+    subject = models.CharField(max_length=500)
+    html_body = models.TextField(blank=True)
+    text_body = models.TextField(blank=True)
+    received_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-received_at", "subject"]
+
+    def __str__(self) -> str:
+        return self.subject
 
 
 class SavedArticle(models.Model):
