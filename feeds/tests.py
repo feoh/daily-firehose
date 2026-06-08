@@ -568,6 +568,15 @@ class PostmarkInboundNewsletterTests(TestCase):
         self.assertContains(response, "Read newsletter")
         self.assertNotContains(response, "Save to Linkding")
 
+    def test_newsletter_card_hides_summary_preview(self) -> None:
+        self.post_payload(self.payload())
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("today"))
+
+        self.assertContains(response, "Daily newsletter")
+        self.assertNotContains(response, "Story: https://example.com/story")
+
 
 class OPMLImportCategoryTests(TestCase):
     def test_import_uses_parent_outlines_as_categories(self) -> None:

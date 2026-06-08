@@ -7,7 +7,7 @@
   </div>
   <h2 id="article-{{ article.id }}"><a href="{{ article.url }}" data-open-article>{{ article.title }}</a></h2>
   <p class="article-meta">Published {{ article.published_at|date:"M j, Y, g:i A" }}</p>
-  {% if article.summary %}<p>{{ article.summary|striptags|truncatewords:55 }}</p>{% endif %}
+  {% if article.summary and not article.newsletter_issue %}<p>{{ article.summary|striptags|truncatewords:55 }}</p>{% endif %}
   <div class="article-actions" aria-label="Actions for {{ article.title }}">
     <a class="button-link" href="{{ article.url }}">{% if article.newsletter_issue %}Read newsletter{% else %}Open article{% endif %}</a>
     {% if not article.newsletter_issue %}
