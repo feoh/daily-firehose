@@ -113,6 +113,33 @@ class DigestArticleVisibilityTests(TestCase):
 
         self.assertContains(response, "Unread article")
 
+    def test_mark_period_read_updates_existing_marker_timestamp(self) -> None:
+        today = timezone.localdate()
+        marker = BulkReadMarker.objects.create(
+            user=self.user,
+            scope=ReadScope.DAY,
+            period_start=today,
+            period_end=today,
+        )
+        BulkReadMarker.objects.filter(id=model_id(marker)).update(
+            marked_read_at=self.unread_article.fetched_at - timedelta(seconds=1)
+        )
+
+        response = self.client.post(
+            reverse("mark-period-read"),
+            {
+                "scope": ReadScope.DAY,
+                "period_start": today.isoformat(),
+                "period_end": today.isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        marker.refresh_from_db()
+        self.assertGreater(marker.marked_read_at, self.unread_article.fetched_at)
+        response = self.client.get(reverse("today"))
+        self.assertNotContains(response, "Unread article")
+
     def test_ajax_mark_read_returns_inline_message_payload(self) -> None:
         response = self.client.post(
             reverse("mark-article", args=[model_id(self.unread_article)]),

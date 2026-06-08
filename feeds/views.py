@@ -333,7 +333,7 @@ def mark_period_read(request: HttpRequest) -> HttpResponse:
         feed=None,
         period_start=start,
         period_end=end,
-        defaults={},
+        defaults={"marked_read_at": timezone.now()},
     )
     messages.success(request, "Marked this period read.")
     return redirect(request.POST.get("next") or reverse("today"))
@@ -350,7 +350,7 @@ def mark_feed_read(request: HttpRequest, feed_id: int) -> HttpResponse:
         feed=feed,
         period_start=None,
         period_end=None,
-        defaults={},
+        defaults={"marked_read_at": timezone.now()},
     )
     messages.success(request, f"Marked {feed.title} read.")
     return redirect(

@@ -348,7 +348,7 @@ def mark_period_read_and_go(request: HttpRequest) -> HttpResponse:
         feed=None,
         period_start=start,
         period_end=end,
-        defaults={},
+        defaults={"marked_read_at": timezone.now()},
     )
     return redirect("today")
 
@@ -452,7 +452,7 @@ def mark_period_read_api(request: HttpRequest, user) -> JsonResponse:
         feed=None,
         period_start=start,
         period_end=end,
-        defaults={},
+        defaults={"marked_read_at": timezone.now()},
     )
     return JsonResponse(
         {
@@ -531,7 +531,7 @@ def mark_feed_read_api(request: HttpRequest, user, feed_id: int) -> JsonResponse
         feed=feed,
         period_start=None,
         period_end=None,
-        defaults={},
+        defaults={"marked_read_at": timezone.now()},
     )
     return JsonResponse(
         {"marked_read": {"scope": ReadScope.FEED, "feed": _feed_payload(feed)}}
