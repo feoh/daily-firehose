@@ -1,27 +1,58 @@
-<article class="article-card{% if is_read %} is-read{% endif %}" aria-labelledby="article-{{ article.id }}" tabindex="-1" data-article-card>
+<article
+  class="article-card{% if is_read %} is-read{% endif %}"
+  aria-labelledby="article-{{ article.id }}"
+  tabindex="-1"
+  data-article-card
+>
   <div class="article-meta">
     <span>{% if is_read %}Read{% else %}Unread{% endif %}</span>
     {% if is_saved %}<span>Saved</span>{% endif %}
     <span>{{ article.feed.title }}</span>
-    {% if article.feed.category %}<span>{{ article.feed.category.name }}</span>{% endif %}
+    {% if article.feed.category %}<span>{{ article.feed.category.name }}</span
+    >{% endif %}
   </div>
-  <h2 id="article-{{ article.id }}"><a href="{{ article.url }}" data-open-article>{{ article.title }}</a></h2>
-  <p class="article-meta">Published {{ article.published_at|date:"M j, Y, g:i A" }}</p>
-  {% if article.summary and not article.newsletter_issue %}<p>{{ article.summary|striptags|truncatewords:55 }}</p>{% endif %}
+  <h2 id="article-{{ article.id }}">
+    <a href="{{ article.url }}" data-open-article>{{ article.title }}</a>
+  </h2>
+  <p class="article-meta">
+    Published {{ article.published_at|date:"M j, Y, g:i A" }}
+  </p>
+  {% if article.summary and not article.newsletter_issue %}
+  <p>{{ article.summary|striptags|truncatewords:55 }}</p>
+  {% endif %}
   <div class="article-actions" aria-label="Actions for {{ article.title }}">
-    <a class="button-link" href="{{ article.url }}">{% if article.newsletter_issue %}Read newsletter{% else %}Open article{% endif %}</a>
+    <a class="button-link" href="{{ article.url }}"
+      >{% if article.newsletter_issue %}Read newsletter{% else %}Open article{%
+      endif %}</a
+    >
     {% if not article.newsletter_issue %}
-      <form method="post" action="{% url 'save-article' article.id %}" data-article-action data-action-type="save">
-        {% csrf_token %}
-        <input type="hidden" name="next" value="{{ request.get_full_path }}">
-        <button type="submit">Save to Linkding</button>
-      </form>
-    {% endif %}
-    <form method="post" action="{% url 'mark-article' article.id %}" data-article-action data-action-type="mark-read">
+    <form
+      method="post"
+      action="{% url 'save-article' article.id %}"
+      data-article-action
+      data-action-type="save"
+    >
       {% csrf_token %}
-      <input type="hidden" name="next" value="{{ request.get_full_path }}">
-      <input type="hidden" name="state" value="{% if is_read %}unread{% else %}read{% endif %}">
-      <button type="submit">{% if is_read %}Mark unread{% else %}Mark read{% endif %}</button>
+      <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+      <button type="submit">Save to Linkding</button>
+    </form>
+    {% endif %}
+    <form
+      method="post"
+      action="{% url 'mark-article' article.id %}"
+      data-article-action
+      data-action-type="mark-read"
+    >
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+      <input
+        type="hidden"
+        name="state"
+        value="{% if is_read %}unread{% else %}read{% endif %}"
+      />
+      <button type="submit">
+        {% if is_read %}Mark unread{% else %}Mark read{% endif %}
+      </button>
     </form>
   </div>
 </article>
