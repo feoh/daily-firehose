@@ -20,6 +20,7 @@ from .models import (
     NewsletterIssue,
     ReadScope,
     SavedArticle,
+    UserPreference,
 )
 from .services import (
     LINKDING_TOREAD_TAG,
@@ -89,6 +90,18 @@ class DigestArticleVisibilityTests(TestCase):
         self.assertNotContains(response, "Read article")
         self.assertNotContains(response, "Saved article")
         self.assertContains(response, "1 articles in this view.")
+
+    def test_focus_mode_adds_body_class_without_changing_theme(self) -> None:
+        UserPreference.objects.create(
+            user=self.user,
+            theme=UserPreference.Theme.CATPPUCCIN_MOCHA,
+            focus_mode=True,
+        )
+
+        response = self.client.get(reverse("today"))
+
+        self.assertContains(response, "theme-catppuccin-mocha focus-mode")
+        self.assertContains(response, "Unread article")
 
     def test_marked_read_article_is_hidden_from_week_and_month(self) -> None:
         response = self.client.post(
@@ -465,6 +478,25 @@ class ApiTests(TestCase):
         saved = SavedArticle.objects.get(user=self.user, article=self.article)
         self.assertEqual(saved.notes, "Brief me on this.")
         self.assertTrue(response.json()["article"]["is_saved"])
+
+    def test_api_can_update_focus_mode_preference(self) -> None:
+        response = self.client.patch(
+            reverse("api-preferences"),
+            data={"theme": "dracula", "compact": True, "focus_mode": True},
+            content_type="application/json",
+            headers=self.auth_headers(),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()["preferences"]
+        self.assertEqual(
+            payload,
+            {"theme": "dracula", "compact": True, "focus_mode": True},
+        )
+        preferences = UserPreference.objects.get(user=self.user)
+        self.assertEqual(preferences.theme, "dracula")
+        self.assertTrue(preferences.compact)
+        self.assertTrue(preferences.focus_mode)
 
     @override_settings(
         AGENT_LINK_SECRET="test-secret",

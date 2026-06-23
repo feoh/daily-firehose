@@ -233,6 +233,7 @@ class UserPreference(models.Model):
     )
     theme = models.CharField(max_length=32, choices=Theme.choices, default=Theme.SYSTEM)
     compact = models.BooleanField(default=False)
+    focus_mode = models.BooleanField(default=False)
 
     def __str__(self) -> str:
         return f"Preferences for {self.user}"

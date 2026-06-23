@@ -596,9 +596,17 @@ def preferences_api(request: HttpRequest, user) -> JsonResponse:
             preferences.theme = theme
         if "compact" in data:
             preferences.compact = bool(data["compact"])
+        if "focus_mode" in data:
+            preferences.focus_mode = bool(data["focus_mode"])
         preferences.save()
     return JsonResponse(
-        {"preferences": {"theme": preferences.theme, "compact": preferences.compact}}
+        {
+            "preferences": {
+                "theme": preferences.theme,
+                "compact": preferences.compact,
+                "focus_mode": preferences.focus_mode,
+            }
+        }
     )
 
 

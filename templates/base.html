@@ -10,7 +10,7 @@
     {% block extra_head %}{% endblock %}
   </head>
   <body
-    class="theme-{{ preferences.theme|default:'system' }}{% if preferences.compact %} compact{% endif %}"
+    class="theme-{{ preferences.theme|default:'system' }}{% if preferences.compact %} compact{% endif %}{% if preferences.focus_mode %} focus-mode{% endif %}"
   >
     <a class="skip-link" href="#main-content">Skip to main content</a>
     <header class="site-header">
