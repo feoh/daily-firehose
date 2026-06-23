@@ -31,7 +31,7 @@ from .services import (
 
 
 def model_id(model: Any) -> int:
-    return int(model.id)
+    return cast(int, model.id)
 
 
 @override_settings(
@@ -89,6 +89,44 @@ class DigestArticleVisibilityTests(TestCase):
         self.assertNotContains(response, "Read article")
         self.assertNotContains(response, "Saved article")
         self.assertContains(response, "1 articles in this view.")
+
+    def test_marked_read_article_is_hidden_from_week_and_month(self) -> None:
+        response = self.client.post(
+            reverse("mark-article", args=[model_id(self.unread_article)]),
+            {"state": "read"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        response = self.client.get(reverse("week"))
+        self.assertNotContains(response, "Unread article")
+        response = self.client.get(reverse("month"))
+        self.assertNotContains(response, "Unread article")
+
+    def test_mark_period_read_overrides_unread_state_everywhere(self) -> None:
+        today = timezone.localdate()
+        ArticleReadState.objects.create(
+            user=self.user, article=self.unread_article, is_read=False
+        )
+
+        response = self.client.post(
+            reverse("mark-period-read"),
+            {
+                "scope": ReadScope.DAY,
+                "period_start": today.isoformat(),
+                "period_end": today.isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(
+            ArticleReadState.objects.get(
+                user=self.user, article=self.unread_article
+            ).is_read
+        )
+        response = self.client.get(reverse("week"))
+        self.assertNotContains(response, "Unread article")
+        response = self.client.get(reverse("month"))
+        self.assertNotContains(response, "Unread article")
 
     def test_digest_json_hides_read_and_saved_articles(self) -> None:
         response = self.client.get(reverse("digest-json"))

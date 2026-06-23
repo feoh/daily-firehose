@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, cast
 
 from django.conf import settings
 from django.contrib import messages
@@ -49,12 +49,12 @@ def _month_bounds(day: date) -> tuple[date, date]:
 
 
 def _pk(model: Any) -> int:
-    return int(model.id)
+    return cast(int, model.id)
 
 
 def _model_field_id(model: Any, field_name: str) -> int | None:
     value = getattr(model, field_name)
-    return int(value) if value is not None else None
+    return cast(int | None, value)
 
 
 def _articles_between(
@@ -102,6 +102,28 @@ def _read_article_ids(user, articles: QuerySet[Article]) -> set[int]:
             if feed_marked or period_marked:
                 explicit_read.add(article_id)
     return explicit_read - explicit_unread
+
+
+def _mark_articles_read(user, articles: QuerySet[Article]) -> None:
+    user_id = _pk(user)
+    article_ids = list(articles.values_list("id", flat=True))
+    if not article_ids:
+        return
+    updated_at = timezone.now()
+    ArticleReadState.objects.bulk_create(
+        [
+            ArticleReadState(
+                user_id=user_id,
+                article_id=article_id,
+                is_read=True,
+                updated_at=updated_at,
+            )
+            for article_id in article_ids
+        ],
+        update_conflicts=True,
+        update_fields=["is_read", "updated_at"],
+        unique_fields=["user", "article"],
+    )
 
 
 def _article_cards(user, articles: QuerySet[Article]) -> list[dict]:
@@ -327,13 +349,18 @@ def mark_period_read(request: HttpRequest) -> HttpResponse:
     start = date.fromisoformat(request.POST["period_start"])
     end = date.fromisoformat(request.POST["period_end"])
     user_id = _pk(request.user)
+    marked_read_at = timezone.now()
+    _mark_articles_read(
+        request.user,
+        _articles_between(start, end).filter(fetched_at__lte=marked_read_at),
+    )
     BulkReadMarker.objects.update_or_create(
         user_id=user_id,
         scope=scope,
         feed=None,
         period_start=start,
         period_end=end,
-        defaults={"marked_read_at": timezone.now()},
+        defaults={"marked_read_at": marked_read_at},
     )
     messages.success(request, "Marked this period read.")
     return redirect(request.POST.get("next") or reverse("today"))
@@ -344,13 +371,18 @@ def mark_period_read(request: HttpRequest) -> HttpResponse:
 def mark_feed_read(request: HttpRequest, feed_id: int) -> HttpResponse:
     feed = get_object_or_404(Feed, id=feed_id)
     user_id = _pk(request.user)
+    marked_read_at = timezone.now()
+    _mark_articles_read(
+        request.user,
+        Article.objects.filter(feed=feed, fetched_at__lte=marked_read_at),
+    )
     BulkReadMarker.objects.update_or_create(
         user_id=user_id,
         scope=ReadScope.FEED,
         feed=feed,
         period_start=None,
         period_end=None,
-        defaults={"marked_read_at": timezone.now()},
+        defaults={"marked_read_at": marked_read_at},
     )
     messages.success(request, f"Marked {feed.title} read.")
     return redirect(

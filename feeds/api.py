@@ -5,7 +5,7 @@ import json
 from collections.abc import Callable
 from datetime import date
 from functools import wraps
-from typing import Any, Concatenate, ParamSpec
+from typing import Any, Concatenate, ParamSpec, cast
 
 from django.apps import apps
 from django.conf import settings
@@ -35,6 +35,7 @@ from .services import (
 from .views import (
     _article_cards,
     _articles_between,
+    _mark_articles_read,
     _month_bounds,
     _preferences,
     _read_article_ids,
@@ -120,7 +121,7 @@ def api_view(
 
 
 def _pk(model: Any) -> int:
-    return int(model.id)
+    return cast(int, model.id)
 
 
 @csrf_exempt
@@ -342,13 +343,18 @@ def mark_period_read_and_go(request: HttpRequest) -> HttpResponse:
     else:
         period = "month"
     start, end = _article_window(period)
+    marked_read_at = timezone.now()
+    _mark_articles_read(
+        user,
+        _articles_between(start, end).filter(fetched_at__lte=marked_read_at),
+    )
     BulkReadMarker.objects.update_or_create(
         user=user,
         scope=scope,
         feed=None,
         period_start=start,
         period_end=end,
-        defaults={"marked_read_at": timezone.now()},
+        defaults={"marked_read_at": marked_read_at},
     )
     return redirect("today")
 
@@ -446,13 +452,18 @@ def mark_period_read_api(request: HttpRequest, user) -> JsonResponse:
                 scope
             ]
         )
+    marked_read_at = timezone.now()
+    _mark_articles_read(
+        user,
+        _articles_between(start, end).filter(fetched_at__lte=marked_read_at),
+    )
     BulkReadMarker.objects.update_or_create(
         user=user,
         scope=scope,
         feed=None,
         period_start=start,
         period_end=end,
-        defaults={"marked_read_at": timezone.now()},
+        defaults={"marked_read_at": marked_read_at},
     )
     return JsonResponse(
         {
@@ -525,13 +536,18 @@ def feed_detail_api(request: HttpRequest, user, feed_id: int) -> JsonResponse:
 @api_view({"POST"})
 def mark_feed_read_api(request: HttpRequest, user, feed_id: int) -> JsonResponse:
     feed = get_object_or_404(Feed, id=feed_id)
+    marked_read_at = timezone.now()
+    _mark_articles_read(
+        user,
+        Article.objects.filter(feed=feed, fetched_at__lte=marked_read_at),
+    )
     BulkReadMarker.objects.update_or_create(
         user=user,
         scope=ReadScope.FEED,
         feed=feed,
         period_start=None,
         period_end=None,
-        defaults={"marked_read_at": timezone.now()},
+        defaults={"marked_read_at": marked_read_at},
     )
     return JsonResponse(
         {"marked_read": {"scope": ReadScope.FEED, "feed": _feed_payload(feed)}}
