@@ -21,10 +21,9 @@
   <p>{{ article.summary|striptags|truncatewords:55 }}</p>
   {% endif %}
   <div class="article-actions" aria-label="Actions for {{ article.title }}">
-    <a class="button-link" href="{{ article.url }}"
-      >{% if article.newsletter_issue %}Read newsletter{% else %}Open article{%
-      endif %}</a
-    >
+    <a class="button-link" href="{{ article.url }}">
+      {% if article.newsletter_issue %}Read newsletter{% else %}Open article{% endif %}
+    </a>
     {% if not article.newsletter_issue %}
     <form
       method="post"

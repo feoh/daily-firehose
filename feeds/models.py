@@ -217,6 +217,14 @@ class UserPreference(models.Model):
         LIGHT = "light", "Accessible light"
         DARK = "dark", "Accessible dark"
         CATPPUCCIN_MOCHA = "catppuccin-mocha", "Catppuccin Mocha"
+        TOKYO_NIGHT = "tokyo-night", "Tokyo Night"
+        DRACULA = "dracula", "Dracula"
+        GRUVBOX_DARK = "gruvbox-dark", "Gruvbox Dark"
+        ONE_DARK = "one-dark", "One Dark"
+        NORD = "nord", "Nord"
+        SOLARIZED_DARK = "solarized-dark", "Solarized Dark"
+        ROSE_PINE = "rose-pine", "Rosé Pine"
+        KANAGAWA = "kanagawa", "Kanagawa"
 
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
