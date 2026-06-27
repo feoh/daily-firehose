@@ -7,7 +7,7 @@ Daily Firehose runs on the Tailscale host `daily-firehose` and is deployed from 
 If you are already on the deployment host, redeploy from the repo root:
 
 ```bash
-cd /home/feoh/src/personal/daily-firehose
+cd /home/ubuntu/daily-firehose
 git pull --ff-only
 docker compose up -d --build
 ```
@@ -15,7 +15,7 @@ docker compose up -d --build
 If you are on another machine and have SSH/Tailscale SSH access to the deployment host, run the same commands remotely:
 
 ```bash
-ssh daily-firehose 'cd /home/feoh/src/personal/daily-firehose && git pull --ff-only && docker compose up -d --build'
+ssh daily-firehose 'cd /home/ubuntu/daily-firehose && git pull --ff-only && docker compose up -d --build'
 ```
 
 If SSH auth fails, do not invent a new deployment path. Report the SSH/access issue and ask the owner to redeploy with the commands above.
@@ -45,7 +45,7 @@ Expected results:
 
 ## Notes
 
-- Run commands from `/home/feoh/src/personal/daily-firehose` on the `daily-firehose` host.
+- Run commands from `/home/ubuntu/daily-firehose` on the `daily-firehose` host.
 - The public URL is `https://daily-firehose.reedfish-regulus.ts.net/`.
 - If `.env` is needed, create it from `.env.example` and preserve existing production secrets.
 - Do **not** remove volumes during a normal redeploy; that would wipe PostgreSQL data.
