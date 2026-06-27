@@ -91,6 +91,23 @@ class DigestArticleVisibilityTests(TestCase):
         self.assertNotContains(response, "Saved article")
         self.assertContains(response, "1 articles in this view.")
 
+    def test_today_uses_first_seen_date_not_publication_date(self) -> None:
+        old_published_article = Article.objects.create(
+            feed=self.feed,
+            title="Old publication seen today",
+            url="https://example.com/old-publication",
+            guid="old-publication",
+            published_at=timezone.now() - timedelta(days=30),
+        )
+        Article.objects.filter(id=model_id(self.unread_article)).update(
+            fetched_at=timezone.now() - timedelta(days=1)
+        )
+
+        response = self.client.get(reverse("today"))
+
+        self.assertContains(response, old_published_article.title)
+        self.assertNotContains(response, self.unread_article.title)
+
     def test_focus_mode_adds_body_class_without_changing_theme(self) -> None:
         UserPreference.objects.create(
             user=self.user,

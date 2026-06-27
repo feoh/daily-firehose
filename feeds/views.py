@@ -61,12 +61,12 @@ def _articles_between(
     start: date, end: date, feed: Feed | None = None
 ) -> QuerySet[Article]:
     queryset = Article.objects.select_related("feed", "feed__category").filter(
-        published_at__date__gte=start,
-        published_at__date__lte=end,
+        fetched_at__date__gte=start,
+        fetched_at__date__lte=end,
     )
     if feed is not None:
         queryset = queryset.filter(feed=feed)
-    return queryset.order_by("feed__title", "-published_at", "title")
+    return queryset.order_by("feed__title", "-fetched_at", "title")
 
 
 def _read_article_ids(user, articles: QuerySet[Article]) -> set[int]:
@@ -88,7 +88,7 @@ def _read_article_ids(user, articles: QuerySet[Article]) -> set[int]:
             if article.fetched_at > marker.marked_read_at:
                 continue
             article_id = _pk(article)
-            published_day = timezone.localtime(article.published_at).date()
+            seen_day = timezone.localtime(article.fetched_at).date()
             feed_marked = (
                 marker.scope == ReadScope.FEED
                 and marker_feed_id == _model_field_id(article, "feed_id")
@@ -96,7 +96,7 @@ def _read_article_ids(user, articles: QuerySet[Article]) -> set[int]:
             period_marked = (
                 marker.period_start
                 and marker.period_end
-                and marker.period_start <= published_day <= marker.period_end
+                and marker.period_start <= seen_day <= marker.period_end
                 and marker.scope in {ReadScope.DAY, ReadScope.WEEK, ReadScope.MONTH}
             )
             if feed_marked or period_marked:

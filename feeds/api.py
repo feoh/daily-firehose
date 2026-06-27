@@ -178,6 +178,7 @@ def _article_payload(
         "author": article.author,
         "summary": article.summary,
         "published_at": article.published_at.isoformat(),
+        "fetched_at": article.fetched_at.isoformat(),
         "feed": _feed_payload(article.feed),
         "is_read": is_read,
         "is_saved": is_saved,
