@@ -12,7 +12,11 @@
   <section class="form-panel" aria-labelledby="add-feed-heading">
     <h2 id="add-feed-heading">Add a feed URL</h2>
     {% if postmark_inbound_email %}
-      <p class="article-meta">To add a newsletter, subscribe it to <strong>{{ postmark_inbound_email }}</strong>.</p>
+      <p class="article-meta newsletter-subscription">
+        <span>To add a newsletter, subscribe it to <strong>{{ postmark_inbound_email }}</strong>.</span>
+        <button type="button" data-copy-to-clipboard="{{ postmark_inbound_email }}">Copy to Clipboard</button>
+        <span class="copy-feedback" data-copy-feedback role="status" aria-live="polite"></span>
+      </p>
     {% endif %}
     <form method="post">
       {% csrf_token %}

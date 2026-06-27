@@ -121,7 +121,63 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 
-document.addEventListener("click", (event) => {
+const fallbackCopyToClipboard = (text) => {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "-9999px";
+  document.body.append(textarea);
+  textarea.select();
+
+  try {
+    return document.execCommand("copy");
+  } finally {
+    textarea.remove();
+  }
+};
+
+const copyTextToClipboard = async (text) => {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  if (!fallbackCopyToClipboard(text)) {
+    throw new Error("Copy command failed");
+  }
+};
+
+document.addEventListener("click", async (event) => {
+  const copyButton = event.target.closest("[data-copy-to-clipboard]");
+  if (copyButton) {
+    const originalText = copyButton.textContent;
+    const feedback = copyButton.parentElement?.querySelector("[data-copy-feedback]");
+    copyButton.disabled = true;
+
+    try {
+      await copyTextToClipboard(copyButton.dataset.copyToClipboard || "");
+      copyButton.textContent = "Copied!";
+      if (feedback) {
+        feedback.textContent = "Copied email address.";
+      }
+    } catch (error) {
+      copyButton.textContent = "Copy failed";
+      if (feedback) {
+        feedback.textContent = "Copy failed. Select and copy the email address manually.";
+      }
+    } finally {
+      window.setTimeout(() => {
+        copyButton.disabled = false;
+        copyButton.textContent = originalText;
+        if (feedback) {
+          feedback.textContent = "";
+        }
+      }, 2500);
+    }
+    return;
+  }
+
   if (event.target.closest("[data-close-keyboard-help]")) {
     closeKeyboardHelp();
   }

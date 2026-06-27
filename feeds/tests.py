@@ -355,6 +355,8 @@ class FeedListGroupingTests(TestCase):
             "95d8c50c7df8d1ca38d7a6f55ee5a311@inbound.postmarkapp.com",
         )
         self.assertContains(response, "To add a newsletter")
+        self.assertContains(response, "Copy to Clipboard")
+        self.assertContains(response, "data-copy-to-clipboard")
 
     def test_feeds_are_grouped_by_category(self) -> None:
         tech = Category.objects.create(name="Tech", slug="tech")

@@ -351,6 +351,14 @@ button,
 	margin-top: 1rem;
 }
 
+.newsletter-subscription {
+	align-items: center;
+}
+
+.copy-feedback:empty {
+	display: none;
+}
+
 .feed-category + .feed-category {
 	margin-top: 1.5rem;
 }
