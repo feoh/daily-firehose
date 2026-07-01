@@ -1,27 +1,48 @@
-{% extends "base.html" %}
+{% extends "base.html" %} {% block title %}{{ issue.subject }} — Daily
+Firehose{% endblock %} {% block extra_head %}<meta
+  name="robots"
+  content="noindex"
+/>{% endblock %} {% block content %}
+<article
+  class="newsletter-issue"
+  aria-labelledby="newsletter-{{ issue.public_id }}"
+  tabindex="-1"
+  data-article-card
+>
+  <header class="page-heading">
+    <p class="eyebrow">Email Newsletter</p>
+    <h1 id="newsletter-{{ issue.public_id }}">{{ issue.subject }}</h1>
+    <p class="article-meta">
+      {% if issue.from_name %}{{ issue.from_name }} &lt;{{ issue.from_email
+      }}&gt;{% else %}{{ issue.from_email }}{% endif %} · Received {{
+      issue.received_at|date:"M j, Y, g:i A" }}
+    </p>
+    {% if request.user.is_authenticated %}
+    <form
+      method="post"
+      action="{% url 'mark-article' article.id %}"
+      class="article-actions"
+      data-action-type="mark-read"
+    >
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+      <input
+        type="hidden"
+        name="state"
+        value="{% if is_read %}unread{% else %}read{% endif %}"
+      />
+      <button type="submit">
+        {% if is_read %}Mark unread{% else %}Mark read{% endif %}
+      </button>
+    </form>
+    {% endif %}
+  </header>
 
-{% block title %}{{ issue.subject }} — Daily Firehose{% endblock %}
-{% block extra_head %}<meta name="robots" content="noindex">{% endblock %}
-
-{% block content %}
-  <article class="newsletter-issue" aria-labelledby="newsletter-{{ issue.public_id }}">
-    <header class="page-heading">
-      <p class="eyebrow">Email Newsletter</p>
-      <h1 id="newsletter-{{ issue.public_id }}">{{ issue.subject }}</h1>
-      <p class="article-meta">
-        {% if issue.from_name %}{{ issue.from_name }} &lt;{{ issue.from_email }}&gt;{% else %}{{ issue.from_email }}{% endif %}
-        · Received {{ issue.received_at|date:"M j, Y, g:i A" }}
-      </p>
-    </header>
-
-    <section class="newsletter-body" aria-label="Newsletter body">
-      {% if sanitized_html %}
-        {{ sanitized_html|safe }}
-      {% elif issue.text_body %}
-        {{ issue.text_body|linebreaks }}
-      {% else %}
-        <p class="empty-state">This newsletter did not include a readable body.</p>
-      {% endif %}
-    </section>
-  </article>
+  <section class="newsletter-body" aria-label="Newsletter body">
+    {% if sanitized_html %} {{ sanitized_html|safe }} {% elif issue.text_body %}
+    {{ issue.text_body|linebreaks }} {% else %}
+    <p class="empty-state">This newsletter did not include a readable body.</p>
+    {% endif %}
+  </section>
+</article>
 {% endblock %}

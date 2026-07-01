@@ -640,12 +640,24 @@ class PostmarkInboundNewsletterTests(TestCase):
         response = self.client.get(reverse("newsletter-detail", args=[issue.public_id]))
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.headers["X-Robots-Tag"], "noindex")
+        self.assertEqual(response.headers.get("X-Robots-Tag"), "noindex")
         self.assertContains(response, '<meta name="robots" content="noindex">')
         self.assertContains(response, "<h1>Hello</h1>")
         self.assertNotContains(response, 'alert("x")')
         self.assertContains(response, 'target="_blank"')
         self.assertContains(response, "noopener noreferrer")
+
+    def test_authenticated_newsletter_detail_keeps_shortcuts_available(self) -> None:
+        self.post_payload(self.payload())
+        issue = NewsletterIssue.objects.get()
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("newsletter-detail", args=[issue.public_id]))
+
+        self.assertContains(response, "data-article-card")
+        self.assertContains(response, 'data-action-type="mark-read"')
+        self.assertContains(response, "Mark read")
+        self.assertNotContains(response, "Save to Linkding")
 
     def test_newsletter_card_hides_linkding_save(self) -> None:
         self.post_payload(self.payload())

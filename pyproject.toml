@@ -5,22 +5,22 @@ description = "Accessible Django RSS reader for daily information flow."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "bleach>=6.4.0",
-    "dj-database-url>=3.1.2",
-    "django>=5.0,<6.0",
-    "feedparser>=6.0.12",
-    "gunicorn>=26.0.0",
-    "psycopg[binary]>=3.3.4",
-    "requests>=2.34.2",
-    "whitenoise>=6.12.0",
+  "bleach>=6.4.0",
+  "dj-database-url>=3.1.2",
+  "django>=5.0,<6.0",
+  "feedparser>=6.0.12",
+  "gunicorn>=26.0.0",
+  "psycopg[binary]>=3.3.4",
+  "requests>=2.34.2",
+  "whitenoise>=6.12.0",
 ]
 
 [dependency-groups]
 dev = [
-    "django-stubs>=6.0.5",
-    "mypy>=2.1.0",
-    "pre-commit>=4.6.0",
-    "types-requests>=2.33.0.20260518",
+  "django-stubs>=6.0.5",
+  "mypy>=2.1.0",
+  "pre-commit>=4.6.0",
+  "types-requests>=2.33.0.20260518",
 ]
 
 [tool.uv]
@@ -32,3 +32,7 @@ ignore_missing_imports = true
 
 [tool.django-stubs]
 django_settings_module = "daily_firehose.settings"
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"

@@ -154,16 +154,25 @@ def newsletter_detail(request: HttpRequest, public_id) -> HttpResponse:  # noqa:
         NewsletterIssue.objects.select_related("article", "article__feed"),
         public_id=public_id,
     )
+    article = issue.article
+    context: dict[str, Any] = {
+        "issue": issue,
+        "article": article,
+        "is_read": False,
+        "sanitized_html": sanitize_newsletter_html(issue.html_body)
+        if issue.html_body
+        else "",
+    }
+    if request.user.is_authenticated:
+        context["preferences"] = _preferences(request.user)
+        context["is_read"] = _pk(article) in _read_article_ids(
+            request.user, Article.objects.filter(pk=_pk(article))
+        )
+
     response = render(
         request,
         "feeds/newsletter_detail.html",
-        {
-            "issue": issue,
-            "article": issue.article,
-            "sanitized_html": sanitize_newsletter_html(issue.html_body)
-            if issue.html_body
-            else "",
-        },
+        context,
     )
     response["X-Robots-Tag"] = "noindex"
     return response
