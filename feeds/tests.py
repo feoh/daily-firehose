@@ -132,6 +132,31 @@ class DigestArticleVisibilityTests(TestCase):
         response = self.client.get(reverse("month"))
         self.assertNotContains(response, "Unread article")
 
+    def test_archived_shows_recently_marked_read_articles(self) -> None:
+        response = self.client.get(reverse("archived"))
+
+        self.assertContains(response, "Archived (Marked Read)")
+        self.assertContains(response, "Recently marked read")
+        self.assertContains(response, "Read article")
+        self.assertContains(response, "Mark unread")
+        self.assertContains(response, 'data-keyboard-nav="A"')
+        self.assertNotContains(response, "Unread article")
+        self.assertNotContains(response, "Saved article")
+        self.assertNotContains(response, "Mark this period read")
+
+    def test_archived_mark_unread_ajax_removes_card_from_view(self) -> None:
+        response = self.client.post(
+            reverse("mark-article", args=[model_id(self.read_article)]),
+            {"state": "unread", "remove_on_success": "true"},
+            headers={"x-requested-with": "XMLHttpRequest"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {"message": "Marked article unread.", "level": "success", "remove": True},
+        )
+
     def test_mark_period_read_overrides_unread_state_everywhere(self) -> None:
         today = timezone.localdate()
         ArticleReadState.objects.create(

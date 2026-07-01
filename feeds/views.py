@@ -33,6 +33,8 @@ from .services import (
     save_article,
 )
 
+ARCHIVED_ARTICLE_LIMIT = 50
+
 
 def _week_bounds(day: date) -> tuple[date, date]:
     start = day - timedelta(days=day.weekday())
@@ -140,6 +142,32 @@ def _article_cards(user, articles: QuerySet[Article]) -> list[dict]:
     ]
 
 
+def _archived_article_cards(user) -> list[dict]:  # noqa: ANN001
+    read_states = list(
+        ArticleReadState.objects.select_related(
+            "article",
+            "article__feed",
+            "article__newsletter_issue",
+        )
+        .filter(user=user, is_read=True)
+        .order_by("-updated_at")[:ARCHIVED_ARTICLE_LIMIT]
+    )
+    article_ids = [_pk(state.article) for state in read_states]
+    saved_ids = set(
+        SavedArticle.objects.filter(user=user, article_id__in=article_ids).values_list(
+            "article_id", flat=True
+        )
+    )
+    return [
+        {
+            "article": state.article,
+            "is_read": True,
+            "is_saved": _pk(state.article) in saved_ids,
+        }
+        for state in read_states
+    ]
+
+
 def _preferences(user) -> UserPreference:
     preferences, _ = UserPreference.objects.get_or_create(user=user)
     return preferences
@@ -231,6 +259,21 @@ def month(request: HttpRequest) -> HttpResponse:
             "scope": ReadScope.MONTH,
             "period_start": start,
             "period_end": end,
+            "preferences": _preferences(request.user),
+        },
+    )
+
+
+@login_required
+def archived(request: HttpRequest) -> HttpResponse:
+    return render(
+        request,
+        "feeds/digest.html",
+        {
+            "title": "Archived (Marked Read)",
+            "period_label": "Recently marked read",
+            "cards": _archived_article_cards(request.user),
+            "remove_on_success": True,
             "preferences": _preferences(request.user),
         },
     )
@@ -346,7 +389,8 @@ def mark_article(request: HttpRequest, article_id: int) -> HttpResponse:
     )
     message = "Marked article read." if is_read else "Marked article unread."
     if _wants_json(request):
-        return JsonResponse({"message": message, "level": "success", "remove": is_read})
+        remove = is_read or request.POST.get("remove_on_success") == "true"
+        return JsonResponse({"message": message, "level": "success", "remove": remove})
     messages.success(request, message)
     return redirect(request.POST.get("next") or reverse("today"))
 

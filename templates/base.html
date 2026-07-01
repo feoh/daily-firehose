@@ -30,6 +30,9 @@
         <a href="{% url 'today' %}" data-keyboard-nav="T">Today</a>
         <a href="{% url 'week' %}" data-keyboard-nav="W">Week</a>
         <a href="{% url 'month' %}" data-keyboard-nav="M">Month</a>
+        <a href="{% url 'archived' %}" data-keyboard-nav="A"
+          >Archived (Marked Read)</a
+        >
         <a href="{% url 'feeds' %}" data-keyboard-nav="F">Feeds</a>
         <a href="{% url 'preferences' %}">Preferences</a>
         <a href="{% url 'digest-json' %}">JSON</a>
@@ -97,6 +100,10 @@
           <div>
             <dt><kbd>M</kbd></dt>
             <dd>Go to Month</dd>
+          </div>
+          <div>
+            <dt><kbd>A</kbd></dt>
+            <dd>Go to Archived marked-read articles</dd>
           </div>
           <div>
             <dt><kbd>F</kbd></dt>

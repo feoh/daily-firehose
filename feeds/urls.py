@@ -10,6 +10,7 @@ urlpatterns = [
     path("", views.today, name="today"),
     path("week/", views.week, name="week"),
     path("month/", views.month, name="month"),
+    path("archived/", views.archived, name="archived"),
     path("feeds/", views.feed_list, name="feeds"),
     path("feeds/<int:feed_id>/", views.feed_detail, name="feed-detail"),
     path(
