@@ -340,6 +340,13 @@ document.addEventListener("submit", async (event) => {
 	try {
 		const card = form.closest(".article-card");
 		const cardIndex = card ? articleCards().indexOf(card) : -1;
+		if (
+			form.dataset.articleId &&
+			card?.dataset.articleId &&
+			form.dataset.articleId !== card.dataset.articleId
+		) {
+			throw new Error("Article action verification failed");
+		}
 		const response = await fetch(form.action, {
 			method: "POST",
 			body: new FormData(form),

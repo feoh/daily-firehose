@@ -3,6 +3,7 @@
   aria-labelledby="article-{{ article.id }}"
   tabindex="-1"
   data-article-card
+  data-article-id="{{ article.id }}"
 >
   <div class="article-meta">
     <span>{% if is_read %}Read{% else %}Unread{% endif %}</span>
@@ -30,8 +31,10 @@
       action="{% url 'save-article' article.id %}"
       data-article-action
       data-action-type="save"
+      data-article-id="{{ article.id }}"
     >
       {% csrf_token %}
+      <input type="hidden" name="article_id" value="{{ article.id }}" />
       <input type="hidden" name="next" value="{{ request.get_full_path }}" />
       <button type="submit">Save to Linkding</button>
     </form>

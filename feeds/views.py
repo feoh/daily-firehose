@@ -7,7 +7,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import QuerySet
-from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -446,6 +446,15 @@ def mark_feed_read(request: HttpRequest, feed_id: int) -> HttpResponse:
 @require_POST
 @login_required
 def save_article_view(request: HttpRequest, article_id: int) -> HttpResponse:
+    posted_article_id = request.POST.get("article_id")
+    if posted_article_id and posted_article_id != str(article_id):
+        message = "Article verification failed. Please refresh and try again."
+        if _wants_json(request):
+            return JsonResponse(
+                {"message": message, "level": "error", "remove": False}, status=400
+            )
+        return HttpResponseBadRequest(message)
+
     article = get_object_or_404(Article, id=article_id)
     saved = save_article(
         user=request.user,
