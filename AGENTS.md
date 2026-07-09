@@ -4,6 +4,9 @@
 
 Daily Firehose runs on the Tailscale host `daily-firehose` and is deployed from this repository with Docker Compose.
 
+**Canonical deployment checkout:** `/home/ubuntu/daily-firehose` on host `daily-firehose`.
+Use this path consistently. Do not use `/home/feoh/src/personal/daily-firehose` on the deployment host; that is only a local workstation path and does not exist on the host.
+
 If you are already on the deployment host, redeploy from the repo root:
 
 ```bash
@@ -45,7 +48,7 @@ Expected results:
 
 ## Notes
 
-- Run commands from `/home/ubuntu/daily-firehose` on the `daily-firehose` host.
+- The canonical deployment checkout is `/home/ubuntu/daily-firehose` on the `daily-firehose` host.
 - The public URL is `https://daily-firehose.reedfish-regulus.ts.net/`.
 - If `.env` is needed, create it from `.env.example` and preserve existing production secrets.
 - Do **not** remove volumes during a normal redeploy; that would wipe PostgreSQL data.
