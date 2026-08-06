@@ -4,16 +4,25 @@
   tabindex="-1"
   data-article-card
   data-article-id="{{ article.id }}"
+  data-article-url="{% if saved_article %}{{ saved_article.url }}{% else %}{{ article.url }}{% endif %}"
 >
   <div class="article-meta">
     <span>{% if is_read %}Read{% else %}Unread{% endif %}</span>
     {% if is_saved %}<span>Saved</span>{% endif %}
+    {% if saved_article %}
+      <span>Saved {{ saved_article.saved_at|date:"M j, Y, g:i A" }}</span>
+      <span>{% if saved_article.linkding_saved %}Linkding confirmed{% else %}Linkding failed{% endif %}</span>
+    {% endif %}
     <span>{{ article.feed.title }}</span>
     {% if article.feed.category %}<span>{{ article.feed.category.name }}</span
     >{% endif %}
   </div>
   <h2 id="article-{{ article.id }}">
-    <a href="{{ article.url }}" data-open-article>{{ article.title }}</a>
+    {% if saved_article %}
+      <a href="{{ saved_article.url }}" data-open-article>{{ saved_article.title }}</a>
+    {% else %}
+      <a href="{{ article.url }}" data-open-article>{{ article.title }}</a>
+    {% endif %}
   </h2>
   <p class="article-meta">
     Seen {{ article.fetched_at|date:"M j, Y, g:i A" }} · Published {{ article.published_at|date:"M j, Y, g:i A" }}
@@ -21,20 +30,22 @@
   {% if article.summary and not article.newsletter_issue %}
   <p>{{ article.summary|striptags|truncatewords:55 }}</p>
   {% endif %}
-  <div class="article-actions" aria-label="Actions for {{ article.title }}">
-    <a class="button-link" href="{{ article.url }}">
+  <div class="article-actions" aria-label="Actions for {% if saved_article %}{{ saved_article.title }}{% else %}{{ article.title }}{% endif %}">
+    <a class="button-link" href="{% if saved_article %}{{ saved_article.url }}{% else %}{{ article.url }}{% endif %}">
       {% if article.newsletter_issue %}Read newsletter{% else %}Open article{% endif %}
     </a>
-    {% if not article.newsletter_issue %}
+    {% if not article.newsletter_issue and not hide_save_action %}
     <form
       method="post"
       action="{% url 'save-article' article.id %}"
       data-article-action
       data-action-type="save"
       data-article-id="{{ article.id }}"
+      data-article-url="{{ article.url }}"
     >
       {% csrf_token %}
       <input type="hidden" name="article_id" value="{{ article.id }}" />
+      <input type="hidden" name="article_url" value="{{ article.url }}" />
       <input type="hidden" name="next" value="{{ request.get_full_path }}" />
       <button type="submit">Save to Linkding</button>
     </form>

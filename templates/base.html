@@ -33,6 +33,9 @@
         <a href="{% url 'archived' %}" data-keyboard-nav="A"
           >Archived (Marked Read)</a
         >
+        <a href="{% url 'saved-links' %}" data-keyboard-nav="L"
+          >Saved (L)inks</a
+        >
         <a href="{% url 'feeds' %}" data-keyboard-nav="F">Feeds</a>
         <a href="{% url 'preferences' %}">Preferences</a>
         <a href="{% url 'digest-json' %}">JSON</a>
@@ -104,6 +107,10 @@
           <div>
             <dt><kbd>A</kbd></dt>
             <dd>Go to Archived marked-read articles</dd>
+          </div>
+          <div>
+            <dt><kbd>L</kbd></dt>
+            <dd>Go to Saved Links</dd>
           </div>
           <div>
             <dt><kbd>F</kbd></dt>

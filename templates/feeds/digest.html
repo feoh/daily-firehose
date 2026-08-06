@@ -21,7 +21,7 @@
 
   <section class="article-grid" aria-label="Articles">
     {% for card in cards %}
-      {% include "feeds/includes/article_card.html" with article=card.article is_read=card.is_read is_saved=card.is_saved remove_on_success=remove_on_success %}
+      {% include "feeds/includes/article_card.html" with article=card.article is_read=card.is_read is_saved=card.is_saved saved_article=card.saved_article hide_save_action=card.hide_save_action remove_on_success=remove_on_success %}
     {% empty %}
       <p class="empty-state">No articles here yet. The hose is quiet.</p>
     {% endfor %}

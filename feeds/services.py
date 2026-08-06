@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone as datetime_timezone
+import re
 import uuid
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
-import re
 from typing import Any, cast
 from urllib.parse import urljoin
 from xml.etree import ElementTree
@@ -70,7 +70,7 @@ def _aware_datetime(value: Any) -> datetime:
         except (TypeError, ValueError):
             return timezone.now()
     if timezone.is_naive(parsed):
-        return timezone.make_aware(parsed, timezone=datetime_timezone.utc)
+        return timezone.make_aware(parsed, timezone=UTC)
     return parsed
 
 
@@ -284,7 +284,7 @@ def sanitize_newsletter_html(html: str) -> str:
     )
 
 
-def _newsletter_link_attrs(attrs, new=False):  # noqa: ANN001, ANN202
+def _newsletter_link_attrs(attrs, new=False):
     attrs[(None, "target")] = "_blank"
     attrs[(None, "rel")] = "noopener noreferrer"
     return attrs
@@ -426,18 +426,29 @@ def _linkding_description(article: Article) -> str:
     return description
 
 
-def save_to_linkding(*, base_url: str, token: str, article: Article) -> None:
+def save_to_linkding(
+    *, base_url: str, token: str, article: Article
+) -> dict[str, Any]:
     if not token:
         raise ValueError("LINKDING_TOKEN is not configured")
+    payload = {
+        "url": article.url,
+        "title": article.title,
+        "description": _linkding_description(article),
+        "tag_names": [LINKDING_TOREAD_TAG],
+    }
     response = requests.post(
         f"{base_url.rstrip('/')}/api/bookmarks/",
         headers={"Authorization": f"Token {token}"},
-        json={
-            "url": article.url,
-            "title": article.title,
-            "description": _linkding_description(article),
-            "tag_names": [LINKDING_TOREAD_TAG],
-        },
+        json=payload,
         timeout=15,
     )
     response.raise_for_status()
+    bookmark = cast(dict[str, Any], response.json())
+    returned_url = str(bookmark.get("url") or "")
+    if returned_url != article.url:
+        raise ValueError(
+            "Linkding returned a different bookmark URL: "
+            f"expected {article.url!r}, received {returned_url!r}"
+        )
+    return bookmark

@@ -34,6 +34,7 @@ from .services import (
 )
 
 ARCHIVED_ARTICLE_LIMIT = 50
+SAVED_ARTICLE_LIMIT = 50
 
 
 def _week_bounds(day: date) -> tuple[date, date]:
@@ -142,7 +143,7 @@ def _article_cards(user, articles: QuerySet[Article]) -> list[dict]:
     ]
 
 
-def _archived_article_cards(user) -> list[dict]:  # noqa: ANN001
+def _archived_article_cards(user) -> list[dict]:
     read_states = list(
         ArticleReadState.objects.select_related(
             "article",
@@ -168,6 +169,32 @@ def _archived_article_cards(user) -> list[dict]:  # noqa: ANN001
     ]
 
 
+def _saved_article_cards(user) -> list[dict]:
+    saved_articles = list(
+        SavedArticle.objects.select_related(
+            "article",
+            "article__feed",
+            "article__newsletter_issue",
+        )
+        .filter(user=user)
+        .order_by("-saved_at")[:SAVED_ARTICLE_LIMIT]
+    )
+    articles = Article.objects.filter(
+        id__in=[_pk(saved.article) for saved in saved_articles]
+    )
+    read_ids = _read_article_ids(user, articles)
+    return [
+        {
+            "article": saved.article,
+            "saved_article": saved,
+            "is_read": _pk(saved.article) in read_ids,
+            "is_saved": True,
+            "hide_save_action": True,
+        }
+        for saved in saved_articles
+    ]
+
+
 def _preferences(user) -> UserPreference:
     preferences, _ = UserPreference.objects.get_or_create(user=user)
     return preferences
@@ -177,7 +204,7 @@ def _wants_json(request: HttpRequest) -> bool:
     return request.headers.get("x-requested-with") == "XMLHttpRequest"
 
 
-def newsletter_detail(request: HttpRequest, public_id) -> HttpResponse:  # noqa: ANN001
+def newsletter_detail(request: HttpRequest, public_id) -> HttpResponse:
     issue = get_object_or_404(
         NewsletterIssue.objects.select_related("article", "article__feed"),
         public_id=public_id,
@@ -274,6 +301,20 @@ def archived(request: HttpRequest) -> HttpResponse:
             "period_label": "Recently marked read",
             "cards": _archived_article_cards(request.user),
             "remove_on_success": True,
+            "preferences": _preferences(request.user),
+        },
+    )
+
+
+@login_required
+def saved_links(request: HttpRequest) -> HttpResponse:
+    return render(
+        request,
+        "feeds/digest.html",
+        {
+            "title": "Saved (L)inks",
+            "period_label": "Recently saved to Linkding",
+            "cards": _saved_article_cards(request.user),
             "preferences": _preferences(request.user),
         },
     )
@@ -446,8 +487,12 @@ def mark_feed_read(request: HttpRequest, feed_id: int) -> HttpResponse:
 @require_POST
 @login_required
 def save_article_view(request: HttpRequest, article_id: int) -> HttpResponse:
+    article = get_object_or_404(Article, id=article_id)
     posted_article_id = request.POST.get("article_id")
-    if posted_article_id and posted_article_id != str(article_id):
+    posted_article_url = request.POST.get("article_url")
+    if (posted_article_id and posted_article_id != str(article_id)) or (
+        posted_article_url and posted_article_url != article.url
+    ):
         message = "Article verification failed. Please refresh and try again."
         if _wants_json(request):
             return JsonResponse(
@@ -455,7 +500,6 @@ def save_article_view(request: HttpRequest, article_id: int) -> HttpResponse:
             )
         return HttpResponseBadRequest(message)
 
-    article = get_object_or_404(Article, id=article_id)
     saved = save_article(
         user=request.user,
         article=article,
@@ -463,13 +507,24 @@ def save_article_view(request: HttpRequest, article_id: int) -> HttpResponse:
         token=settings.LINKDING_TOKEN,
     )
     if saved.linkding_saved:
-        message = "Saved article to Linkding and Daily Firehose."
+        message = f'Saved “{saved.title}” to Linkding and Daily Firehose.'
         level = "success"
     else:
         message = f"Saved locally, but Linkding failed: {saved.linkding_error}"
         level = "warning"
     if _wants_json(request):
-        return JsonResponse({"message": message, "level": level, "remove": True})
+        return JsonResponse(
+            {
+                "message": message,
+                "level": level,
+                "remove": saved.linkding_saved,
+                "article": {
+                    "id": article_id,
+                    "title": saved.title,
+                    "url": saved.url,
+                },
+            }
+        )
     if saved.linkding_saved:
         messages.success(request, message)
     else:

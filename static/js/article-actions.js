@@ -268,6 +268,13 @@ document.addEventListener("keydown", (event) => {
 		return;
 	}
 
+	// Held action keys emit repeats; after a card is removed, a repeat would act
+	// on the next article even though the user only intended one action.
+	if (event.repeat && ["s", "m"].includes(event.key)) {
+		event.preventDefault();
+		return;
+	}
+
 	const navigationLink = document.querySelector(
 		`[data-keyboard-nav='${event.key}']`,
 	);
@@ -331,6 +338,10 @@ document.addEventListener("submit", async (event) => {
 	}
 
 	event.preventDefault();
+	if (form.dataset.actionPending === "true") {
+		return;
+	}
+	form.dataset.actionPending = "true";
 
 	const button = form.querySelector("button[type='submit']");
 	if (button) {
@@ -341,9 +352,12 @@ document.addEventListener("submit", async (event) => {
 		const card = form.closest(".article-card");
 		const cardIndex = card ? articleCards().indexOf(card) : -1;
 		if (
-			form.dataset.articleId &&
-			card?.dataset.articleId &&
-			form.dataset.articleId !== card.dataset.articleId
+			(form.dataset.articleId &&
+				card?.dataset.articleId &&
+				form.dataset.articleId !== card.dataset.articleId) ||
+			(form.dataset.articleUrl &&
+				card?.dataset.articleUrl &&
+				form.dataset.articleUrl !== card.dataset.articleUrl)
 		) {
 			throw new Error("Article action verification failed");
 		}
@@ -359,6 +373,13 @@ document.addEventListener("submit", async (event) => {
 		}
 
 		const result = await response.json();
+		if (
+			result.article &&
+			(String(result.article.id) !== card?.dataset.articleId ||
+				result.article.url !== card?.dataset.articleUrl)
+		) {
+			throw new Error("Article response verification failed");
+		}
 		const message = document.createElement("p");
 		message.className = `message inline-message ${result.level || "success"}`;
 		message.setAttribute("role", "status");
@@ -369,6 +390,10 @@ document.addEventListener("submit", async (event) => {
 			selectArticle(cardIndex, { focus: false });
 		} else if (card) {
 			card.prepend(message);
+			form.dataset.actionPending = "false";
+			if (button) {
+				button.disabled = false;
+			}
 		}
 	} catch (error) {
 		const card = form.closest(".article-card");
@@ -379,6 +404,7 @@ document.addEventListener("submit", async (event) => {
 		if (card) {
 			card.prepend(message);
 		}
+		form.dataset.actionPending = "false";
 		if (button) {
 			button.disabled = false;
 		}
