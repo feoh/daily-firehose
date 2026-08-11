@@ -53,6 +53,8 @@ from .models import (
     UserPreference,
 )
 from .services import (
+    ArticleSaveNotAllowed,
+    article_save_capability,
     discover_feed_metadata,
     import_postmark_newsletter,
     refresh_active_feeds,
@@ -231,6 +233,8 @@ def api_view(
                 return view(request, user, *args, **kwargs)
             except ApiProblem as exc:
                 return exc.response()
+            except ArticleSaveNotAllowed as exc:
+                return _json_error(exc.message, status=422, code=exc.code)
             except Http404:
                 return _json_error("Resource not found.", status=404, code="not_found")
             except ValidationError as exc:
@@ -308,8 +312,13 @@ def _feed_payload(feed: Feed) -> dict[str, Any]:
 def _article_payload(
     article: Article, *, is_read: bool, is_saved: bool
 ) -> dict[str, Any]:
+    capability = article_save_capability(article)
+    article_id = _pk(article)
+    actions = {"mark_read": f"/api/v1/articles/{article_id}/read/"}
+    if capability.allowed:
+        actions["save"] = f"/api/v1/articles/{article_id}/saved/"
     return {
-        "id": _pk(article),
+        "id": article_id,
         "title": article.title,
         "url": article.url,
         "guid": article.guid,
@@ -320,6 +329,15 @@ def _article_payload(
         "feed": _feed_payload(article.feed),
         "is_read": is_read,
         "is_saved": is_saved,
+        "capabilities": {
+            "mark_read": {"allowed": True, "code": None, "message": None},
+            "save": {
+                "allowed": capability.allowed,
+                "code": capability.code,
+                "message": capability.message,
+            },
+        },
+        "actions": actions,
     }
 
 
@@ -368,7 +386,7 @@ def article_list(request: HttpRequest, user) -> JsonResponse:
     include_read = query_boolean(request.GET, "include_read")
     include_saved = query_boolean(request.GET, "include_saved")
     articles = _articles_between(start, end, feed).select_related(
-        "feed", "feed__category"
+        "feed", "feed__category", "newsletter_issue"
     )
     read_ids = _read_article_ids(user, articles)
     article_ids = list(articles.values_list("id", flat=True))
@@ -401,7 +419,7 @@ def morning_briefing(request: HttpRequest, user) -> JsonResponse:
     _reject_query_fields(request, set())
     current = timezone.localdate()
     articles = _articles_between(current, current).select_related(
-        "feed", "feed__category"
+        "feed", "feed__category", "newsletter_issue"
     )
     cards = _article_cards(user, articles)
     return JsonResponse(
@@ -471,7 +489,9 @@ def article_save_and_go(request: HttpRequest, article_id: int) -> HttpResponse:
         )
     try:
         article = _get_api_object(
-            Article.objects.select_related("feed", "feed__category"),
+            Article.objects.select_related(
+                "feed", "feed__category", "newsletter_issue"
+            ),
             "Article",
             id=article_id,
         )
@@ -483,6 +503,8 @@ def article_save_and_go(request: HttpRequest, article_id: int) -> HttpResponse:
         )
     except ApiProblem as exc:
         return exc.response()
+    except ArticleSaveNotAllowed as exc:
+        return _json_error(exc.message, status=422, code=exc.code)
     except ValidationError as exc:
         return validation_problem(exc).response()
     except IntegrityError:
@@ -551,7 +573,11 @@ def mark_period_read_and_go(request: HttpRequest) -> HttpResponse:
 @api_view({"POST", "PATCH"})
 def article_read_state(request: HttpRequest, user, article_id: int) -> JsonResponse:
     _reject_query_fields(request, set())
-    article = _get_api_object(Article.objects.all(), "Article", id=article_id)
+    article = _get_api_object(
+        Article.objects.select_related("feed", "feed__category", "newsletter_issue"),
+        "Article",
+        id=article_id,
+    )
     data = _parse_json(request)
     reject_unknown(data, {"is_read"})
     is_read = boolean(data, "is_read", default=True)
@@ -578,7 +604,7 @@ def article_read_state(request: HttpRequest, user, article_id: int) -> JsonRespo
 def article_saved_state(request: HttpRequest, user, article_id: int) -> JsonResponse:
     _reject_query_fields(request, set())
     article = _get_api_object(
-        Article.objects.select_related("feed", "feed__category"),
+        Article.objects.select_related("feed", "feed__category", "newsletter_issue"),
         "Article",
         id=article_id,
     )

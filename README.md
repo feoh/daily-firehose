@@ -188,6 +188,15 @@ Django model length, slug, choice, and URL validation runs before writes. A crea
 an already-identical category or feed retains its documented idempotent success;
 a conflicting unique value returns `409`.
 
+Every article representation includes additive per-article `capabilities` and
+`actions`. Clients must honor `capabilities.save.allowed` and use the per-article
+`actions` object rather than assuming every top-level action template applies.
+Ordinary RSS articles advertise save and mark-read actions. Newsletter-backed
+articles retain Open/Read and mark-read actions, but omit save and report
+`save_not_allowed` because newsletters cannot be saved locally or sent to
+Linkding. The morning briefing retains its top-level action templates only for
+backward compatibility.
+
 Signed browser-agent actions remain:
 
 - `GET /api/v1/articles/<id>/save-and-go/?sig=...`
@@ -196,6 +205,9 @@ Signed browser-agent actions remain:
 A valid signed action returns `302` on success. Invalid signatures return `403`
 before query/semantic validation, a valid signature with an invalid scope returns
 `422`, and missing agent-link configuration returns `503 not_configured`.
+Newsletter save attempts through bearer or signed APIs return
+`422 save_not_allowed`; session form/AJAX attempts keep the card visible and show
+a safe explanation.
 
 Postmark delivers to `POST /api/postmark/inbound/<secret>/`. Secret authentication
 runs before body/query validation. Expected input/model conflicts use the same

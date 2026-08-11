@@ -1,4 +1,6 @@
+from django import forms
 from django.contrib import admin
+from django.core.exceptions import ValidationError
 
 from .models import (
     ApiToken,
@@ -11,6 +13,22 @@ from .models import (
     SavedArticle,
     UserPreference,
 )
+from .services import ArticleSaveNotAllowed, article_save_capability
+
+
+class SavedArticleAdminForm(forms.ModelForm):
+    class Meta:
+        model = SavedArticle
+        fields = "__all__"
+
+    def clean_article(self) -> Article:
+        article = self.cleaned_data["article"]
+        article_changed = (
+            self.instance.pk is None or self.instance.article_id != article.pk
+        )
+        if article_changed and not article_save_capability(article).allowed:
+            raise ValidationError(ArticleSaveNotAllowed.message)
+        return article
 
 
 @admin.register(ApiToken)
@@ -71,6 +89,7 @@ class NewsletterIssueAdmin(admin.ModelAdmin):
 
 @admin.register(SavedArticle)
 class SavedArticleAdmin(admin.ModelAdmin):
+    form = SavedArticleAdminForm
     list_display = ["title", "user", "feed", "category", "linkding_saved", "saved_at"]
     list_filter = ["linkding_saved", "category", "feed", "saved_at"]
     search_fields = ["title", "url", "user__username", "feed__title", "category__name"]

@@ -27,6 +27,7 @@ from .models import (
     UserPreference,
 )
 from .services import (
+    ArticleSaveNotAllowed,
     discover_feed_metadata,
     export_opml,
     import_opml,
@@ -506,7 +507,10 @@ def mark_feed_read(request: HttpRequest, feed_id: int) -> HttpResponse:
 @require_POST
 @login_required
 def save_article_view(request: HttpRequest, article_id: int) -> HttpResponse:
-    article = get_object_or_404(Article, id=article_id)
+    article = get_object_or_404(
+        Article.objects.select_related("feed", "feed__category", "newsletter_issue"),
+        id=article_id,
+    )
     posted_article_id = request.POST.get("article_id")
     posted_article_url = request.POST.get("article_url")
     if (posted_article_id and posted_article_id != str(article_id)) or (
@@ -519,12 +523,25 @@ def save_article_view(request: HttpRequest, article_id: int) -> HttpResponse:
             )
         return HttpResponseBadRequest(message)
 
-    saved = save_article(
-        user=request.user,
-        article=article,
-        base_url=settings.LINKDING_URL,
-        token=settings.LINKDING_TOKEN,
-    )
+    try:
+        saved = save_article(
+            user=request.user,
+            article=article,
+            base_url=settings.LINKDING_URL,
+            token=settings.LINKDING_TOKEN,
+        )
+    except ArticleSaveNotAllowed as exc:
+        if _wants_json(request):
+            return JsonResponse(
+                {
+                    "message": exc.message,
+                    "level": "error",
+                    "remove": False,
+                    "error": {"code": exc.code, "message": exc.message},
+                }
+            )
+        messages.error(request, exc.message)
+        return redirect(request.POST.get("next") or reverse("today"))
     if saved.linkding_saved:
         message = f"Saved “{saved.title}” to Linkding and Daily Firehose."
         level = "success"

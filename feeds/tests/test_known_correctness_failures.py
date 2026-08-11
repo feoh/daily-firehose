@@ -261,8 +261,7 @@ class KnownCorrectnessFailureTests(StaticFilesTestCase):
             ).is_read
         )
 
-    # Bug: newsletter save prohibition is enforced only by hidden UI controls.
-    @expectedFailure
+    # Regression: the shared domain policy rejects session save bypasses.
     def test_session_endpoint_rejects_newsletter_save(self) -> None:
         article = self.build_newsletter_article()
         self.client.force_login(self.user)
@@ -275,8 +274,7 @@ class KnownCorrectnessFailureTests(StaticFilesTestCase):
         self.assertFalse(SavedArticle.objects.filter(article=article).exists())
         self.assertNotEqual(response.status_code, 500)
 
-    # Bug: bearer save bypasses newsletter save prohibition.
-    @expectedFailure
+    # Regression: the shared domain policy rejects bearer save bypasses.
     def test_bearer_api_rejects_newsletter_save(self) -> None:
         article = self.build_newsletter_article()
 
@@ -290,8 +288,7 @@ class KnownCorrectnessFailureTests(StaticFilesTestCase):
         self.assertFalse(SavedArticle.objects.filter(article=article).exists())
         self.assertNotEqual(response.status_code, 500)
 
-    # Bug: permanent signed GET actions bypass newsletter save prohibition.
-    @expectedFailure
+    # Regression: the shared domain policy rejects signed-link save bypasses.
     @override_settings(
         AGENT_LINK_SECRET="test-secret",
         AGENT_LINK_USERNAME="reader-1",

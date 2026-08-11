@@ -56,6 +56,43 @@ class ImportResult:
 
 
 @dataclass(frozen=True)
+class ArticleSaveCapability:
+    allowed: bool
+    code: str | None = None
+    message: str | None = None
+
+
+class ArticleSaveNotAllowed(Exception):
+    code = "save_not_allowed"
+    message = (
+        "Newsletter articles cannot be saved to Linkding. Open the newsletter instead."
+    )
+
+    def __init__(self) -> None:
+        super().__init__(self.message)
+
+
+def article_save_capability(article: Article) -> ArticleSaveCapability:
+    if not hasattr(article, "newsletter_issue"):
+        return ArticleSaveCapability(allowed=True)
+    return ArticleSaveCapability(
+        allowed=False,
+        code=ArticleSaveNotAllowed.code,
+        message=ArticleSaveNotAllowed.message,
+    )
+
+
+def _enforce_article_save_policy(article: Article) -> None:
+    # Do not trust a possibly stale reverse-one-to-one cache on a long-lived
+    # Article instance. The command boundary must check current persisted state.
+    if (
+        article.pk is not None
+        and NewsletterIssue.objects.filter(article_id=article.pk).exists()
+    ):
+        raise ArticleSaveNotAllowed
+
+
+@dataclass(frozen=True)
 class RefreshResult:
     feed: Feed
     created: int = 0
@@ -619,6 +656,8 @@ def export_opml() -> str:
 def save_article(
     *, user: Any, article: Article, base_url: str, token: str
 ) -> SavedArticle:
+    _enforce_article_save_policy(article)
+
     saved, _ = SavedArticle.objects.update_or_create(
         user=user,
         article=article,
