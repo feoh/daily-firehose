@@ -161,7 +161,7 @@ flowchart TB
 | `test_mobile_today_browser.py` | Playwright responsive Today behavior and discoverability. |
 | `test_newsletter_save_policy.py` | Newsletter save prohibition across adapters/admin and cache freshness. |
 | `test_newsletters.py` | Webhook, dedupe, archive and sanitization. |
-| `test_opml.py` | Import/export behavior. |
+| `test_opml.py` | Parent-category import and existing-Feed update behavior; it has no export test. |
 | `test_production_settings.py` | Fail-closed environment/database/proxy/security settings. |
 
 ## 4. Route and adapter map
@@ -196,8 +196,8 @@ Legend: **session** means `login_required` and CSRF middleware protects mutation
 | POST | `/articles/<article_id>/mark/` / `mark-article` | session | `state` (`read` means true; anything else false), optional AJAX/removal/`next` → JSON or redirect | Upserts `ArticleReadState`. **[D]** Untrusted redirect. |
 | POST | `/articles/<article_id>/save/` / `save-article` | session | Optional echoed ID/URL and AJAX/`next` → JSON or redirect | Verifies echoed identity; local save then synchronous Linkding POST; persists remote result. Newsletter save denied. **[D]** Untrusted redirect. |
 | POST | `/mark-period-read/` / `mark-period-read` | session | Required scope/start/end strings and optional `next` → redirect | Materializes explicit rows then upserts period marker. **[D]** No validation guard/transaction; malformed fields can error; untrusted redirect. |
-| GET* | `/api/digest/today.json` / `digest-json` | session | None → legacy JSON digest | Reads unread/unsaved Today cards; no API-token auth and no standardized API error envelope. |
-| POST | `/api/postmark/inbound/<secret>/` / `postmark-inbound` | public-secret; CSRF exempt | No query; strict JSON object with Postmark fields → `{id, created}`, 200/201 or problem JSON | Constant-time path-secret check precedes validation. Creates the synthetic Feed as inactive only when absent; an existing Feed is reused without changing its active state, then Article and NewsletterIssue are created. **[D]** The writes are not one transaction. |
+| GET* | `/api/digest/today.json` / `digest-json` | session | Method/query/body ignored by the view → legacy JSON digest | Reads unread/unsaved Today cards; no API-token auth and no standardized API error envelope. Django CSRF middleware rejects unsafe requests without a valid token; CSRF-valid unsafe methods reach the same method-agnostic view. |
+| POST | `/api/postmark/inbound/<secret>/` / `postmark-inbound` | public-secret; CSRF exempt | No query; strict JSON object requiring only truthy MessageID → `{id, created}`, 200/201 or problem JSON | Constant-time path-secret check precedes validation. Other payload fields are optional/string-coerced and created models are not passed through `full_clean()`. Creates the synthetic Feed as inactive only when absent; an existing Feed is reused without changing its active state, then Article and NewsletterIssue are created. **[D]** The writes are not one transaction. |
 | GET | `/api/v1/articles/<id>/save-and-go/` / `api-article-save-and-go` | signed | Sole `sig` query → external article redirect or problem JSON | Global deterministic HMAC over article ID; configured active username; local + Linkding save. **[D]** Replayable, non-expiring mutating GET. Redirect occurs even when Linkding failure was persisted. |
 | GET | `/api/v1/mark-period-read-and-go/` / `api-mark-period-read-and-go` | signed | `scope` day/week/month (default day), `sig` → Today redirect/problem JSON | Global deterministic HMAC over scope; resolves current period at use time; atomically materializes rows and marker. **[D]** Replayable, non-expiring mutating GET whose same URL targets a changing period. |
 
@@ -387,7 +387,7 @@ erDiagram
 | Model | Constraints and defaults | Deletion/cardinality | Ordering and timestamp semantics |
 | --- | --- | --- | --- |
 | `Category` | `name` unique max 120; `slug` unique max 140. | A Category has 0..n Feeds and SavedArticle snapshots; deletion sets both nullable FKs to null. | Default `name`; `created_at` set once on insert. |
-| `Feed` | `feed_url` unique URL max 200; title max 255; blank site URL max 200 and description; active true; blank error code max 64/message; failures nonnegative; health times nullable. | Optional Category; deleting Feed cascades Articles and feed-scoped markers, but saved snapshot FK becomes null. | `(title, feed_url)`; `created_at` insert; `updated_at` each model save; attempts/success/retry have service-defined meanings. |
+| `Feed` | `feed_url` unique URL max 200; title max 255; blank site URL max 200 and description; active true; blank error code max 64/message; failures nonnegative; health times nullable. | Optional Category; deleting Feed cascades Articles, their dependent NewsletterIssues/SavedArticles/read states, and feed-scoped markers. A surviving SavedArticle whose independent snapshot FK references the deleted Feed gets that snapshot FK set null. | `(title, feed_url)`; `created_at` insert; `updated_at` each model save; attempts/success/retry have service-defined meanings. |
 | `Article` | Composite unique `(feed,guid)` and `(feed,url)`; required title max 500, URL/GUID max 1000; author max 255 and summary may be blank; publication defaults now. | Exactly one Feed; deleting Feed cascades Articles; deleting Article cascades its issue, saves, and read states. | `(-published_at,title)`; `fetched_at` insert time; `updated_at` model save time. Bulk update paths require explicit timestamps. |
 | `NewsletterIssue` | `article`, `public_id`, `message_id` (max 1000) each unique; UUID generated and non-editable; subject max 500; email fields use Django EmailField limits, sender name max 255; bodies/addresses may be blank. | Exactly one Article, at most one issue per Article; Article deletion cascades issue. | `(-received_at,subject)`; `received_at` payload date or now; `created_at` insert; `updated_at` save. |
 | `SavedArticle` | Composite unique `(user,article)`; required denormalized URL max 1000/title max 500; `linkding_saved=false`, error/notes blank; score nullable with no DB range check. | Required User and Article cascade; optional Feed/Category snapshots set null. | `-saved_at`; `saved_at` first insert and does not change on re-save; `updated_at` save. |
@@ -604,7 +604,7 @@ flowchart TD
 flowchart LR
     Upload["Authenticated multipart upload"] --> Parse["ElementTree.fromstring"]
     Parse --> Walk["Recursively walk outline nodes"]
-    Walk --> Category["Find or create category by generated collision-safe slug"]
+    Walk --> Category["Find category by generated slug or create it"]
     Category --> Feed["update_or_create Feed by feed_url"]
     Feed --> Summary["created, updated, skipped message"]
 
@@ -612,7 +612,7 @@ flowchart LR
     XML --> Download["text/x-opml attachment"]
 ```
 
-**[F]** Import parses the entire XML document before walking outlines, then updates title, site URL, category and active status; export includes active feeds and omits category hierarchy. **[D]** Malformed XML is not converted into form feedback and produces an error before any writes. Once valid XML parsing succeeds, a later category/feed processing failure can leave earlier writes committed because the loop has no encompassing transaction.
+**[F]** Import parses the entire XML document before walking outlines, then updates title, site URL, category and active status. Export includes active feeds as flat outlines and omits category hierarchy; importing that export clears existing Feed categories, so category round trips are lossy. **[D]** Category lookup starts from a generated slug rather than unique name: an existing same-name category with a different slug can cause a duplicate-name `IntegrityError`. Malformed XML is not converted into form feedback and produces an error before any writes. Once valid XML parsing succeeds, a later category/feed processing failure can leave earlier writes committed because the loop has no encompassing transaction.
 
 ## 8. External trust boundaries and security controls
 

@@ -350,7 +350,7 @@ class KnownCorrectnessFailureTests(StaticFilesTestCase):
 
         self.assertEqual(result.created, 0)
         self.assertEqual(result.updated, 1)
-        self.assertEqual(Article.objects.filter(feed=self.feed).count(), 2)
+        self.assertEqual(Article.objects.filter(feed=self.feed).count(), 1)
         existing.refresh_from_db()
         self.assertEqual(existing.guid, "new-guid")
         self.assertEqual(existing.title, "Updated title")

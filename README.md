@@ -297,11 +297,16 @@ Newsletter save attempts through bearer or signed APIs return
 `422 save_not_allowed`; session form/AJAX attempts keep the card visible and show
 a safe explanation.
 
-Postmark delivers to `POST /api/postmark/inbound/<secret>/`. Secret authentication
-runs before body/query validation. Expected input/model conflicts use the same
-`400`, `422`, and `409` envelopes described below. The separate tracked Postmark
-atomicity task still owns rollback and race-idempotency: this error mapping does
-not claim that a failed ingestion has rolled back every write.
+Postmark delivers only to `POST /api/postmark/inbound/<secret>/`; other methods
+return `405`. Secret authentication runs before body/query validation. The current
+accepted body schema requires only a truthy `MessageID` (or `MessageId`). Missing
+subject defaults to “Untitled newsletter,” missing or invalid date uses the current
+time, and address/body fields are optional and string-coerced. Ingestion does not
+call model `full_clean()`: `422` is only the adapter mapping if the service raises a
+Django `ValidationError`, not a promise that malformed email strings or every model
+limit are rejected. Integrity conflicts map to `409`. The separate tracked Postmark
+atomicity task still owns rollback and race-idempotency; error mapping does not
+claim that a failed ingestion rolled back every write.
 
 The older authenticated-session digest remains at `/api/digest/today.json`.
 
@@ -333,7 +338,10 @@ API errors use one envelope; semantic/model errors may include field details:
 
 Feed metadata discovery failures retain their stable transport code (for example
 `timeout` or `http_failure`) inside the same envelope with HTTP `400`. The
-application maps all expected authentication, request-validation, lookup,
-model-validation, and uniqueness failures above to JSON. Unforeseeable programming
+application maps expected authentication, request-validation, lookup,
+model-validation, and uniqueness failures on matched API routes to JSON. URL
+resolution remains outside that boundary: the unsigned `<int:…>` converters do
+not match negative path IDs, which currently receive Django's HTML `404` before
+bearer authentication or shared positive-ID validation. Unforeseeable programming
 errors, process failures, or database/network outages may still reach Django's
 `500` handling and are not claimed to be part of this API error contract.

@@ -2,6 +2,8 @@
 
 > Snapshot: commit [`03965d98aa51522a98266df28aa2ba45e80c03e7`](https://github.com/feoh/daily-firehose/tree/03965d98aa51522a98266df28aa2ba45e80c03e7). This is an inventory of behavior evidenced at that commit, not a roadmap or a claim about the currently deployed revision.
 
+The [cross-feature behavioral contracts](contracts.md) are a post-snapshot companion and own current-suite traceability; they do not change this catalog's pinned evidence counts.
+
 ## How to read and maintain this catalog
 
 A **feature** below is an observable capability or an operational boundary. A **contract** is behavior pinned by code, tests, or operator documentation. Implementation facts are not automatically desirable product contracts: limitations and accidents are recorded so maintainers can decide compatibility deliberately. No deferred or unknown item implies that a fix exists.
@@ -21,7 +23,7 @@ For every behavior-changing change:
 
 1. Update affected records in the same change: inputs, output, state, failure, mobile/accessibility, evidence, gaps, and source links. Preserve IDs; add IDs for new independent contracts and retire removed ones explicitly.
 2. Add or update executable tests, then update the [test traceability matrix](#test-module-traceability). A known defect becomes `fact` only when its expected-failure marker is removed and the replacement contract passes. A deferred/unknown item changes status only with evidence.
-3. Update links to the [current-state architecture](../architecture/current-state.md) when component, route, persistence, trust, integration, deployment, or recovery boundaries change. Re-pin this catalog when taking a new whole-repository snapshot; do not mix source commits silently.
+3. Update the [cross-feature invariants](contracts.md) and links to the [current-state architecture](../architecture/current-state.md) when shared behavior, component, route, persistence, trust, integration, deployment, or recovery boundaries change. Re-pin this catalog when taking a new whole-repository snapshot; do not mix source commits silently.
 4. Run the mechanical inventory check described in [coverage summary](#coverage-summary), Markdown/link diagnostics, pre-commit, and the full suite. Review diffs for secret values and private/ignored artifact links.
 
 ## Compact feature index
@@ -373,7 +375,7 @@ The summary is mechanically checked against the detailed `###` records; see [cov
 - **Actor / status / owner:** admin, browser, API, OPML and refresh; **fact**; Feed/Category ORM models.
 - **Entry / validated input:** unique Category name/slug; globally unique Feed URL; optional category; model URL/length/choice validation.
 - **Output / presentation:** ordered categories/feeds and health fields consumed by UI/API/admin.
-- **State / side effects:** Category deletion nulls Feed/saved snapshot; Feed deletion cascades Articles and feed markers; API DELETE instead deactivates.
+- **State / side effects:** Category deletion nulls Feed and SavedArticle category snapshots. Feed ORM deletion cascades Articles, their dependent saves/read states/issues, and feed markers; API DELETE instead deactivates and preserves content.
 - **Failure:** database/model uniqueness and validation errors; callers map differently.
 - **Mobile / accessibility:** N/A persistence contract.
 - **Test evidence:** builders, API validation, feed views, OPML tests.
@@ -481,11 +483,11 @@ The summary is mechanically checked against the detailed `###` records; see [cov
 - **Actor / status / owner:** authenticated user; **fact**; OPML form/view/service.
 - **Entry / validated input:** permissive `GET/POST* /opml/import/`; multipart uploaded file, read fully; XML outline recursion with `xmlUrl`, title/text, `htmlUrl`, parent category.
 - **Output / presentation:** import form or created/updated/skipped message then Feeds redirect.
-- **State / side effects:** collision-safe category creation; Feed update-or-create by URL; updates title/site/category and reactivates.
+- **State / side effects:** category lookup/creation starts from a generated slug; Feed update-or-create by URL updates title/site/category and reactivates.
 - **Failure:** valid XML processing is incremental/non-atomic; malformed handling defect is ING-012.
 - **Mobile / accessibility:** labeled native file input/heading; no mobile/a11y test.
 - **Test evidence:** `test_opml.py` covers parent categories and idempotent update.
-- **Known gaps / expected failures:** no explicit upload-size limit, transaction or per-outline feedback.
+- **Known gaps / expected failures:** no explicit upload-size limit, transaction or per-outline feedback. Same-name/different-slug Category reuse can raise a duplicate-name integrity error.
 - **Source:** [`views.py`](https://github.com/feoh/daily-firehose/blob/03965d98aa51522a98266df28aa2ba45e80c03e7/feeds/views.py), [`services.py`](https://github.com/feoh/daily-firehose/blob/03965d98aa51522a98266df28aa2ba45e80c03e7/feeds/services.py), [`opml_import.html`](https://github.com/feoh/daily-firehose/blob/03965d98aa51522a98266df28aa2ba45e80c03e7/templates/feeds/opml_import.html).
 
 ### ING-012 — Malformed OPML feedback
@@ -508,7 +510,7 @@ The summary is mechanically checked against the detailed `###` records; see [cov
 - **State / side effects:** read-only.
 - **Failure:** serializer exceptions are unhandled.
 - **Mobile / accessibility:** ordinary download link; N/A document body.
-- **Test evidence:** no dedicated export test in current suite.
+- **Test evidence:** no dedicated export test in the snapshot suite.
 - **Known gaps / expected failures:** categories/descriptions/inactive feeds are omitted, so import/export round-trip is lossy.
 - **Source:** [`views.py`](https://github.com/feoh/daily-firehose/blob/03965d98aa51522a98266df28aa2ba45e80c03e7/feeds/views.py), [`services.py`](https://github.com/feoh/daily-firehose/blob/03965d98aa51522a98266df28aa2ba45e80c03e7/feeds/services.py).
 
@@ -517,10 +519,10 @@ The summary is mechanically checked against the detailed `###` records; see [cov
 ### NEWS-001 — Postmark newsletter ingestion domain
 
 - **Actor / status / owner:** authenticated Postmark adapter; **fact**; newsletter service/models.
-- **Entry / validated input:** parsed Postmark object with nonblank MessageID and sender/recipient/subject/body/date fields; base URL supplied by adapter.
+- **Entry / validated input:** parsed JSON object plus adapter-supplied base URL; only a truthy `MessageID`/`MessageId` is required. Subject defaults to “Untitled newsletter”; missing or invalid date becomes current time; address and body values are optional and string-coerced rather than payload-schema validated.
 - **Output / presentation:** result with NewsletterIssue and created flag; public archive URL becomes Article URL.
 - **State / side effects:** gets/creates synthetic “Email Newsletters” Feed inactive when newly created; existing feed active state is preserved; creates Article then one-to-one NewsletterIssue; MessageID dedupes.
-- **Failure:** validation/integrity can occur between writes; non-atomic defect is NEWS-002.
+- **Failure:** the service raises `ValueError` for missing MessageID and can raise database/integrity errors between writes; it does not call `full_clean()` on the created models. The non-atomic defect is NEWS-002.
 - **Mobile / accessibility:** N/A ingestion service.
 - **Test evidence:** `test_newsletters.py` creation/dedupe; API validation tests cover adapter errors.
 - **Known gaps / expected failures:** no retention/purge and base URL is request-derived.
@@ -579,7 +581,7 @@ The summary is mechanically checked against the detailed `###` records; see [cov
 - **Actor / status / owner:** authenticated session/bearer/signed actor; **fact**; save service/SavedArticle model.
 - **Entry / validated input:** server-resolved ordinary Article and user; persisted newsletter capability recheck.
 - **Output / presentation:** unique local user/Article row snapshots URL/title/feed/category, Linkding state, notes/score and timestamps.
-- **State / side effects:** update-or-create refreshes snapshots; initial `saved_at` remains recency key; Article/user deletion cascades, Feed/Category deletion nulls snapshots.
+- **State / side effects:** update-or-create refreshes snapshots; initial `saved_at` remains recency key. Article/user deletion cascades. Category deletion nulls its snapshot; Feed deletion normally removes the row through Article cascade, while the optional Feed snapshot FK alone is `SET_NULL` for any surviving mismatched snapshot.
 - **Failure:** newsletter rejection before I/O; model/integrity errors caller-mapped.
 - **Mobile / accessibility:** N/A storage; WEB-005/012 present it.
 - **Test evidence:** article actions, state propagation and newsletter policy suites.
@@ -627,9 +629,9 @@ The summary is mechanically checked against the detailed `###` records; see [cov
 ### API-001 — Legacy session digest
 
 - **Actor / status / owner:** authenticated browser/session client; **fact**; browser views.
-- **Entry / validated input:** permissive `/api/digest/today.json`; method/query/body are ignored rather than strictly validated.
+- **Entry / validated input:** permissive `/api/digest/today.json`; after session authentication, the view ignores method/query/body rather than strictly validating them. Django CSRF middleware still rejects unsafe methods without a valid CSRF token before the view runs; safe methods and CSRF-valid unsafe methods reach the same response logic.
 - **Output / presentation:** JSON `title`, local date and Today unread/unsaved articles with feed/category strings, timestamps, summary and state flags.
-- **State / side effects:** reads state; preference may lazy-create through card helper.
+- **State / side effects:** reads article/read/save state only; unlike rendered page views, the legacy digest does not access or create `UserPreference`.
 - **Failure:** anonymous request redirects to login, not JSON 401; errors do not use v1 envelope.
 - **Mobile / accessibility:** N/A JSON; mobile hard-reload test compares its Article IDs.
 - **Test evidence:** digest JSON tests and mobile parity test.
@@ -654,22 +656,22 @@ The summary is mechanically checked against the detailed `###` records; see [cov
 - **Entry / validated input:** `Authorization` case-insensitive `Bearer` or compatibility `Token` plus nonempty key; endpoint method checked before auth.
 - **Output / presentation:** expected errors `{error:{code,message,fields?}}`; 401 includes `WWW-Authenticate: Bearer`; stable 400/401/403/404/405/409/422/503 classes.
 - **State / side effects:** valid authentication updates token `last_used_at`, even if later endpoint validation fails.
-- **Failure:** missing/malformed/inactive credentials 401; unsupported method 405 before auth; unanticipated process/DB/network failures may be Django 500.
+- **Failure:** missing/malformed/inactive credentials 401; unsupported method 405 before auth on matched routes; URL resolution precedes both and may return framework HTML 404. Unanticipated process/DB/network failures may be Django 500.
 - **Mobile / accessibility:** N/A JSON.
 - **Test evidence:** `test_api_validation.py` method/auth/envelope/resource matrices.
-- **Known gaps / expected failures:** Token alias/casing/inactive/last-used details lack focused tests; every active token has global mutation authority.
+- **Known gaps / expected failures:** Token alias/casing/inactive/last-used details lack focused snapshot tests; every active token has global mutation authority.
 - **Source:** [`api.py`](https://github.com/feoh/daily-firehose/blob/03965d98aa51522a98266df28aa2ba45e80c03e7/feeds/api.py), [`api_validation.py`](https://github.com/feoh/daily-firehose/blob/03965d98aa51522a98266df28aa2ba45e80c03e7/feeds/api_validation.py).
 
 ### API-004 — Strict request input contract
 
 - **Actor / status / owner:** bearer, signed, or webhook client as applicable; **fact**; API parser/validation.
-- **Entry / validated input:** nonempty body must be UTF-8 JSON object with `application/json` or `application/*+json`; rejects duplicate/unknown fields, NaN/Infinity, malformed/oversized/nonobject JSON, repeated/unknown/excess query fields, wrong primitive types. Bodyless operations accept empty body plus legacy zero-field multipart boundary.
+- **Entry / validated input:** on matched API routes, a nonempty body must be a UTF-8 JSON object with `application/json` or `application/*+json`; rejects duplicate/unknown fields, NaN/Infinity, malformed/oversized/nonobject JSON, repeated/unknown/excess query fields, wrong primitive types. Bodyless operations accept empty body plus legacy zero-field multipart boundary. Django's unsigned `<int:…>` path converter runs before this boundary and does not match negative IDs.
 - **Output / presentation:** normalized 400 or semantic 422; dates canonical ISO/ordered, IDs positive signed-64-bit, URLs credential-free HTTP(S), score finite 0..5.
 - **State / side effects:** validation precedes endpoint writes except auth timestamp.
 - **Failure:** stable safe envelope; fields included for model validation.
 - **Mobile / accessibility:** N/A JSON.
 - **Test evidence:** extensive `test_api_validation.py` request matrices and known-correctness boolean regressions.
-- **Known gaps / expected failures:** default Django upload limits govern requests; programming failures remain outside envelope.
+- **Known gaps / expected failures:** default Django upload limits govern requests; programming failures remain outside the envelope. Negative path IDs resolve to framework HTML 404 before bearer authentication or shared ID validation.
 - **Source:** [`api.py`](https://github.com/feoh/daily-firehose/blob/03965d98aa51522a98266df28aa2ba45e80c03e7/feeds/api.py), [`api_validation.py`](https://github.com/feoh/daily-firehose/blob/03965d98aa51522a98266df28aa2ba45e80c03e7/feeds/api_validation.py).
 
 ### API-005 — Article/feed/category representations and capabilities
@@ -822,7 +824,7 @@ The summary is mechanically checked against the detailed `###` records; see [cov
 - **Entry / validated input:** `POST /api/postmark/inbound/<secret>/`; method first, configured secret constant-time match before no-query/strict JSON object validation.
 - **Output / presentation:** `{id,created}`, 201 new or 200 MessageID dedupe; expected errors use API envelope.
 - **State / side effects:** NEWS-001 domain writes.
-- **Failure:** absent/bad secret 403; method 405; malformed/service input 400; model 422; integrity 409. Secret is path-embedded.
+- **Failure:** absent/bad secret 403; method 405; malformed JSON or missing MessageID 400; integrity 409. The adapter maps a `ValidationError` to 422 if the service raises one, but current ingestion does not perform model `full_clean()` and therefore does not promise payload/model validation. Secret is path-embedded.
 - **Mobile / accessibility:** N/A webhook.
 - **Test evidence:** newsletter webhook tests and API validation/auth/error tests.
 - **Known gaps / expected failures:** NEWS-002; no provider signature/source/rate/replay control; path may be logged upstream.
@@ -1057,7 +1059,7 @@ Source: [`settings.py`](https://github.com/feoh/daily-firehose/blob/03965d98aa51
 
 ## Expected-failure traceability
 
-Exactly eight tests at the snapshot use `unittest.expectedFailure`; all are current defects, not passing implementations.
+Exactly eight tests at the snapshot use `unittest.expectedFailure`; all are current defects, not passing implementations. Current-suite additions are tracked only in the [post-snapshot contracts](contracts.md#expected-failure-ledger).
 
 | Expected-failure test | Catalog ID | Current contradiction |
 | --- | --- | --- |
@@ -1074,7 +1076,7 @@ Source: [`test_known_correctness_failures.py`](https://github.com/feoh/daily-fir
 
 ## Test-module traceability
 
-All 15 `test_*.py` modules are mapped. Shared `feeds/tests/support/` builders, HTTP doubles and fixtures support all mapped modules but are not executable test modules.
+All 15 snapshot `test_*.py` modules are mapped. Shared `feeds/tests/support/` builders, HTTP doubles and fixtures support all mapped modules but are not executable test modules. Current-suite modules are mapped in the [post-snapshot contracts](contracts.md#traceability-matrix).
 
 | Test module | Primary catalog IDs |
 | --- | --- |
@@ -1100,8 +1102,8 @@ Snapshot inventory counts:
 
 - **82** stable detailed feature/contract IDs: **72 fact**, **8 known-defect**, **1 deferred**, **1 unknown**.
 - **31** first-party routes in `feeds/urls.py`, plus framework-mounted login, logout and admin: every route is named by an entry above.
-- **15/15** executable test modules mapped; **191** `def test_...` methods at the snapshot.
-- **8/8** expected failures mapped to stable IDs; none is represented as fixed.
+- **15/15** snapshot executable test modules mapped; **191** `def test_...` methods at the snapshot.
+- **8/8** snapshot expected failures mapped to stable IDs; none is represented as fixed.
 - **9/9** app models and **2/2** management commands covered.
 - Configuration covers every application/operator variable in the architecture inventory: Django mode/security/hosts/CSRF; URL/discrete database; web port; Linkding; signed actions; Postmark; refresh schedule/fetch/logging; process bootstrap and image-fixed Python variables.
 
@@ -1113,6 +1115,13 @@ from collections import Counter
 from pathlib import Path
 import ast
 import re
+import subprocess
+
+SNAPSHOT = "03965d98aa51522a98266df28aa2ba45e80c03e7"
+def snapshot_text(path):
+    return subprocess.check_output(
+        ["git", "show", f"{SNAPSHOT}:{path}"], text=True)
+
 p = Path("docs/features/catalog.md").read_text()
 matches = list(re.finditer(
     r"^### ((?:AUTH|WEB|ING|NEWS|SAVE|API|OPS)-\d{3}) —", p, re.M))
@@ -1129,19 +1138,25 @@ statuses = Counter(re.search(r"\*\*(fact|known-defect|deferred|unknown)\*\*", b)
                    for b in blocks)
 assert statuses == Counter({"fact": 72, "known-defect": 8,
                             "deferred": 1, "unknown": 1})
-tests = {x.name for x in Path("feeds/tests").glob("test_*.py")}
+snapshot_paths = subprocess.check_output(
+    ["git", "ls-tree", "-r", "--name-only", SNAPSHOT], text=True).splitlines()
+test_paths = [path for path in snapshot_paths
+              if re.fullmatch(r"feeds/tests/test_[^/]+\.py", path)]
+tests = {Path(path).name for path in test_paths}
 mapped = set(re.findall(r"\| `(test_[^`]+\.py)` \|", p))
 assert tests == mapped and len(tests) == 15
-methods = sum(1 for path in Path("feeds/tests").glob("test_*.py")
-              for node in ast.walk(ast.parse(path.read_text()))
+methods = sum(1 for path in test_paths
+              for node in ast.walk(ast.parse(snapshot_text(path)))
               if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
               and node.name.startswith("test_"))
 assert methods == 191
-assert Path("feeds/urls.py").read_text().count("path(") == 31
-assert len([p for p in Path("feeds/management/commands").glob("*.py")
-            if p.name != "__init__.py"]) == 2
-assert Path("feeds/admin.py").read_text().count("@admin.register(") == 9
-source = Path("feeds/tests/test_known_correctness_failures.py").read_text()
+assert snapshot_text("feeds/urls.py").count("path(") == 31
+commands = [path for path in snapshot_paths
+            if re.fullmatch(r"feeds/management/commands/[^/]+\.py", path)
+            and not path.endswith("/__init__.py")]
+assert len(commands) == 2
+assert snapshot_text("feeds/admin.py").count("@admin.register(") == 9
+source = snapshot_text("feeds/tests/test_known_correctness_failures.py")
 tree = ast.parse(source)
 expected = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
             and any(isinstance(d, ast.Name) and d.id == "expectedFailure"

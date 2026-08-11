@@ -1,0 +1,731 @@
+# Cross-feature behavioral contracts
+
+This document defines repository-wide invariants that multiple features or adapters
+must share. It complements the exhaustive [feature catalog](catalog.md) and the
+[current-state architecture](../architecture/current-state.md). These are contracts
+of the current repository, including explicitly identified violations; they are not
+a claim that every normative rule is presently satisfied.
+
+## Status vocabulary and precedence
+
+- **Conformant** means current executable evidence agrees with the normative contract.
+- **Known violation** means a deterministic `expectedFailure`, architecture finding,
+  or other cited evidence demonstrates that current behavior contradicts the rule.
+- A feature-specific rule may narrow a cross-feature rule only where the invariant's
+  scope says so. Domain policy and persistence invariants take precedence over
+  adapter convenience; authentication precedes matched-route input handling; URL
+  resolution and middleware remain outside adapter decorators unless stated.
+- Stable invariant IDs are never reused. Retire an ID with a replacement pointer
+  rather than changing its meaning.
+
+## Data invariants
+
+### DATA-INV-001 — Article identity is stable within a Feed
+
+- **Normative current contract:** an Article belongs to exactly one Feed and is unique
+  independently by `(feed, guid)` and `(feed, url)`; refresh must reconcile an
+  already-known logical item without creating a duplicate.
+- **Scope / precedence:** database uniqueness applies to every writer. Refresh's
+  reconciliation policy must satisfy both constraints; database integrity wins over
+  adapter success reporting.
+- **Executable evidence:** `test_feed_refresh.py` covers GUID upsert and alternate URL
+  selection; `test_known_correctness_failures.py::test_refresh_reconciles_changed_guid_for_same_url`
+  requires successful reconciliation to leave exactly one Article with the updated
+  GUID/title, so a correct repair becomes an unexpected success.
+- **Known violation status:** **Known violation** — changed GUID with a stable URL
+  fails refresh instead of reconciling one Article.
+- **Source / feature IDs:** `feeds/models.py`, `feeds/services.py`; ING-005, ING-006.
+
+### DATA-INV-002 — First-seen and publication time have distinct meanings
+
+- **Normative current contract:** `fetched_at` is immutable first-seen time and owns
+  Today/week/month membership, digest ordering, and bulk cutoff eligibility;
+  `published_at` is source metadata and owns Feed-detail model ordering.
+- **Scope / precedence:** period-based session, legacy digest, and bearer list surfaces
+  use first-seen windows. Feed detail has no date window and is the explicit
+  publication-order exception.
+- **Executable evidence:** `test_behavioral_contracts.py` pins repeated-refresh
+  timestamp preservation and exact windows; `test_article_state_propagation.py` pins
+  opposing fetched/publication ordering.
+- **Known violation status:** **Conformant** for sequential refresh and reading paths;
+  concurrent refresh is outside this evidence.
+- **Source / feature IDs:** `feeds/models.py`, `feeds/services.py`, `feeds/views.py`;
+  WEB-003, WEB-006, WEB-011, ING-005.
+
+### DATA-INV-003 — Personal article state is user-isolated
+
+- **Normative current contract:** Feeds and Articles are global, while explicit read
+  state, bulk markers, saves, and preferences belong to one user and must not alter
+  another user's queues or API flags.
+- **Scope / precedence:** applies to session, legacy JSON, bearer, signed actions, and
+  saved/archive views. Global Feed/Category mutation authority is a separate unknown
+  authorization decision.
+- **Executable evidence:** `test_article_state_propagation.py` cross-user matrices and
+  `test_digest_views.py::test_visibility_state_is_scoped_to_the_authenticated_user`.
+- **Known violation status:** **Conformant** for tested state paths.
+- **Source / feature IDs:** `feeds/models.py`, `feeds/views.py`, `feeds/api.py`;
+  WEB-004–WEB-011, SAVE-001, API-007–API-010, OPS-015.
+
+### DATA-INV-004 — Deletion follows explicit lifecycle policy
+
+- **Normative current contract:** deleting a Feed through ORM cascades its Articles
+  and therefore their NewsletterIssues, SavedArticles, and read states; deleting an
+  Article likewise cascades its saves. Category deletion sets Feed and SavedArticle
+  category references null. Bearer `DELETE /api/v1/feeds/<id>/` instead
+  soft-deactivates the Feed and preserves its Articles and saves.
+- **Scope / precedence:** adapter DELETE semantics override generic model deletion only
+  for the bearer Feed resource. The optional SavedArticle Feed snapshot FK is
+  `SET_NULL`, but it does not preserve a save whose required Article was cascade
+  deleted.
+- **Executable evidence:** `test_behavioral_contracts.py::test_api_soft_delete_preserves_content_and_orm_deletes_cascade`
+  covers soft deletion, Category `SET_NULL`, Feed cascade, and direct Article cascade.
+- **Known violation status:** **Conformant**.
+- **Source / feature IDs:** `feeds/models.py`, `feeds/api.py`; ING-002, API-012,
+  SAVE-001.
+
+## Read invariants
+
+### READ-INV-001 — Calendar windows are inclusive UTC-local dates
+
+- **Normative current contract:** Today is the current UTC local date; week is Monday
+  through Sunday; month is the complete calendar month, including leap day and
+  December/year rollover endpoints.
+- **Scope / precedence:** session Today/week/month, bearer named periods, signed
+  period marking, and default bulk windows share these bounds. Explicit ordered API
+  dates replace the named bounds.
+- **Executable evidence:** `test_behavioral_contracts.py` exact Monday/Sunday,
+  leap-day, month-end, and year-boundary tests; `test_digest_views.py` UTC-midnight
+  test.
+- **Known violation status:** **Conformant**.
+- **Source / feature IDs:** `feeds/views.py`, `feeds/api.py`; WEB-002, WEB-003,
+  API-007, API-010, API-018.
+
+### READ-INV-002 — Normal queues exclude effective-read and locally saved Articles
+
+- **Normative current contract:** Today/week/month, legacy digest, briefing, and the
+  default bearer collection contain only Articles in their first-seen window that are
+  neither effectively read nor locally saved. Feed detail has no first-seen date
+  window but shares the read/save exclusion. Archive and Saved views have separate
+  inclusion rules.
+- **Scope / precedence:** first-seen windowing applies only to period surfaces; shared
+  visibility filtering also applies to Feed detail. Explicit bearer include flags are
+  the supported collection exception.
+- **Executable evidence:** `test_digest_views.py` and
+  `test_article_state_propagation.py` cross-surface visibility tests.
+- **Known violation status:** **Conformant**.
+- **Source / feature IDs:** `feeds/views.py`, `feeds/api.py`; WEB-002–WEB-006,
+  WEB-011, API-001, API-006–API-007.
+
+### READ-INV-003 — Explicit unread is the final read-precedence override
+
+- **Normative current contract:** effective read is explicit true plus eligible bulk
+  markers, minus explicit false. A bulk action overwrites an existing explicit-unread
+  row to true; a later individual unread overrides the durable marker.
+- **Scope / precedence:** applies to session and bearer individual/bulk operations and
+  all read projections.
+- **Executable evidence:** `test_digest_views.py` bulk-overwrite coverage and
+  `test_article_state_propagation.py` later-unread and adapter-parity coverage.
+- **Known violation status:** **Conformant**.
+- **Source / feature IDs:** `feeds/views.py`, `feeds/api.py`; WEB-008–WEB-011,
+  API-008, API-010, API-013.
+
+### READ-INV-004 — Bulk cutoff includes equality, not later arrivals
+
+- **Normative current contract:** a bulk marker affects only matching Articles with
+  `fetched_at <= marked_read_at`; exact equality is eligible and any later first-seen
+  time remains unread until another action.
+- **Scope / precedence:** Feed and period markers in effective-read calculation and
+  materialization share the same cutoff.
+- **Executable evidence:** `test_behavioral_contracts.py::test_bulk_cutoff_includes_exact_equality_and_excludes_later_fetches`
+  and `test_digest_views.py::test_bulk_read_marker_does_not_hide_articles_fetched_later`.
+- **Known violation status:** **Conformant**.
+- **Source / feature IDs:** `feeds/views.py`, `feeds/api.py`; WEB-009–WEB-011,
+  API-010, API-013.
+
+### READ-INV-005 — Repeating a logical bulk action advances one marker
+
+- **Normative current contract:** repeating the same user/scope/feed-or-date action
+  upserts its logical marker and replaces `marked_read_at`, extending the cutoff;
+  current matching explicit states are materialized again.
+- **Scope / precedence:** session, bearer, and signed implementations share logical
+  behavior, although their transaction boundaries differ.
+- **Executable evidence:** `test_digest_views.py::test_mark_period_read_updates_existing_marker_timestamp`
+  and state-propagation Feed-marker tests.
+- **Known violation status:** **Conformant** for sequential valid markers.
+- **Source / feature IDs:** `feeds/views.py`, `feeds/api.py`, `feeds/models.py`;
+  WEB-009–WEB-011, API-010, API-013, API-018.
+
+### READ-INV-006 — Marker shape, uniqueness, and write atomicity are durable
+
+- **Normative current contract:** Feed markers have a Feed and no dates; period markers
+  have ordered dates and no Feed; each logical marker is unique. Explicit-state
+  materialization and marker upsert should commit or roll back together.
+- **Scope / precedence:** database shape applies to all writers. Bearer and signed
+  commands are atomic; session bulk commands currently are not.
+- **Executable evidence:** four unchanged `expectedFailure` tests in
+  `test_known_correctness_failures.py`; API rollback injection in
+  `test_api_validation.py`.
+- **Known violation status:** **Known violation** — database checks/logical nullable
+  uniqueness are absent, and session bulk paths lack an encompassing transaction.
+- **Source / feature IDs:** `feeds/models.py`, `feeds/views.py`, `feeds/api.py`;
+  WEB-009, WEB-010, WEB-019, API-010, API-013.
+
+## Save invariants
+
+### SAVE-INV-001 — Re-save is a timestamp-preserving local upsert
+
+- **Normative current contract:** one SavedArticle exists per user/Article. Re-save
+  keeps its primary key and original `saved_at`, refreshes Article/Feed/Category
+  snapshots, updates `updated_at`, and retries Linkding.
+- **Scope / precedence:** browser, bearer, and signed saves call the domain service;
+  direct ORM/admin writes are outside service orchestration.
+- **Executable evidence:** `test_behavioral_contracts.py::test_repeated_save_keeps_one_row_and_saved_at_but_refreshes_snapshots`.
+- **Known violation status:** **Conformant** for sequential saves.
+- **Source / feature IDs:** `feeds/models.py`, `feeds/services.py`; SAVE-001–SAVE-003,
+  API-009, API-018.
+
+### SAVE-INV-002 — Read and save states are independent
+
+- **Normative current contract:** a user may have read and saved state simultaneously;
+  either hides an Article from normal queues. Unsave removes only local saved state
+  and preserves effective read state.
+- **Scope / precedence:** every projection and mutation adapter must report both flags
+  from their independent stores.
+- **Executable evidence:** `test_article_state_propagation.py` combined transitions and
+  `test_known_correctness_failures.py::test_unsave_preserves_true_read_state_in_response`.
+- **Known violation status:** **Conformant**.
+- **Source / feature IDs:** `feeds/models.py`, `feeds/views.py`, `feeds/api.py`;
+  WEB-011, SAVE-001, SAVE-004, API-008–API-009.
+
+### SAVE-INV-003 — Local save survives Linkding failure
+
+- **Normative current contract:** local state commits before synchronous Linkding I/O.
+  Exact returned URL confirms success; missing credentials, request/HTTP/JSON errors,
+  or URL mismatch persist `linkding_saved=false` plus an error. Unsave is local only.
+- **Scope / precedence:** local visibility follows the local row regardless of remote
+  success; adapters must not treat remote failure as no local save.
+- **Executable evidence:** `test_article_actions.py` exact payload/URL tests and
+  `test_article_state_propagation.py` local-failure visibility tests.
+- **Known violation status:** **Conformant**; timeout-after-remote-success remains an
+  acknowledged integration ambiguity.
+- **Source / feature IDs:** `feeds/services.py`; SAVE-002–SAVE-004, API-009.
+
+### SAVE-INV-004 — Newsletter save denial is domain-owned
+
+- **Normative current contract:** a persisted NewsletterIssue makes its Article
+  unsaveable through browser, bearer, signed, domain-service, and admin-form paths;
+  rejection performs no local or Linkding write.
+- **Scope / precedence:** a fresh persisted capability check overrides stale prefetched
+  state and adapter affordances. Direct ORM writes remain outside enforcement.
+- **Executable evidence:** `test_newsletter_save_policy.py` adapter/domain/admin matrix.
+- **Known violation status:** **Conformant** at covered boundaries.
+- **Source / feature IDs:** `feeds/services.py`, `feeds/admin.py`; AUTH-005, NEWS-005,
+  SAVE-001–SAVE-003, API-005, API-009, API-018.
+
+## Newsletter invariants
+
+### NEWS-INV-001 — Sequential MessageID replay is idempotent
+
+- **Normative current contract:** `MessageID`/`MessageId` identifies a NewsletterIssue;
+  sequential replay returns the existing issue with HTTP 200 and `created:false`
+  without another Article.
+- **Scope / precedence:** Postmark adapter status mirrors the domain result; database
+  uniqueness is the final identity boundary.
+- **Executable evidence:** `test_newsletters.py::test_webhook_dedupes_by_message_id`.
+- **Known violation status:** **Conformant** sequentially; concurrent replay is not
+  established.
+- **Source / feature IDs:** `feeds/services.py`, `feeds/api.py`, `feeds/models.py`;
+  NEWS-001, API-017.
+
+### NEWS-INV-002 — Newsletter creation is all-or-nothing
+
+- **Normative current contract:** new synthetic Feed (if needed), Article, and
+  NewsletterIssue should commit as one idempotent unit, with no orphan on failure.
+- **Scope / precedence:** applies to domain service and webhook retries, including
+  failures after Article insertion.
+- **Executable evidence:** unchanged expected failure
+  `test_known_correctness_failures.py::test_postmark_issue_failure_rolls_back_article`.
+- **Known violation status:** **Known violation** — writes are not in one transaction;
+  the current expected failure asserts the Article leak and does not fully prove Feed
+  rollback or concurrent safety.
+- **Source / feature IDs:** `feeds/services.py`; NEWS-002, API-017.
+
+### NEWS-INV-003 — Synthetic Feed activity is creation-sensitive
+
+- **Normative current contract:** creating the synthetic “Email Newsletters” Feed sets
+  it inactive so refresh ignores it; reusing an existing synthetic Feed preserves its
+  active state. Newsletter Articles remain visible by first-seen window regardless.
+- **Scope / precedence:** `get_or_create` defaults apply only on creation; ingestion
+  must not silently rewrite an existing operator state.
+- **Executable evidence:** two synthetic-Feed tests in `test_behavioral_contracts.py`
+  and Today rendering in `test_newsletters.py`.
+- **Known violation status:** **Conformant**.
+- **Source / feature IDs:** `feeds/services.py`, `feeds/views.py`; NEWS-001, WEB-002,
+  ING-007.
+
+### NEWS-INV-004 — Public newsletter GET is display-only
+
+- **Normative current contract:** anonymous UUID detail GET renders sanitized public
+  archive content with noindex and creates no read, save, preference, or open-event
+  state. “Open” is navigation, not analytics.
+- **Scope / precedence:** authenticated rendering may lazily create preferences and
+  show current read state, but GET still does not mark read or save.
+- **Executable evidence:** `test_behavioral_contracts.py::test_public_newsletter_get_creates_no_read_save_preference_or_open_state`
+  and sanitization tests in `test_newsletters.py`.
+- **Known violation status:** **Conformant**.
+- **Source / feature IDs:** `feeds/views.py`, `feeds/services.py`; NEWS-003–NEWS-005.
+
+### NEWS-INV-005 — Postmark accepts a deliberately minimal current schema
+
+- **Normative current contract:** after POST and secret checks, only a truthy
+  `MessageID`/`MessageId` is required. Other fields are optional/string-coerced;
+  subject defaults, invalid/missing date becomes now, and model `full_clean()` is not
+  called. Adapter 422 mapping is not proof of payload/model validation.
+- **Scope / precedence:** strict JSON-object parsing still applies before the service;
+  this invariant describes service semantics after parsing.
+- **Executable evidence:** `test_behavioral_contracts.py::test_postmark_persists_invalid_emails_without_model_clean`
+  proves invalid email strings persist successfully and that calling `full_clean()` on
+  the stored issue then raises `ValidationError`; mocked adapter-error mappings remain
+  in `test_api_validation.py`.
+- **Known violation status:** **Conformant current fact**; this records permissiveness,
+  not a recommendation.
+- **Source / feature IDs:** `feeds/services.py`, `feeds/api.py`; NEWS-001, API-004,
+  API-017.
+
+## Feed and OPML invariants
+
+### FEED-INV-001 — Only active, retry-eligible Feeds refresh
+
+- **Normative current contract:** refresh enumerates active Feeds only. A future
+  `next_retry_at` produces a skipped result without attempt changes; equality is
+  eligible and each Feed is evaluated when reached.
+- **Scope / precedence:** worker, browser, and bearer refresh adapters share the same
+  service behavior.
+- **Executable evidence:** `test_behavioral_contracts.py::test_refresh_excludes_inactive_feeds`
+  and backoff/due-time tests in `test_feed_refresh.py`.
+- **Known violation status:** **Conformant** sequentially; overlapping callers have no
+  ownership/fencing.
+- **Source / feature IDs:** `feeds/services.py`; ING-007–ING-009, API-016.
+
+### FEED-INV-002 — Repeated same-GUID refresh updates in place
+
+- **Normative current contract:** refreshing the same `(feed, guid)` returns one
+  Article, reports `updated` rather than `created`, preserves original `fetched_at`,
+  and refreshes metadata/`updated_at`.
+- **Scope / precedence:** holds where the incoming URL does not trigger the separate
+  stable-URL/new-GUID violation.
+- **Executable evidence:** `test_behavioral_contracts.py::test_repeated_refresh_updates_one_article_without_resetting_first_seen`.
+- **Known violation status:** **Conformant** for same-GUID sequential refresh.
+- **Source / feature IDs:** `feeds/services.py`, `feeds/models.py`; DATA-INV-001,
+  DATA-INV-002, ING-005.
+
+### FEED-INV-003 — Feed soft-delete preserves content
+
+- **Normative current contract:** bearer Feed DELETE sets `is_active=false`, excludes
+  future refresh, and preserves its Articles for historical/read surfaces.
+- **Scope / precedence:** applies only to bearer resource DELETE; ORM deletion still
+  cascades under DATA-INV-004.
+- **Executable evidence:** `test_behavioral_contracts.py::test_api_soft_delete_preserves_content_and_orm_deletes_cascade`.
+- **Known violation status:** **Conformant**.
+- **Source / feature IDs:** `feeds/api.py`, `feeds/services.py`; API-012, ING-002,
+  ING-007.
+
+### FEED-INV-004 — OPML import upserts by URL and reactivates
+
+- **Normative current contract:** import updates one Feed selected by exact `feed_url`,
+  refreshes title/site/category, and sets `is_active=true`; repeated import does not
+  duplicate the Feed.
+- **Scope / precedence:** imported values replace stored values, including category;
+  this precedence is why flat export is destructive under FEED-INV-005.
+- **Executable evidence:** `test_opml.py` update test and
+  `test_behavioral_contracts.py::test_opml_reimport_reactivates_existing_feed`.
+- **Known violation status:** **Conformant**.
+- **Source / feature IDs:** `feeds/services.py`; ING-011.
+
+### FEED-INV-005 — OPML category round trip preserves classification
+
+- **Normative current contract:** export followed by import should preserve active
+  Feed title, source URL, site URL, and Category classification.
+- **Scope / precedence:** applies to the repository's own export imported without
+  external modification.
+- **Executable evidence:** expected failure
+  `test_behavioral_contracts.py::test_opml_export_import_round_trip_preserves_category`.
+- **Known violation status:** **Known violation** — export is flat and re-import clears
+  existing categories.
+- **Source / feature IDs:** `feeds/services.py`; ING-011, ING-013.
+
+### FEED-INV-006 — OPML category reuse respects unique name and slug
+
+- **Normative current contract:** importing a parent category name that already exists
+  must reuse it even when its slug differs from the newly generated slug, without a
+  duplicate-name error.
+- **Scope / precedence:** Category's unique name and unique slug both constrain import;
+  existing exact name is the reusable identity for this case.
+- **Executable evidence:** expected failure
+  `test_behavioral_contracts.py::test_opml_reuses_same_name_category_with_different_slug`.
+- **Known violation status:** **Known violation** — lookup begins by generated slug and
+  attempts a duplicate unique name.
+- **Source / feature IDs:** `feeds/services.py`, `feeds/models.py`; ING-002, ING-011.
+
+## API authentication, input, schema, and capability invariants
+
+### API-AUTH-INV-001 — Matched bearer routes enforce method before authentication
+
+- **Normative current contract:** unsupported methods return JSON 405 before token
+  processing; supported methods require authentication before query, body, schema,
+  lookup, or mutation validation.
+- **Scope / precedence:** applies after URL resolution. Postmark and signed endpoints
+  follow analogous method-before-secret/signature ordering.
+- **Executable evidence:** `test_behavioral_contracts.py::test_bearer_method_precedes_auth_and_auth_precedes_validation`
+  and `test_api_validation.py` method matrices.
+- **Known violation status:** **Conformant** on matched routes.
+- **Source / feature IDs:** `feeds/api.py`; API-003, API-017, API-018.
+
+### API-AUTH-INV-002 — Token compatibility and use timestamp are stable
+
+- **Normative current contract:** case-insensitive `Bearer` and compatibility `Token`
+  schemes authenticate only an active token for an active user. Successful
+  authentication updates `last_used_at` before endpoint validation, even if the
+  endpoint later rejects input.
+- **Scope / precedence:** `last_used_at` is authentication-attempt evidence, not
+  successful-operation audit.
+- **Executable evidence:** bearer compatibility/inactive-principal and timestamp tests
+  in `test_behavioral_contracts.py`.
+- **Known violation status:** **Conformant**.
+- **Source / feature IDs:** `feeds/api.py`, `feeds/models.py`; API-002, API-003.
+
+### API-INPUT-INV-001 — Structured input is strict after authentication
+
+- **Normative current contract:** nonempty structured bodies require UTF-8 JSON objects
+  and JSON media types; duplicate keys, nonobjects, nonstandard constants, unknown
+  fields, wrong primitive types, unknown/repeated queries, and semantic bodies on
+  bodyless operations are rejected. Zero-field multipart is a compatibility exception.
+- **Scope / precedence:** authentication timestamp may precede rejection; endpoint
+  validation precedes domain writes.
+- **Executable evidence:** comprehensive matrices in `test_api_validation.py`.
+- **Known violation status:** **Conformant** on matched routes.
+- **Source / feature IDs:** `feeds/api.py`, `feeds/api_validation.py`; API-004,
+  API-007–API-018.
+
+### API-SCHEMA-INV-001 — Shared semantic values are canonical
+
+- **Normative current contract:** dates are canonical ISO and ordered; booleans are
+  native JSON/lowercase query values; database IDs are positive signed 64-bit; URLs
+  are credential-free HTTP(S); interest score is finite 0–5.
+- **Scope / precedence:** applies to fields that reach shared validators. ORM/admin
+  writes and path resolution are separate boundaries.
+- **Executable evidence:** `test_api_validation.py` type/range/date/URL matrices and
+  native-false regressions in `test_known_correctness_failures.py`.
+- **Known violation status:** **Conformant** for reached validators.
+- **Source / feature IDs:** `feeds/api_validation.py`; API-004, API-007–API-015.
+
+### API-SCHEMA-INV-002 — Negative path IDs use API auth and JSON validation
+
+- **Normative current contract:** API-shaped negative resource IDs should remain inside
+  the API boundary: unsupported/missing auth precedence remains stable and an
+  authenticated negative ID is a JSON validation error, not an HTML resolver page.
+- **Scope / precedence:** bearer Article and Feed ID paths; this rule deliberately
+  identifies the URL converter as part of the public API contract.
+- **Executable evidence:** expected failure
+  `test_behavioral_contracts.py::test_negative_path_ids_use_auth_and_json_validation_envelopes`
+  sends valid JSON to read/save resources and a truly empty body to bodyless Feed GET
+  and mark-read resources, isolating router/auth/ID-envelope behavior.
+- **Known violation status:** **Known violation** — Django's unsigned `<int:…>` route
+  fails before authentication and returns HTML 404.
+- **Source / feature IDs:** `feeds/urls.py`, `feeds/api_validation.py`; API-003,
+  API-004, API-008–API-009, API-012–API-013.
+
+### API-CAP-INV-001 — Representations carry exact per-Article actions
+
+- **Normative current contract:** every v1 Article has capabilities and concrete
+  actions. Ordinary Articles advertise exact `/api/v1/articles/<id>/read/` and
+  `/saved/` URLs; newsletter Articles deny save and omit its action. Briefing retains
+  exact `{id}` templates only for compatibility.
+- **Scope / precedence:** clients must honor per-record capability over generic
+  briefing templates.
+- **Executable evidence:** exact action/template test in `test_behavioral_contracts.py`
+  and newsletter capability matrix in `test_newsletter_save_policy.py`.
+- **Known violation status:** **Conformant**.
+- **Source / feature IDs:** `feeds/api.py`, `feeds/services.py`; API-005, API-006,
+  NEWS-005.
+
+### API-CAP-INV-002 — Signed mutation capabilities are non-replayable unsafe-method actions
+
+- **Normative current contract:** a signed mutation capability should use an unsafe
+  method and be bounded by expiry or one-use state, actor/purpose binding, and a
+  revocation/audit boundary so previews and replay cannot repeat state changes.
+- **Scope / precedence:** applies to signed save-and-go and period-read actions; this
+  desired security rule takes precedence over convenience-link compatibility.
+- **Executable evidence:** architecture/catalog evidence and signed action tests prove
+  the required controls are absent; no passing non-replayability test exists.
+- **Known violation status:** **Known violation** — current links mutate through
+  deterministic, non-expiring, replayable GET requests.
+- **Source / feature IDs:** `feeds/api.py`; API-018, API-019.
+
+### API-COMPAT-INV-001 — Legacy digest remains behind session and CSRF middleware
+
+- **Normative current contract:** the legacy digest uses session auth and no v1 error
+  envelope. Its view is method/query/body agnostic, but CSRF middleware rejects unsafe
+  requests without a valid token; safe and CSRF-valid unsafe methods reach JSON.
+- **Scope / precedence:** middleware runs before the permissive view. This is a legacy
+  characterization, not permission for v1 endpoints to loosen methods.
+- **Executable evidence:** `test_behavioral_contracts.py::test_legacy_digest_is_method_agnostic_after_session_and_csrf_boundary`.
+- **Known violation status:** **Conformant current fact**.
+- **Source / feature IDs:** `feeds/views.py`, `daily_firehose/settings.py`; API-001,
+  AUTH-003.
+
+### API-COMPAT-INV-002 — Signed GET semantics are a current compatibility fact
+
+- **Normative current contract:** current signed links accept GET only, authenticate a
+  deterministic HMAC bound to the exact Article ID or raw period scope, execute as one
+  configured active user, and check method then signature then semantic input.
+- **Scope / precedence:** this characterizes compatibility until API-CAP-INV-002 is
+  implemented; it does not make replayability the desired security norm.
+- **Executable evidence:** signed happy-path and precedence tests in `test_api.py` and
+  `test_api_validation.py`.
+- **Known violation status:** **Conformant current fact** — GET/replay behavior matches
+  implementation while separately violating API-CAP-INV-002.
+- **Source / feature IDs:** `feeds/api.py`; API-018, API-019.
+
+## Progressive enhancement, accessibility, and mobile invariants
+
+### UI-INV-001 — Article mutations work without JavaScript
+
+- **Normative current contract:** read/save controls are native CSRF POST forms; JS
+  enhances only marked forms and server persistence remains authoritative.
+- **Scope / precedence:** network/schema errors retain the card and native redirect
+  behavior is the fallback.
+- **Executable evidence:** request suites for native/AJAX behavior and target-removal
+  Playwright tests.
+- **Known violation status:** **Conformant** for covered paths.
+- **Source / feature IDs:** `templates/feeds/includes/article_card.html`,
+  `static/js/article-actions.js`; WEB-008, WEB-012, SAVE-003.
+
+### UI-INV-002 — Accessibility baseline is shared across responsive surfaces
+
+- **Normative current contract:** base-derived pages provide skip-to-main, focusable
+  main, labeled navigation/cards/dialog, semantic headings, native controls, visible
+  focus, and live status/error regions.
+- **Scope / precedence:** shared template semantics apply across desktop/mobile; each
+  specialized surface may add labels but must not remove the baseline.
+- **Executable evidence:** template assertions and Today Playwright geometry/action
+  tests.
+- **Known violation status:** **Conformant baseline**; no assistive-technology/axe
+  proof, help focus trap, or removal-focus contract exists.
+- **Source / feature IDs:** `templates/base.html`, `static/css/site.css`,
+  `static/js/article-actions.js`; WEB-001, WEB-007, WEB-012–WEB-014, WEB-021.
+
+### UI-INV-003 — Mobile and desktop share Article identity and state
+
+- **Normative current contract:** server data does not fork by User-Agent; Today card
+  IDs match desktop, 390×844, 320×844, legacy JSON, and reload. A mobile mutation
+  removes only its target and persistence survives reload.
+- **Scope / precedence:** responsive CSS changes presentation only, never query/state
+  semantics.
+- **Executable evidence:** `test_mobile_today_browser.py` and Today User-Agent parity
+  in `test_digest_views.py`.
+- **Known violation status:** **Conformant** for Chrome Today; other surfaces/browsers
+  remain uncharacterized.
+- **Source / feature IDs:** `feeds/views.py`, `static/css/site.css`; WEB-002, WEB-020,
+  API-001.
+
+### UI-INV-004 — Authenticated GET responses are private and non-storable
+
+- **Normative current contract:** every authenticated session, legacy JSON, and bearer
+  GET response should emit at least `Cache-Control: private, no-store`, including
+  authenticated newsletter rendering and authenticated OPML export, so caches cannot
+  reuse state or authenticated content across users.
+- **Scope / precedence:** anonymous public newsletter detail is explicitly excluded;
+  authenticated-response safety overrides whether a particular payload (such as OPML)
+  is global rather than personalized.
+- **Executable evidence:** expected failure
+  `test_behavioral_contracts.py::test_all_authenticated_get_responses_are_private_no_store`
+  first asserts every route returns 200 before checking headers. The public newsletter
+  test separately proves anonymous rendering is outside this policy; Today's narrower
+  passing assertion remains in `test_digest_views.py`.
+- **Known violation status:** **Known violation** — Today is protected, but the other
+  characterized authenticated surfaces lack the contract.
+- **Source / feature IDs:** `feeds/views.py`, `feeds/api.py`; WEB-002–WEB-006,
+  WEB-016, ING-013, API-001, API-003, API-006–API-007.
+
+### UI-INV-005 — Browser mutation redirects remain same-origin
+
+- **Normative current contract:** posted `next` destinations on refresh, individual
+  mark, save, period mark, and Feed mark handlers must be validated as same-origin or
+  replaced by a safe local fallback before redirecting.
+- **Scope / precedence:** applies to all five session mutation handlers; successful
+  state mutation does not authorize navigation to an attacker-controlled origin.
+- **Executable evidence:** unchanged expected failure
+  `test_known_correctness_failures.py::test_mark_article_rejects_external_next_redirect`
+  characterizes one handler; the same direct `request.POST.get("next")` pattern is
+  source-evidenced in the other four handlers.
+- **Known violation status:** **Known violation** — all five handlers directly redirect
+  untrusted `next` values.
+- **Source / feature IDs:** `feeds/views.py`; WEB-018, WEB-008–WEB-010, SAVE-003,
+  ING-008.
+
+## Observability and recovery invariants
+
+### OPS-INV-001 — Refresh outcomes are safe and diagnosable
+
+- **Normative current contract:** every attempted Feed produces a bounded safe result
+  and completion log with identity, status, duration, write counts or error code,
+  failure count, and retry time; unexpected exceptions include a traceback without
+  exposing it to user/API payloads.
+- **Scope / precedence:** worker, browser, and bearer summaries derive from the same
+  results; skipped Feeds remain distinguishable from failures.
+- **Executable evidence:** service logging/sanitization, browser summary, and API
+  result tests in `test_feed_refresh.py` and `test_api.py`.
+- **Known violation status:** **Conformant** for result/log diagnostics; no metrics,
+  correlation, retention, or alerting exists. Process exit signaling is separated as
+  OPS-INV-005.
+- **Source / feature IDs:** `feeds/services.py`, browser/API refresh adapters;
+  ING-007–ING-009, API-016, OPS-011.
+
+### OPS-INV-002 — Running status proves semantic web and worker health
+
+- **Normative current contract:** health/readiness should prove HTTP handling, database
+  access, migration readiness, and recent successful worker progress rather than only
+  process/TCP existence.
+- **Scope / precedence:** Compose health and operator verification must detect a stale
+  or hung refresh worker.
+- **Executable evidence:** architecture and the 2026-08-11 ingestion incident document
+  the absence; no passing health test exists.
+- **Known violation status:** **Known violation** — web health is TCP-only and the
+  worker has no healthcheck/heartbeat.
+- **Source / feature IDs:** `docker-compose.yml`,
+  `docs/incidents/2026-08-11-mobile-today-empty.md`; OPS-008, OPS-014.
+
+### OPS-INV-003 — Deployment fails before application restart on unsafe state
+
+- **Normative current contract:** canonical deployment uses the documented checkout,
+  preserves secrets/volume, starts DB, builds and runs deploy checks, proves a real DB
+  connection, then rebuilds/recreates application services. Failed preflight stops.
+- **Scope / precedence:** this is the normal production deployment path; it does not
+  waive migration-specific backup/reversal needs.
+- **Executable evidence:** production settings/deploy checks and operator commands in
+  `AGENTS.md` and `README.md`.
+- **Known violation status:** **Conformant as documented procedure**; execution is
+  manual rather than CI-enforced.
+- **Source / feature IDs:** `AGENTS.md`, `README.md`; OPS-009, OPS-010, OPS-013.
+
+### OPS-INV-004 — Durable data has a verified recovery path
+
+- **Normative current contract:** production data needs scheduled backup creation,
+  retention, off-host protection, integrity verification, defined RPO/RTO, and a
+  practiced restore path before destructive migrations or host loss.
+- **Scope / precedence:** a Docker named volume is persistence, not a backup; code
+  rollback does not reverse schema/data changes.
+- **Executable evidence:** no executable backup/restore drill exists; architecture and
+  catalog explicitly record the gap.
+- **Known violation status:** **Known violation** — repository evidence defines no
+  backup capability or restore drill.
+- **Source / feature IDs:** `docker-compose.yml`, `README.md`; OPS-002, OPS-013,
+  OPS-014.
+
+### OPS-INV-005 — Failed refresh commands signal failure to supervision
+
+- **Normative current contract:** a management-command refresh cycle with one or more
+  attempted Feed failures should exit nonzero after reporting all per-Feed outcomes,
+  allowing shell/container supervision to distinguish degradation from success.
+- **Scope / precedence:** backoff skips alone are not attempted failures; failure
+  isolation and complete diagnostics must be retained before the nonzero exit.
+- **Executable evidence:** command-output tests in `test_feed_refresh.py` prove the
+  warning/summary, while command source and architecture show no `CommandError` or
+  nonzero status.
+- **Known violation status:** **Known violation** — failed refresh cycles currently
+  print warnings and exit successfully.
+- **Source / feature IDs:** `feeds/management/commands/refresh_feeds.py`; ING-009,
+  ING-010, OPS-011.
+
+## Traceability matrix
+
+This post-snapshot companion maps the **current suite: 16 test modules, 212 test
+methods, and 12 expected failures**. The pinned catalog retains its independent
+15/191/8 snapshot counts.
+
+| Invariant group | Stable invariant IDs | Primary executable evidence | Feature catalog IDs |
+| --- | --- | --- | --- |
+| Data | DATA-INV-001–004 | `test_feed_refresh.py`, `test_article_state_propagation.py`, `test_behavioral_contracts.py` | ING-002, ING-005–006, WEB-004–011, API-012, SAVE-001 |
+| Read | READ-INV-001–006 | `test_digest_views.py`, `test_article_state_propagation.py`, `test_api_validation.py`, `test_known_correctness_failures.py`, `test_behavioral_contracts.py` | WEB-002–011, WEB-019, API-007–010, API-013, API-018 |
+| Save | SAVE-INV-001–004 | `test_article_actions.py`, `test_article_state_propagation.py`, `test_newsletter_save_policy.py`, `test_behavioral_contracts.py` | AUTH-005, NEWS-005, SAVE-001–004, API-005, API-009, API-018 |
+| Newsletter | NEWS-INV-001–005 | `test_newsletters.py`, `test_newsletter_save_policy.py`, `test_api_validation.py`, `test_known_correctness_failures.py`, `test_behavioral_contracts.py` | NEWS-001–005, API-004, API-017 |
+| Feed/OPML | FEED-INV-001–006 | `test_feed_refresh.py`, `test_opml.py`, `test_behavioral_contracts.py` | ING-002, ING-005, ING-007–013, API-012, API-016 |
+| API auth/input/schema/capability | API-AUTH-INV-001–002, API-INPUT-INV-001, API-SCHEMA-INV-001–002, API-CAP-INV-001–002, API-COMPAT-INV-001–002 | `test_api.py`, `test_api_validation.py`, `test_newsletter_save_policy.py`, `test_behavioral_contracts.py` | AUTH-003, API-001–019 |
+| Progressive/a11y/mobile | UI-INV-001–005 | `test_article_actions.py`, `test_digest_views.py`, `test_mobile_today_browser.py`, `test_known_correctness_failures.py`, `test_behavioral_contracts.py` | WEB-001–002, WEB-007–010, WEB-012–014, WEB-018, WEB-020–021, ING-008, SAVE-003, API-001 |
+| Observability/recovery | OPS-INV-001–005 | `test_feed_refresh.py`, `test_api.py`, `test_production_settings.py`; documented manual evidence where automation is absent | ING-007–010, API-016, OPS-002, OPS-008–014 |
+
+## Expected-failure ledger
+
+The current suite contains **12 expected failures**: the catalog snapshot's eight
+expected-failure identities remain represented (with the changed-GUID assertion now
+requiring exactly one reconciled Article), and `test_behavioral_contracts.py` adds
+four narrow cross-feature characterizations:
+
+1. `test_opml_export_import_round_trip_preserves_category` — FEED-INV-005.
+2. `test_opml_reuses_same_name_category_with_different_slug` — FEED-INV-006.
+3. `test_all_authenticated_get_responses_are_private_no_store` — UI-INV-004.
+4. `test_negative_path_ids_use_auth_and_json_validation_envelopes` — API-SCHEMA-INV-002.
+
+A green run means acknowledged failures were observed; it does not mean these
+invariants conform. Unexpected success is a suite failure and requires removing the
+marker only after the fixed contract and documentation are reviewed.
+
+## Maintenance protocol
+
+For every change that can alter a cross-feature invariant:
+
+1. Identify affected invariant and feature IDs before editing. Preserve existing ID
+   meaning; add a new ID for a distinct rule and mark a superseded ID as retired.
+2. Update **all five fields** in each affected invariant: normative contract,
+   scope/precedence, executable evidence, violation status, and source/feature IDs.
+3. Add deterministic evidence at the lowest shared boundary, plus adapter tests where
+   precedence or representation differs. Avoid live providers, real clocks, and
+   order-dependent assertions.
+4. Never turn a known violation into **Conformant** while its expected-failure marker
+   remains. A fix removes the marker, makes the normative assertion pass, updates the
+   expected-failure ledger/counts, and updates catalog/architecture/README drift in the
+   same change.
+5. Update the traceability matrix when a module or feature mapping changes. Keep
+   operational claims bounded to repository evidence; never imply backups, alerts,
+   deployment, or provider validation that was not executed.
+6. Run the full Django suite and verify exact expected-failure count, Ruff/format,
+   mypy, pre-commit, Markdown/link diagnostics, mechanical invariant and catalog
+   counts, Django checks/migration checks, Compose rendering where available, and a
+   staged-file/diff review. Published documentation must not reference ignored/private
+   audit artifacts or contain credentials.
+
+Mechanical invariant check:
+
+```bash
+python - <<'PY'
+from collections import Counter
+from pathlib import Path
+import ast
+import re
+
+text = Path("docs/features/contracts.md").read_text()
+ids = re.findall(r"^### ([A-Z]+(?:-[A-Z]+)*-INV-\d{3}) —", text, re.M)
+assert len(ids) == len(set(ids)) == 44
+blocks = re.split(r"^### [A-Z]+(?:-[A-Z]+)*-INV-\d{3} —.*$", text, flags=re.M)[1:]
+required = ("Normative current contract", "Scope / precedence", "Executable evidence",
+            "Known violation status", "Source / feature IDs")
+assert all(all(label in block for label in required) for block in blocks)
+statuses = Counter("Known violation" if "**Known violation**" in block else "Conformant"
+                   for block in blocks)
+assert statuses == Counter({"Conformant": 32, "Known violation": 12})
+test_paths = list(Path("feeds/tests").glob("test_*.py"))
+methods = expected = 0
+for path in test_paths:
+    tree = ast.parse(path.read_text())
+    methods += sum(1 for node in ast.walk(tree)
+                   if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                   and node.name.startswith("test_"))
+    expected += sum(1 for node in ast.walk(tree)
+                    if isinstance(node, ast.FunctionDef)
+                    and any(isinstance(d, ast.Name) and d.id == "expectedFailure"
+                            for d in node.decorator_list))
+assert (len(test_paths), methods, expected) == (16, 212, 12)
+print(len(ids), statuses, len(test_paths), methods, expected)
+PY
+```
