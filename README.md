@@ -70,11 +70,15 @@ The integration runner starts a disposable Compose PostgreSQL 17 service on an
 ephemeral loopback port, runs the complete Django suite with the opt-in
 `daily_firehose.test_settings_postgresql` module, and always removes its
 container, network, and tmpfs-backed data. It never uses the production Compose
-file or volume. PostgreSQL-only `TransactionTestCase` coverage uses distinct
-worker connections and bounded barriers/events; injected write failures are
-labeled transaction-boundary tests, not concurrency tests. Pass normal Django
-test options (for example `--verbosity 2`) to the script. Override only the
-bounded startup wait with `POSTGRES_TEST_WAIT_TIMEOUT_SECONDS` when necessary.
+file or volume. Before Django starts, the script clears inherited `DJANGO_ENV`,
+`DJANGO_DEBUG`, `DATABASE_URL`, and base `POSTGRES_*` variables, then supplies
+only the opt-in test settings and `POSTGRES_TEST_*` connection. PostgreSQL-only
+`TransactionTestCase` coverage uses distinct worker connections, bounded
+barriers/events, and 5-second PostgreSQL statement/lock timeouts; injected write
+failures are labeled transaction-boundary tests, not concurrency tests. Pass
+normal Django test options (for example `--verbosity 2`) to the script. Override
+only the bounded startup wait with `POSTGRES_TEST_WAIT_TIMEOUT_SECONDS` when
+necessary.
 
 Browser screenshots and DOM snapshots are written to the ignored
 `test-artifacts/playwright/` directory only when a browser assertion fails

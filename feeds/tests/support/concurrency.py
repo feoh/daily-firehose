@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from threading import Barrier
 
@@ -41,8 +41,25 @@ def run_concurrently[T](
         finally:
             connection.close()
 
-    with ThreadPoolExecutor(
+    executor = ThreadPoolExecutor(
         max_workers=len(workers), thread_name_prefix="postgres-race"
-    ) as executor:
-        futures = [executor.submit(invoke, worker) for worker in workers]
-        return [future.result(timeout=timeout) for future in futures]
+    )
+    futures: list[Future[ConcurrentOutcome[T]]] = [
+        executor.submit(invoke, worker) for worker in workers
+    ]
+    incomplete: set[Future[ConcurrentOutcome[T]]] = set()
+    try:
+        _, incomplete = wait(futures, timeout=timeout)
+        if incomplete:
+            raise TimeoutError(
+                f"concurrent workers exceeded the {timeout:g}-second deadline"
+            )
+        return [future.result() for future in futures]
+    finally:
+        for future in incomplete:
+            future.cancel()
+        # A context manager always waits for running workers during __exit__, which
+        # defeats the caller-visible deadline. PostgreSQL statement/lock timeouts
+        # bound database workers; cooperative non-database tests may release their
+        # worker after receiving TimeoutError.
+        executor.shutdown(wait=not incomplete, cancel_futures=bool(incomplete))

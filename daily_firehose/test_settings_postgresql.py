@@ -11,13 +11,13 @@ import os
 
 from django.core.exceptions import ImproperlyConfigured
 
-from .settings import *
-
 if os.environ.get("DAILY_FIREHOSE_POSTGRES_TEST") != "1":
     raise ImproperlyConfigured(
         "daily_firehose.test_settings_postgresql is test-only; "
         "set DAILY_FIREHOSE_POSTGRES_TEST=1 explicitly."
     )
+
+from .settings import *
 
 DATABASES = {
     "default": {
@@ -32,5 +32,10 @@ DATABASES = {
         # Each concurrency worker owns and closes its connection. Persistent
         # connections would make connection ownership less obvious in this lane.
         "CONN_MAX_AGE": 0,
+        # Bound database waits below the Python harness deadline so a blocked
+        # statement or lock cannot strand a race worker indefinitely.
+        "OPTIONS": {
+            "options": "-c statement_timeout=5000 -c lock_timeout=5000",
+        },
     }
 }

@@ -64,10 +64,16 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
         with connection.cursor() as cursor:
             cursor.execute("SHOW server_version_num")
             version_number = int(cursor.fetchone()[0])
+            cursor.execute("SHOW statement_timeout")
+            statement_timeout = cursor.fetchone()[0]
+            cursor.execute("SHOW lock_timeout")
+            lock_timeout = cursor.fetchone()[0]
 
         self.assertEqual(connection.vendor, "postgresql")
         self.assertGreaterEqual(version_number, 170000)
         self.assertLess(version_number, 180000)
+        self.assertEqual(statement_timeout, "5s")
+        self.assertEqual(lock_timeout, "5s")
 
     def test_disk_migrations_and_durable_unique_constraints_are_applied(self) -> None:
         loader = MigrationLoader(connection)

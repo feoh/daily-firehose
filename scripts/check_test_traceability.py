@@ -72,7 +72,7 @@ MECHANISMS = {
     "real Playwright browser/SQLite",
     "PostgreSQL 17 configuration",
     "migration introspection/PostgreSQL 17",
-    "model/PostgreSQL separate connection/savepoints",
+    "model/PostgreSQL transaction.atomic",
     "model/PostgreSQL separate connections/barrier",
     "service/PostgreSQL separate connections/barrier",
     "service/PostgreSQL separate connections/events",
@@ -341,7 +341,7 @@ AUDITED_LEDGER = {
     203: (
         "test_bulk_marker_shapes_are_rejected_by_database_constraints",
         "primary",
-        "model/PostgreSQL separate connection/savepoints",
+        "model/PostgreSQL transaction.atomic",
         ("WEB-019", "READ-INV-006"),
     ),
     204: (

@@ -151,11 +151,11 @@ security, or hard freshness gates.
 | `REL-OBJ-005` Other page availability and latency | Each page family defined above has eligible-event availability **≥99.5%**, semantic timeout **5s**, and p95 **≤1.5s**. Public newsletter is its own family and predicate. | Rolling 30d, 0.5% budget per family. Use the same ≥100-event p95 rule; below it, report insufficient volume and enforce 5m synthetics for critical routes plus per-synthetic 5s maximum. | Request tests and manual public/proxy curls cover selected behavior; no production route series exists. | Per-family status/latency/predicate metrics, authenticated reading/management probes, and anonymous public-newsletter probe. |
 | `REL-OBJ-006` Bearer API availability, error rate, and latency | Eligible API reads are good within **3s**, local writes within **5s**; availability **≥99.5%**, p95 reads **≤1s**, writes **≤2s**. Refresh/Linkding operations use a **20s request maximum** and separate latency families, but their eligible `4xx`/`5xx`/timeout events still count bad. | Rolling 30d, 0.5% per endpoint family; same ≥100-event p95 rule. Below minimum volume, a known-valid synthetic enforces the family maximum and p95 is `insufficient volume`. | Deterministic tests; token `last_used_at` proves auth attempt only. No production metrics exist. | Endpoint-family request/status/latency/dependency metrics and safe valid/invalid/unknown classification without credentials/bodies. |
 | `REL-OBJ-007` Authenticated cache correctness | **100%** of authenticated session, legacy JSON, bearer GET and authenticated OPML/newsletter responses emit at least `Cache-Control: private, no-store`. The public newsletter URL varies by auth: authenticated and anonymous responses both emit `Vary: Cookie`; anonymous may be cacheable only under an explicit public policy, otherwise it also uses `no-store`. Zero authenticated-to-anonymous or cross-user reuse. | Every release/continuous sample; zero budget. Probe the same newsletter UUID anonymously and authenticated and compare headers/body predicates without retaining private body data. | Today has `never_cache`; `UI-INV-004` proves other authenticated surfaces are not conformant. Public newsletter anonymous GET is display-only, but auth/cache variation is not established. | Passing all-route header matrix, same-URL anonymous/auth synthetic and cache-isolation canary. |
-| `REL-OBJ-008` Postmark acceptance and idempotency | Eligible valid webhooks are good within **10s**, availability **≥99.5%**, p95 **≤5s**; **100%** of accepted MessageIDs resolve to one complete Article/Issue. Lost response after commit resolves by replay, with no accepted ID ambiguous >24h. | Rolling 30d, 0.5% availability; zero atomicity/idempotency budget. Use p95 only at ≥100 eligible events/30d; below it, every provider-correlated event uses the 10s maximum and exact failure thresholds. | Response and Issue ID can be checked manually; sequential dedupe passes. No provider series, ambiguity state, orphan detector or concurrency proof exists. | Provider/app correlation by non-secret event ID, outcome/ambiguity/orphan/replay/race counters and PostgreSQL atomic tests. |
+| `REL-OBJ-008` Postmark acceptance and idempotency | Eligible valid webhooks are good within **10s**, availability **≥99.5%**, p95 **≤5s**; **100%** of accepted MessageIDs resolve to one complete Article/Issue. Lost response after commit resolves by replay, with no accepted ID ambiguous >24h. | Rolling 30d, 0.5% availability; zero atomicity/idempotency budget. Use p95 only at ≥100 eligible events/30d; below it, every provider-correlated event uses the 10s maximum and exact failure thresholds. | Sequential dedupe passes. The required PostgreSQL lane now forces concurrent MessageID lookups to miss and characterizes the resulting real integrity failure as an expected failure; this demonstrates the defect rather than satisfying the objective. No provider series, ambiguity state or orphan detector exists. | Provider/app correlation by non-secret event ID, outcome/ambiguity/orphan/replay/race counters and passing PostgreSQL atomic/race tests. |
 | `REL-OBJ-009` Linkding outcome and ambiguity | Local save survives **100%** of remote failures. **≥99%** of remote attempts reach definitive confirmed/failed state within **20s**; ambiguous/lost-response outcomes are **<0.1%**, never blindly retried and reconciled within 24h. | Rolling 30d; 1% definitive-outcome and 0.1% ambiguity budgets; local preservation zero budget. Low volume uses first-ambiguity notification and 24h deadline, not percentages. | Current SavedArticle boolean/error collapses definite failure and timeout-after-success; tests cover exact URL and ordinary failures. | Durable attempt/idempotency/reconciliation state and provider-aware counters, without token/header values. |
-| `REL-OBJ-010` Backup and restore | Unencrypted custom-format backups push over restricted SSH to TrueNAS at **00:00 and 12:00 UTC**, complete/verify by `+2h`, and provide **RPO ≤24h**. Missing the `+2h` completion is actionable; page when latest verified backup age reaches **20h**, and at/before **24h** stop destructive changes and contain writes until recovery. Quarterly isolated restore demonstrates **RTO ≤4h**, integrity, migration compatibility and semantic reads. | Continuous age; 90d drill. Zero budget for crossing 24h, failed integrity or missed drill. Twice-daily schedule provides ≥10h operational margin before the RPO boundary. | The direct application-host SSH push with no delete operation, receiver-controlled immutable first-receipt retention, exact effective-ZFS mount validation, 1 GiB object bound, 20 GiB dataset quota, and serialized receiver are approved and locally tested with fakes. One custom compression-9 stream measured 14.47 MiB, but no installed middleware-created account/datasets/key/receiver, production receipt-backed pair, activated jobs, independent NAS/off-site confirmation, quota alert, or drill exists. Production RPO/RTO remain unknown. | Installed restricted receiver/credentials and local maintenance, activated schedule/deadline/result/age, tested quota/off-site alerts, administrator rekey/read/restore recovery drill, independent NAS/off-site confirmation, scheduled-failure plus 20h/24h alerts, and recurring timed restore records including retrieval/cutover. |
+| `REL-OBJ-010` Backup and restore | Unencrypted custom-format backups push over restricted SSH to TrueNAS at **00:00 and 12:00 UTC**, complete/verify by `+2h`, and provide **RPO ≤24h**. Missing the `+2h` completion is actionable; page when latest verified backup age reaches **20h**, and at/before **24h** stop destructive changes and contain writes until recovery. Quarterly isolated restore demonstrates **RTO ≤4h**, integrity, migration compatibility and semantic reads. | Continuous age; 90d drill. Zero budget for crossing 24h, failed integrity or missed drill. Twice-daily schedule provides ≥10h operational margin before the RPO boundary. | The restricted TrueNAS account, exact data/control datasets, receiver/key and local maintenance are installed for the approved direct application-host SSH push with no delete operation. Receipt-backed production pair `20260811T200522Z-077caa88` was independently verified at 15,173,740 bytes with 165 manifest entries and matching hashes, then restored into isolated PostgreSQL 17/application resources in 15.384 seconds with cleanup confirmed. The timer remains disabled, so recurring RPO/RTO attainment is not established. | Activate and observe schedule/deadline/result/age controls; test quota/off-site alerts; complete administrator rekey/read/restore recovery and post-rekey application oneshot; independently confirm an off-site copy; add scheduled-failure plus 20h/24h alerts and recurring timed retrieval/cutover records. |
 | `REL-OBJ-011` Deployment verification and rollback readiness | **100%** of deploys pass deploy check, DB connection, migration/backup review, Compose state/logs, direct 301, proxy/public 302, and authenticated semantic smoke within 15m; every schema change has tested stop/rollback. | Per deploy/rolling 90d; zero skipped-gate budget. | Manual procedure and dated observation only; no durable release record or automatic rollback. | Revision-tagged gate results/durations, backup reference, smoke and explicit rollback decision. |
-| `REL-OBJ-012` 320/390/desktop parity and accessibility | Every release has identical Today Article IDs/state at desktop, 390×844 and 320×844; zero overflow; first content discoverable; target-only save/read survives reload. Shared pages have no critical automated accessibility violations and native keyboard paths work. | Every change/release; zero correctness budget, 100% matrix pass. | Chrome Today geometry/state and markup baseline only; other pages/browsers/AT/zoom/full keyboard unmeasured. | Release browser matrix, executable JS/keyboard tests, accessibility scan and periodic manual AT check. |
+| `REL-OBJ-012` 320/390/desktop parity and accessibility | Every release has identical Today Article IDs/state at desktop, 390×844 and 320×844; zero overflow; first content discoverable; target-only save/read survives reload. Shared pages have no critical automated accessibility violations and native keyboard paths work. | Every change/release; zero correctness budget, 100% matrix pass. | Chrome Today geometry/state and native no-JavaScript fallback run against live Django/SQLite; controlled-DOM Chromium executes card actions, selection, shortcuts and help behavior. Other pages/browsers/AT/zoom and live-page keyboard behavior remain unmeasured. | Release browser matrix, live-page keyboard/focus tests, accessibility scan and periodic manual AT check. |
 
 ### Alert policy and burn rates
 
@@ -309,19 +309,18 @@ a higher product score.
   migrations and semantic restore verification.
 - **Triggers:** host/disk/volume loss, operator deletion, corruption, destructive
   migration, credential recovery mistake, or ransomware/privileged compromise.
-- **Current → preferred detection:** volume/container existence plus unexecuted local
-  tooling → twice-daily scheduled result by `+2h`, verified-backup age,
-  checksum/integrity, independent off-host confirmation, 20h page, 24h containment,
+- **Current → preferred detection:** one independently checked production receipt and
+  isolated restore → twice-daily scheduled result by `+2h`, verified-backup age,
+  checksum/integrity, independent off-site confirmation, 20h page, 24h containment,
   quarterly timed restore and application read smoke.
-- **Mitigation sequence:** create the dedicated TrueNAS dataset/account through
-  supported middleware, install the root-owned persistent receiver/control files and
-  restricted authorized key, configure local maintenance plus scheduled-failure,
-  quota, 20h-age, and 24h-containment alerts, pin the NAS host key, and stage the
-  dedicated client key with systemd credentials; manually create and independently
-  confirm one NAS/off-site pair; pass an administrator rekey/read/restore drill and an
-  isolated restore; only then activate the supplied 00:00/12:00 UTC application-host
-  timer and alerts. Permit destructive migrations only after observed age and drill
-  evidence. Final all-feature rehearsal stays later and does not block this baseline.
+- **Mitigation sequence:** retain the installed middleware-created datasets/account,
+  root-owned receiver/control files, restricted key, local maintenance, pinned NAS host
+  key and staged client credential; configure and test scheduled-failure, quota,
+  20h-age, and 24h-containment alerts; independently confirm an off-site copy; pass an
+  administrator rekey/read/restore drill and post-rekey application oneshot; only then
+  activate the supplied 00:00/12:00 UTC application-host timer and alerts. Permit
+  destructive migrations only after observed age and recurring drill evidence. Final
+  all-feature rehearsal stays later and does not block this baseline.
 - **Rollback/containment:** **present:** stop application writes on suspected corruption,
   preserve volume/forensic copy, never `down -v`, and restore only to a new location
   before cutover. There is no current backup kill switch to rely on.
@@ -332,8 +331,9 @@ a higher product score.
   independently managed off-site copy. Twice-daily
   margin, dataset/access controls, quota alerts/local maintenance,
   independent NAS monitoring, and recurring drills are required.
-- **Linked Witan work:** `tk-establish-production-postgresql-backup-and-resto-01b0c1`,
-  later `tk-document-and-rehearse-backup-restore-rollback-an-3bf520`, and
+- **Linked Witan work:** baseline evidence task
+  `tk-establish-production-postgresql-backup-and-resto-01b0c1` is complete; remaining
+  work is `tk-document-and-rehearse-backup-restore-rollback-an-3bf520` and
   `tk-harden-api-operations-security-and-release-verif-5f790a`.
 
 ### REL-RISK-003 — Semantic web/database failure lacks durable detection and evidence
@@ -374,17 +374,20 @@ a higher product score.
 - **Current → preferred detection:** deploy check and DB connection before restart →
   migration plan/dry-run, verified backup reference, compatibility check, explicit
   migration job, revision-tagged smoke and rollback gate.
-- **Mitigation sequence:** enforce `REL-OBJ-010`; add PostgreSQL migration CI; require
-  expand-contract plan; separate migration from web boot after compatibility proof.
+- **Mitigation sequence:** retain the required PostgreSQL 17 lane and its forward
+  migration/catalog checks; enforce recurring `REL-OBJ-010` evidence; add migration
+  plan/rollback CI; require expand-contract plans; separate migration from web boot
+  after compatibility proof.
 - **Rollback/containment:** stop before app restart on preflight failure; preserve old
   app until additive migration succeeds; use migration-specific reversal or verified
   restore, never checkout alone.
 - **Residual risk:** PostgreSQL locks and data volume can still make a tested migration
   slower in production.
-- **Linked Witan work:** early `tk-establish-production-postgresql-backup-and-resto-01b0c1`,
-  `tk-add-foundational-continuous-integration-quality--b3ffba`, and
-  `tk-add-required-postgresql-integration-and-concurre-0719fc`; later
-  `tk-add-ci-quality-gates-coverage-ratchet-migration--3ae78f` and
+- **Linked Witan work:** completed prerequisites are
+  `tk-establish-production-postgresql-backup-and-resto-01b0c1` and
+  `tk-add-required-postgresql-integration-and-concurre-0719fc`; remaining work is
+  `tk-add-foundational-continuous-integration-quality--b3ffba`,
+  `tk-add-ci-quality-gates-coverage-ratchet-migration--3ae78f`, and
   `tk-document-and-rehearse-backup-restore-rollback-an-3bf520`.
 
 ### REL-RISK-005 — Synchronous external work can consume web serving capacity
@@ -416,16 +419,18 @@ a higher product score.
 
 - **Affected IDs/objectives:** ING-005, ING-007–ING-009, API-016; DATA-INV-001–002,
   FEED-INV-001–002; `REL-OBJ-003`.
-- **Present status/evidence:** **open-inferred**. Worker/browser/API may overlap;
-  eligibility is unlocked and a stale failure may overwrite concurrent success.
-  SQLite-heavy tests do not establish PostgreSQL concurrency behavior.
+- **Present status/evidence:** **open-demonstrated**. The required PostgreSQL lane uses
+  separate connections/events to stage an older failed refresh after a newer success;
+  the focused expected failure proves the stale failure overwrites success. The same
+  lane proves the existing failure-count row lock serializes two increments. Neither
+  result fixes missing ownership or fencing.
 - **Owner boundary:** refresh orchestration, Feed status persistence and PostgreSQL.
 - **Triggers:** manual/API refresh during worker cycle, worker restart overlap, slow
   origin, multiple web requests, or retry at a boundary.
-- **Current → preferred detection:** conflicting latest Feed fields may be noticed →
-  run/lease owner, contention/lost-lease/stale-write counters and PostgreSQL concurrent
-  test.
-- **Mitigation sequence:** add PostgreSQL CI; characterize races; additive lease/run
+- **Current → preferred detection:** deterministic PostgreSQL race characterization →
+  run/lease owner plus contention/lost-lease/stale-write counters and passing fenced
+  concurrency tests.
+- **Mitigation sequence:** retain the required PostgreSQL characterization; add lease/run
   ownership; fence status commits; only later enqueue durable work.
 - **Rollback/containment:** **present:** operators avoid browser/API refresh during the
   worker cycle and restart the single worker if overlap is suspected; no claim switch
@@ -433,21 +438,26 @@ a higher product score.
   records remain across rollback, and stale-owner writes stay fenced.
 - **Residual risk:** remote fetch may be duplicated after lease loss even if stale DB
   commit is fenced.
-- **Linked Witan work:** `tk-reconcile-article-identity-and-concurrent-refres-7a1b44`,
-  `tk-add-required-postgresql-integration-and-concurre-0719fc`.
+- **Linked Witan work:** PostgreSQL characterization task
+  `tk-add-required-postgresql-integration-and-concurre-0719fc` is complete; the defect
+  remains in `tk-reconcile-article-identity-and-concurrent-refres-7a1b44`.
 
 ### REL-RISK-007 — Postmark creation is not atomic or race-idempotent
 
 - **Affected IDs/objectives:** NEWS-001–NEWS-002, API-017; NEWS-INV-001–002;
   `REL-OBJ-008`.
 - **Present status/evidence:** **open-demonstrated**. Expected-failure evidence leaves
-  an orphan Article when Issue creation fails; concurrent MessageID replay is unproved.
+  Feed and Article writes behind when Issue creation fails. A PostgreSQL barrier forces
+  both concurrent MessageID lookups to miss and the focused expected failure proves one
+  caller receives a real integrity error. These characterize, rather than fix, both
+  defects.
 - **Owner boundary:** newsletter domain transaction and PostgreSQL uniqueness; provider
   owns delivery/retry timing.
 - **Triggers:** DB/model failure between writes, duplicate/concurrent delivery,
   process crash, synthetic Feed race, or retry after orphaning.
-- **Current → preferred detection:** adapter response and unique Issue query → orphan
-  detector, atomic outcome/replay counters, provider correlation and concurrency test.
+- **Current → preferred detection:** PostgreSQL transaction/race expected failures →
+  orphan detector, atomic outcome/replay counters, provider correlation and passing
+  concurrency test.
 - **Mitigation sequence:** detect/audit orphans; one atomic idempotent use case; race
   handling against DB uniqueness; repair command only after backup gate.
 - **Rollback/containment:** **present:** return a safe retryable error; if corruption
@@ -456,8 +466,9 @@ a higher product score.
   schema-compatible rows on code rollback.
 - **Residual risk:** provider may retry outside retention and base URL remains a separate
   configuration concern.
-- **Linked Witan work:** `tk-make-postmark-newsletter-ingestion-atomic-and-ra-e3d06e`,
-  `tk-add-required-postgresql-integration-and-concurre-0719fc`.
+- **Linked Witan work:** PostgreSQL characterization task
+  `tk-add-required-postgresql-integration-and-concurre-0719fc` is complete; the defect
+  remains in `tk-make-postmark-newsletter-ingestion-atomic-and-ra-e3d06e`.
 
 ### REL-RISK-008 — Signed GET capabilities are replayable and non-expiring
 
@@ -534,11 +545,12 @@ a higher product score.
 - **Owner boundary:** shared read command, BulkReadMarker schema and PostgreSQL.
 - **Triggers:** malformed browser/admin/direct write, concurrent same-scope action,
   failure between materialization/marker, or duplicate NULL-shaped rows.
-- **Current → preferred detection:** suite characterizations/manual DB inspection →
-  shared validation, cleanup audit, conditional constraints, rollback/concurrency
-  tests and old/new read mismatch counter.
-- **Mitigation sequence:** backup; PostgreSQL CI; dry-run audit/dedupe; shared atomic
-  command; additive checks/conditional uniqueness; dual-read compare.
+- **Current → preferred detection:** SQLite and required PostgreSQL shape/race
+  characterizations → shared validation, cleanup audit, conditional constraints,
+  passing rollback/concurrency tests and old/new read mismatch counter.
+- **Mitigation sequence:** use verified backup evidence; retain the PostgreSQL lane;
+  dry-run audit/dedupe; add shared atomic command and checks/conditional uniqueness;
+  dual-read compare.
 - **Rollback/containment:** preserve cleanup export/backup. A dual-reader comparison and
   old-reader switch are **future rollout prerequisites**, not current controls; dropping
   constraints cannot recover deleted duplicates.
@@ -701,46 +713,56 @@ a higher product score.
 - **Affected IDs/objectives:** WEB-001–WEB-002, WEB-007–WEB-008, WEB-012,
   WEB-016, WEB-020; UI-INV-001, UI-INV-003; `REL-OBJ-012`.
 - **Present status/evidence:** **partially controlled**. Today Chrome tests cover
-  320/390/desktop identity, geometry and target persistence after the incident, but
-  other surfaces, browsers, landscape, long content and full JS behavior do not.
+  320/390/desktop identity, geometry and target persistence after the incident.
+  Controlled-DOM Chromium executes production card actions/selection/shortcuts/help,
+  and live Django/SQLite proves native no-JavaScript read/save fallback. Other surfaces,
+  browsers, landscape, long content and live-page keyboard behavior remain open.
 - **Owner boundary:** responsive templates/CSS/JS, viewport browser matrix and release
   parity gate. Accessibility consequences are excluded and owned by `REL-RISK-020`.
 - **Triggers:** header/nav growth, long content, CSS/theme change, JS card-selection
   drift, browser engine differences, focus/compact mode or localization.
-- **Current → preferred detection:** Today Playwright geometry/state → release matrix
-  across key pages/modes, executable JS flows and failure artifacts.
-- **Mitigation sequence:** retain Today tests; execute JS behavior tests; add shared
-  320/390/desktop smoke for other pages; expand browsers/modes from observed risk.
+- **Current → preferred detection:** Today Playwright plus controlled-DOM production-JS
+  execution and native live-server fallback → release matrix across key pages/modes,
+  live-page JS/keyboard flows and failure artifacts.
+- **Mitigation sequence:** retain current Today, executed-JS and native-fallback tests;
+  add shared 320/390/desktop smoke for other pages and live-page keyboard flows; expand
+  browsers/modes from observed risk.
 - **Rollback/containment:** **present:** revert the frontend asset/template revision and
   preserve native form behavior; there is no general JS kill switch. A tested
   enhancement-disable mechanism is a future rollout prerequisite if introduced.
 - **Residual risk:** physical devices and unusual content cannot be exhaustively tested.
-- **Linked Witan work:** `tk-add-real-browser-responsive-theme-keyboard-and-a-147e09`,
-  `tk-execute-javascript-behavior-tests-instead-of-sou-141553`,
-  `tk-stabilize-mobile-today-and-article-rendering-5f1421`.
+- **Linked Witan work:** mobile baseline
+  `tk-stabilize-mobile-today-and-article-rendering-5f1421` and JavaScript execution
+  `tk-execute-javascript-behavior-tests-instead-of-sou-141553` are complete; remaining
+  browser breadth is `tk-add-real-browser-responsive-theme-keyboard-and-a-147e09`.
 
 ### REL-RISK-020 — Accessibility behavior lacks executable and assistive-technology proof
 
 - **Affected IDs/objectives:** WEB-012–WEB-014, WEB-017, WEB-021; UI-INV-001–002;
   `REL-OBJ-012`.
 - **Present status/evidence:** **partially controlled**. Semantic markup and visible
-  focus exist, but there is no axe/screen-reader/contrast proof, help-dialog focus trap,
-  removal-focus contract or end-to-end keyboard suite.
+  focus exist; controlled-DOM Chromium executes editable-target shortcut suppression,
+  help open/close and focus restoration, and native forms work without JavaScript.
+  There is no axe/screen-reader/contrast proof, help-dialog focus trap or live-page
+  end-to-end keyboard suite.
 - **Owner boundary:** accessible templates/CSS/JavaScript and accessibility release
   testing. Responsive layout parity is `REL-RISK-019`; image privacy is `REL-RISK-024`.
 - **Triggers:** keyboard dialog/removal flow, contrast/theme change, dynamic live-region
   behavior, zoom, screen-reader/browser variation or inaccessible error state.
-- **Current → preferred detection:** markup assertions/limited geometry → automated
-  accessibility scan, executable keyboard/focus tests and periodic manual AT checklist.
-- **Mitigation sequence:** establish automated baseline; execute keyboard/focus flows;
-  fix critical findings; add periodic manual screen-reader/zoom review.
+- **Current → preferred detection:** markup, geometry and controlled-DOM keyboard/focus
+  execution → automated accessibility scan, live-page keyboard/focus tests and periodic
+  manual AT checklist.
+- **Mitigation sequence:** retain executed keyboard/focus characterizations; establish
+  automated accessibility baseline and live-page flows; fix critical findings; add
+  periodic manual screen-reader/zoom review.
 - **Rollback/containment:** **present:** revert inaccessible UI while retaining native
   controls and block release on a known critical regression. Any future enhancement
   kill switch must be tested before it is listed as containment.
 - **Residual risk:** automated tooling cannot prove usability across all assistive
   technologies.
-- **Linked Witan work:** `tk-add-real-browser-responsive-theme-keyboard-and-a-147e09`,
-  `tk-execute-javascript-behavior-tests-instead-of-sou-141553`.
+- **Linked Witan work:** JavaScript execution task
+  `tk-execute-javascript-behavior-tests-instead-of-sou-141553` is complete; remaining
+  breadth is `tk-add-real-browser-responsive-theme-keyboard-and-a-147e09`.
 
 ### REL-RISK-021 — HSTS is intentionally disabled
 
@@ -869,13 +891,13 @@ product decision. A later wave cannot substitute for an unmet earlier stop gate.
 | Wave | Work and Witan mapping | Risks/objectives/contracts | Entry and stop gate | Rollback/containment gate |
 | --- | --- | --- | --- | --- |
 | 0. Preserve contracts and safety | Keep catalogs/contracts current; complete `tk-create-feature-to-test-traceability-matrix-b382a2` and `tk-complete-browser-view-form-command-and-api-contr-55d622`. | All; especially `REL-OBJ-007`, `REL-OBJ-012` and cross-feature invariants. | Live graph: both tasks are open on their existing prerequisites; foundational CI remains blocked by these Wave-0 tasks. Stop on snapshot-count mutation, false fix claims or unexpected suite change. | Documentation/test-only revert; retain incident and immutable snapshots. |
-| 1. Establish recovery and foundational CI | Start `tk-establish-production-postgresql-backup-and-resto-01b0c1`, `tk-add-foundational-continuous-integration-quality--b3ffba`, and `tk-add-required-postgresql-integration-and-concurre-0719fc`. | `REL-RISK-002`, `REL-RISK-004`, `REL-RISK-006`, `REL-RISK-011`; `REL-OBJ-010`, `REL-OBJ-011`; DATA-INV-004, OPS-INV-003, OPS-INV-004. | Live graph: backup baseline is blocked by this doc task and already-closed production-settings work; foundational CI is blocked by the two Wave-0 tasks; PostgreSQL integration retains its maintainable-test-structure prerequisite. No destructive migration until off-host restore meets RPO/RTO and PostgreSQL migration tests pass. | Present containment is stop writes/preserve volume/restore to new DB. CI jobs may be reverted; verified backup evidence is never discarded. |
+| 1. Establish recovery and foundational CI | Completed baseline evidence in `tk-establish-production-postgresql-backup-and-resto-01b0c1` and required lane in `tk-add-required-postgresql-integration-and-concurre-0719fc`; continue `tk-add-foundational-continuous-integration-quality--b3ffba`. | `REL-RISK-002`, `REL-RISK-004`, `REL-RISK-006`, `REL-RISK-011`; `REL-OBJ-010`, `REL-OBJ-011`; DATA-INV-004, OPS-INV-003, OPS-INV-004. | Preserve the receipt-backed production pair/isolated restore and the required PostgreSQL 17 migration/race lane. No destructive migration until recurring schedule/alert/off-site evidence and migration rollback gates pass; characterization expected failures must not be presented as repairs. | Present containment is stop writes/preserve volume/restore to new DB. CI jobs may be reverted; verified backup and PostgreSQL characterization evidence are never discarded. |
 | 2. Immediate detection and bounded operation | `tk-add-structured-observability-health-readiness-an-16ba73`, `tk-harden-ingestion-external-i-o-and-data-integrity-1adf3c`. | `REL-RISK-001`, `REL-RISK-003`, `REL-RISK-005`, `REL-RISK-016`, `REL-RISK-025`; `REL-OBJ-001`–`006`; FEED-INV-001, OPS-INV-001, OPS-INV-002, OPS-INV-005. | Test alerts without paging, then observe three current cycles; stop on sensitive labels, false paging, cardinality, >10% overhead or changed outcomes. Claim/emission/route switches must exist and be tested before affected rollout. | Present restart/manual probes remain; new switches may roll back their features while retaining logs/run records and parallel TCP check. |
 | 3. Deterministic confirmed correctness repairs | Redirect `tk-validate-all-browser-redirect-targets-99209e`; OPML `tk-make-opml-import-export-atomic-validated-and-rou-df59b7`; Postmark atomicity `tk-make-postmark-newsletter-ingestion-atomic-and-ra-e3d06e`; identity/concurrency `tk-reconcile-article-identity-and-concurrent-refres-7a1b44`. | `REL-RISK-007`, `REL-RISK-014`, `REL-RISK-015`, `REL-RISK-018`; `REL-OBJ-001`, `REL-OBJ-003`, `REL-OBJ-005`, `REL-OBJ-008`; DATA-INV-001, NEWS-INV-001, NEWS-INV-002, FEED-INV-002, FEED-INV-004–FEED-INV-006, UI-INV-005. | Required expected failures become ordinary passing tests; PostgreSQL proves concurrency; no orphan/partial writes. Stop on status/schema/redirect drift. | Code rollback only while schema compatible; preserve repair audit; destructive repair requires verified restore. |
 | 4. Read-state durability and shared commands | `tk-enforce-bulkreadmarker-scope-and-uniqueness-inva-db62c6`, `tk-extract-validated-transactional-commands-for-mut-466545`, `tk-extract-shared-article-visibility-and-read-state-6708e0`. | `REL-RISK-011`, `REL-RISK-012`, `REL-RISK-023`; `REL-OBJ-004`–`007`; READ-INV-001–READ-INV-006. | Backup/audit/dedupe first; PostgreSQL rejects invalid shape; shared transactions and dual-read IDs match. A tested old-reader switch is an entry prerequisite. | Use the newly tested switch; preserve cleanup export. Dropping constraints cannot recover deleted duplicates. |
 | 5. Clarify boundaries without endpoint rewrite | `tk-inventory-architecture-and-refactor-domain-bound-dc9eb3`, `tk-split-external-gateways-from-pure-domain-service-5bf313`. | `REL-RISK-005`, `REL-RISK-010`, `REL-RISK-023`; `REL-OBJ-003`–`009`; cross-feature invariants. | Characterization green; API imports no private view helpers; methods/envelopes/templates unchanged; no query/latency regression. | Code-only module rollback; old adapters remain until parity proof. |
 | 6. Recoverable integrations and capability security | Linkding `tk-implement-recoverable-linkding-delivery-state-ma-2ec860`; signed capabilities `tk-add-explicit-api-capabilities-and-replace-replay-69180c`; Postmark/privacy `tk-harden-postmark-authentication-payload-limits-an-601f5f`; API/ops `tk-harden-api-operations-security-and-release-verif-5f790a`. | `REL-RISK-008`–`010`, `REL-RISK-013`, `REL-RISK-017`, `REL-RISK-021`, `REL-RISK-022`, `REL-RISK-024`; `REL-OBJ-006`–`011`; SAVE-INV-003, API-CAP-INV-002, NEWS-INV-004. | Provider/policy decisions first; no blind ambiguity retry; tested dual auth/capabilities and cache/security zero-budget tests. | Present secrets may be unset/rotated. Future dual-auth/integration switches are entry prerequisites; preserve local saves and ambiguity/use records. |
-| 7. Responsive/accessibility executable gates | Build on closed mobile baseline `tk-stabilize-mobile-today-and-article-rendering-5f1421`; complete `tk-execute-javascript-behavior-tests-instead-of-sou-141553` and `tk-add-real-browser-responsive-theme-keyboard-and-a-147e09`. | `REL-RISK-019`, `REL-RISK-020`; `REL-OBJ-012`; UI-INV-001–UI-INV-003. | 320/390/desktop IDs/actions/overflow/discoverability pass; zero critical accessibility findings. Stop release on parity/state/a11y failure. | Present rollback is frontend revision revert with native controls retained; any enhancement switch must be tested before use. |
+| 7. Responsive/accessibility executable gates | Build on closed mobile baseline `tk-stabilize-mobile-today-and-article-rendering-5f1421` and completed controlled-DOM/native-fallback execution `tk-execute-javascript-behavior-tests-instead-of-sou-141553`; continue `tk-add-real-browser-responsive-theme-keyboard-and-a-147e09`. | `REL-RISK-019`, `REL-RISK-020`; `REL-OBJ-012`; UI-INV-001–UI-INV-003. | Retain executed production-JS and native fallback evidence; require broader 320/390/desktop IDs/actions/overflow/discoverability plus zero critical accessibility findings. Stop release on parity/state/a11y failure. | Present rollback is frontend revision revert with native controls retained; any enhancement switch must be tested before use. |
 | 8. Evidence-led scale, full CI aggregation and release closure | `tk-bound-query-size-pagination-and-read-state-cost-1f9da0`, later aggregate gates in `tk-add-ci-quality-gates-coverage-ratchet-migration--3ae78f`, then `tk-document-and-rehearse-backup-restore-rollback-an-3bf520`. | `REL-RISK-012`; all objectives, especially `REL-OBJ-004`–`006/010/011`. | Record production-sized baseline; version pagination; require full CI, SLO evidence, restore and deploy verification. Stop on ordering/ID/latency regression. | A tested compatibility switch is prerequisite; indexes may remain; use verified release/migration-specific recovery. |
 
 ## 7. Mechanical maintenance and acceptance checks

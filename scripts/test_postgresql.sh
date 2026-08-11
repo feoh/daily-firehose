@@ -26,7 +26,18 @@ if [[ ! "$postgres_port" =~ ^[0-9]+$ ]]; then
 	exit 1
 fi
 
-DAILY_FIREHOSE_POSTGRES_TEST=1 \
+# Do not let a caller's production or partially configured database environment
+# fail base-settings import or redirect this disposable lane.
+env \
+	-u DJANGO_ENV \
+	-u DJANGO_DEBUG \
+	-u DATABASE_URL \
+	-u POSTGRES_DB \
+	-u POSTGRES_USER \
+	-u POSTGRES_PASSWORD \
+	-u POSTGRES_HOST \
+	-u POSTGRES_PORT \
+	DAILY_FIREHOSE_POSTGRES_TEST=1 \
 	DJANGO_SETTINGS_MODULE=daily_firehose.test_settings_postgresql \
 	POSTGRES_TEST_DB=daily_firehose_test_lane \
 	POSTGRES_TEST_USER=daily_firehose_test_lane \
