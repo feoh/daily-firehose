@@ -54,8 +54,29 @@ On a clean Ubuntu CI runner, install Chromium and its system packages with:
 uv run playwright install --with-deps chromium
 ```
 
-Run the complete Django suite with `uv run python manage.py test feeds`. Browser
-screenshots and DOM snapshots are written to the ignored
+SQLite remains the fast local lane:
+
+```bash
+uv run python manage.py test feeds
+```
+
+PostgreSQL 17 is the required integration lane:
+
+```bash
+./scripts/test_postgresql.sh
+```
+
+The integration runner starts a disposable Compose PostgreSQL 17 service on an
+ephemeral loopback port, runs the complete Django suite with the opt-in
+`daily_firehose.test_settings_postgresql` module, and always removes its
+container, network, and tmpfs-backed data. It never uses the production Compose
+file or volume. PostgreSQL-only `TransactionTestCase` coverage uses distinct
+worker connections and bounded barriers/events; injected write failures are
+labeled transaction-boundary tests, not concurrency tests. Pass normal Django
+test options (for example `--verbosity 2`) to the script. Override only the
+bounded startup wait with `POSTGRES_TEST_WAIT_TIMEOUT_SECONDS` when necessary.
+
+Browser screenshots and DOM snapshots are written to the ignored
 `test-artifacts/playwright/` directory only when a browser assertion fails
 (including a documented expected-failure characterization).
 

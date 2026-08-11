@@ -29,12 +29,12 @@ a claim that every normative rule is presently satisfied.
 - **Scope / precedence:** database uniqueness applies to every writer. Refresh's
   reconciliation policy must satisfy both constraints; database integrity wins over
   adapter success reporting.
-- **Executable evidence:** `test_feed_refresh.py` covers GUID upsert and alternate URL
-  selection; `test_known_correctness_failures.py::test_refresh_reconciles_changed_guid_for_same_url`
-  requires successful reconciliation to leave exactly one Article with the updated
-  GUID/title, so a correct repair becomes an unexpected success.
+- **Executable evidence:** sequential coverage remains in `test_feed_refresh.py` and
+  `test_known_correctness_failures.py`; the PostgreSQL separate-connection/barrier
+  tests prove same-GUID concurrency succeeds while stable-URL/new-GUID concurrency
+  classifies one caller as an integrity failure.
 - **Known violation status:** **Known violation** — changed GUID with a stable URL
-  fails refresh instead of reconciling one Article.
+  fails refresh instead of reconciling one Article, sequentially and concurrently.
 - **Source / feature IDs:** `feeds/models.py`, `feeds/services.py`; ING-005, ING-006.
 
 ### DATA-INV-002 — First-seen and publication time have distinct meanings
@@ -163,11 +163,14 @@ a claim that every normative rule is presently satisfied.
   materialization and marker upsert should commit or roll back together.
 - **Scope / precedence:** database shape applies to all writers. Bearer and signed
   commands are atomic; session bulk commands currently are not.
-- **Executable evidence:** four unchanged `expectedFailure` tests in
-  `test_known_correctness_failures.py`; API rollback injection in
-  `test_api_validation.py`.
-- **Known violation status:** **Known violation** — database checks/logical nullable
-  uniqueness are absent, and session bulk paths lack an encompassing transaction.
+- **Executable evidence:** four SQLite direct-write expected failures plus PostgreSQL
+  coverage that tries all invalid shapes and races duplicate period and Feed markers
+  from separate connections. PostgreSQL accepts both duplicates because the broad
+  nullable unique key treats NULLs as distinct. API fault injection covers only the
+  adapter rollback envelope and is not labeled concurrency.
+- **Known violation status:** **Known violation** — database checks and conditional
+  nullable uniqueness are absent, real duplicate races commit two rows, and session
+  bulk paths lack an encompassing transaction.
 - **Source / feature IDs:** `feeds/models.py`, `feeds/views.py`, `feeds/api.py`;
   WEB-009, WEB-010, WEB-019, API-010, API-013.
 
@@ -180,8 +183,12 @@ a claim that every normative rule is presently satisfied.
   snapshots, updates `updated_at`, and retries Linkding.
 - **Scope / precedence:** browser, bearer, and signed saves call the domain service;
   direct ORM/admin writes are outside service orchestration.
-- **Executable evidence:** `test_behavioral_contracts.py::test_repeated_save_keeps_one_row_and_saved_at_but_refreshes_snapshots`.
-- **Known violation status:** **Conformant** for sequential saves.
+- **Executable evidence:** the sequential service contract remains in
+  `test_behavioral_contracts.py`; PostgreSQL separate-connection coverage proves the
+  durable `(user, Article)` constraint permits one concurrent insert and rejects the
+  other with a real database `IntegrityError`.
+- **Known violation status:** **Conformant** for sequential saves and database-level
+  concurrent uniqueness; full command retry/response semantics remain unproved.
 - **Source / feature IDs:** `feeds/models.py`, `feeds/services.py`; SAVE-001–SAVE-003,
   API-009, API-018.
 
@@ -225,16 +232,18 @@ a claim that every normative rule is presently satisfied.
 
 ## Newsletter invariants
 
-### NEWS-INV-001 — Sequential MessageID replay is idempotent
+### NEWS-INV-001 — MessageID replay is idempotent
 
 - **Normative current contract:** `MessageID`/`MessageId` identifies a NewsletterIssue;
-  sequential replay returns the existing issue with HTTP 200 and `created:false`
-  without another Article.
+  sequential or concurrent replay returns the existing issue without another Article
+  and without surfacing a database conflict to either caller.
 - **Scope / precedence:** Postmark adapter status mirrors the domain result; database
   uniqueness is the final identity boundary.
-- **Executable evidence:** `test_newsletters.py::test_webhook_dedupes_by_message_id`.
-- **Known violation status:** **Conformant** sequentially; concurrent replay is not
-  established.
+- **Executable evidence:** `test_newsletters.py` proves sequential replay. The
+  PostgreSQL barrier waits until both real MessageID lookups miss, then proves one
+  concurrent service caller receives an `IntegrityError`; no error is injected.
+- **Known violation status:** **Known violation** — sequential replay conforms, but
+  concurrent replay is not race-idempotent.
 - **Source / feature IDs:** `feeds/services.py`, `feeds/api.py`, `feeds/models.py`;
   NEWS-001, API-017.
 
@@ -244,11 +253,11 @@ a claim that every normative rule is presently satisfied.
   NewsletterIssue should commit as one idempotent unit, with no orphan on failure.
 - **Scope / precedence:** applies to domain service and webhook retries, including
   failures after Article insertion.
-- **Executable evidence:** unchanged expected failure
-  `test_known_correctness_failures.py::test_postmark_issue_failure_rolls_back_article`.
-- **Known violation status:** **Known violation** — writes are not in one transaction;
-  the current expected failure asserts the Article leak and does not fully prove Feed
-  rollback or concurrent safety.
+- **Executable evidence:** the SQLite characterization remains, and a PostgreSQL
+  fault placed after Article creation requires both the synthetic Feed and Article to
+  roll back. This fault test is transaction-boundary evidence, not concurrency.
+- **Known violation status:** **Known violation** — Feed and Article both leak because
+  writes are not in one transaction; concurrent replay is separately characterized.
 - **Source / feature IDs:** `feeds/services.py`; NEWS-002, API-017.
 
 ### NEWS-INV-003 — Synthetic Feed activity is creation-sensitive
@@ -258,9 +267,10 @@ a claim that every normative rule is presently satisfied.
   active state. Newsletter Articles remain visible by first-seen window regardless.
 - **Scope / precedence:** `get_or_create` defaults apply only on creation; ingestion
   must not silently rewrite an existing operator state.
-- **Executable evidence:** two synthetic-Feed tests in `test_behavioral_contracts.py`
-  and Today rendering in `test_newsletters.py`.
-- **Known violation status:** **Conformant**.
+- **Executable evidence:** two synthetic-Feed tests in `test_behavioral_contracts.py`,
+  Today rendering in `test_newsletters.py`, and a PostgreSQL separate-connection test
+  proving concurrent `newsletter_feed()` calls return one inactive Feed.
+- **Known violation status:** **Conformant**, including concurrent Feed initialization.
 - **Source / feature IDs:** `feeds/services.py`, `feeds/views.py`; NEWS-001, WEB-002,
   ING-007.
 
@@ -302,10 +312,12 @@ a claim that every normative rule is presently satisfied.
   eligible and each Feed is evaluated when reached.
 - **Scope / precedence:** worker, browser, and bearer refresh adapters share the same
   service behavior.
-- **Executable evidence:** `test_behavioral_contracts.py::test_refresh_excludes_inactive_feeds`
-  and backoff/due-time tests in `test_feed_refresh.py`.
-- **Known violation status:** **Conformant** sequentially; overlapping callers have no
-  ownership/fencing.
+- **Executable evidence:** sequential eligibility remains covered by the existing
+  suites. PostgreSQL tests prove `select_for_update` preserves two concurrent failure
+  increments, while staged events prove an older failure completing last overwrites a
+  newer success status.
+- **Known violation status:** **Known violation** for overlapping callers: row locking
+  serializes counters, but attempt ownership/fencing is absent.
 - **Source / feature IDs:** `feeds/services.py`; ING-007–ING-009, API-016.
 
 ### FEED-INV-002 — Repeated same-GUID refresh updates in place
@@ -315,8 +327,11 @@ a claim that every normative rule is presently satisfied.
   and refreshes metadata/`updated_at`.
 - **Scope / precedence:** holds where the incoming URL does not trigger the separate
   stable-URL/new-GUID violation.
-- **Executable evidence:** `test_behavioral_contracts.py::test_repeated_refresh_updates_one_article_without_resetting_first_seen`.
-- **Known violation status:** **Conformant** for same-GUID sequential refresh.
+- **Executable evidence:** the sequential test remains; PostgreSQL barriers prove two
+  same-GUID refreshes produce one create and one update, while the separate stable-URL
+  changed-GUID race is an expected failure.
+- **Known violation status:** **Conformant** for same-GUID sequential and concurrent
+  refresh; DATA-INV-001 still fails for changed identity.
 - **Source / feature IDs:** `feeds/services.py`, `feeds/models.py`; DATA-INV-001,
   DATA-INV-002, ING-005.
 
@@ -338,9 +353,11 @@ a claim that every normative rule is presently satisfied.
   duplicate the Feed.
 - **Scope / precedence:** imported values replace stored values, including category;
   this precedence is why flat export is destructive under FEED-INV-005.
-- **Executable evidence:** `test_opml.py` update test and
-  `test_behavioral_contracts.py::test_opml_reimport_reactivates_existing_feed`.
-- **Known violation status:** **Conformant**.
+- **Executable evidence:** sequential update/reactivation remains covered by the
+  existing OPML tests; a PostgreSQL separate-connection/barrier test proves two
+  concurrent `Feed.update_or_create` calls return one create and one update.
+- **Known violation status:** **Conformant**, including concurrent Feed URL upsert;
+  category reuse and complete import atomicity remain separate known violations.
 - **Source / feature IDs:** `feeds/services.py`; ING-011.
 
 ### FEED-INV-005 — OPML category round trip preserves classification
@@ -362,10 +379,11 @@ a claim that every normative rule is presently satisfied.
   duplicate-name error.
 - **Scope / precedence:** Category's unique name and unique slug both constrain import;
   existing exact name is the reusable identity for this case.
-- **Executable evidence:** expected failure
-  `test_behavioral_contracts.py::test_opml_reuses_same_name_category_with_different_slug`.
-- **Known violation status:** **Known violation** — lookup begins by generated slug and
-  attempts a duplicate unique name.
+- **Executable evidence:** the sequential expected failure remains. A PostgreSQL
+  barrier after two real slug misses proves concurrent exact-name/category upsert also
+  gives one caller a real uniqueness error.
+- **Known violation status:** **Known violation** — lookup begins by generated slug,
+  and neither sequential alternate-slug reuse nor concurrent exact-name reuse is safe.
 - **Source / feature IDs:** `feeds/services.py`, `feeds/models.py`; ING-002, ING-011.
 
 ## API authentication, input, schema, and capability invariants
@@ -577,11 +595,12 @@ a claim that every normative rule is presently satisfied.
   exposing it to user/API payloads.
 - **Scope / precedence:** worker, browser, and bearer summaries derive from the same
   results; skipped Feeds remain distinguishable from failures.
-- **Executable evidence:** service logging/sanitization, browser summary, and API
-  result tests in `test_feed_refresh.py` and `test_api.py`.
-- **Known violation status:** **Conformant** for result/log diagnostics; no metrics,
-  correlation, retention, or alerting exists. Process exit signaling is separated as
-  OPS-INV-005.
+- **Executable evidence:** service logging/sanitization, browser/API result tests, and
+  PostgreSQL locking/fencing tests. The row lock serializes failure counts, but staged
+  completion proves stale failure state can replace newer success state.
+- **Known violation status:** **Known violation** for concurrent persisted outcome
+  ownership; result/log diagnostics conform. Metrics, correlation, retention, and
+  alerting remain absent, and process exit signaling is OPS-INV-005.
 - **Source / feature IDs:** `feeds/services.py`, browser/API refresh adapters;
   ING-007–ING-009, API-016, OPS-011.
 
@@ -607,9 +626,10 @@ a claim that every normative rule is presently satisfied.
 - **Scope / precedence:** this is the normal production deployment path; it does not
   waive migration-specific backup/reversal needs.
 - **Executable evidence:** production settings/deploy checks and operator commands in
-  `AGENTS.md` and `README.md`.
-- **Known violation status:** **Conformant as documented procedure**; execution is
-  manual rather than CI-enforced.
+  `AGENTS.md` and `README.md`; the required PostgreSQL 17 lane proves all disk leaf
+  migrations are applied and key durable unique constraints exist in its catalog.
+- **Known violation status:** **Conformant as documented procedure** with forward
+  migration integration evidence; production execution and rollback remain manual.
 - **Source / feature IDs:** `AGENTS.md`, `README.md`; OPS-009, OPS-010, OPS-013.
 
 ### OPS-INV-004 — Durable data has a verified recovery path
@@ -657,33 +677,39 @@ a claim that every normative rule is presently satisfied.
 
 ## Traceability matrix
 
-This post-snapshot companion maps the **current suite: 17 test modules, 225 test
-methods, and 12 expected failures**. The pinned catalog retains its independent
+This post-snapshot companion maps the **current suite: 18 test modules, 241 test
+methods, and 20 expected failures**. The pinned catalog retains its independent
 15/191/8 snapshot counts. Exact `module::class::method` identities, evidence levels,
 and dimension-specific gaps are maintained in the [detailed matrix](test-traceability.md).
 
 | Invariant group | Stable invariant IDs | Primary executable evidence | Feature catalog IDs |
 | --- | --- | --- | --- |
-| Data | DATA-INV-001–004 | `test_feed_refresh.py`, `test_article_state_propagation.py`, `test_behavioral_contracts.py` | ING-002, ING-005–006, WEB-004–011, API-012, SAVE-001 |
-| Read | READ-INV-001–006 | `test_digest_views.py`, `test_article_state_propagation.py`, `test_api_validation.py`, `test_known_correctness_failures.py`, `test_behavioral_contracts.py` | WEB-002–011, WEB-019, API-007–010, API-013, API-018 |
-| Save | SAVE-INV-001–004 | `test_article_actions.py`, `test_article_state_propagation.py`, `test_newsletter_save_policy.py`, `test_behavioral_contracts.py` | AUTH-005, NEWS-005, SAVE-001–004, API-005, API-009, API-018 |
-| Newsletter | NEWS-INV-001–005 | `test_newsletters.py`, `test_newsletter_save_policy.py`, `test_api_validation.py`, `test_known_correctness_failures.py`, `test_behavioral_contracts.py` | NEWS-001–005, API-004, API-017 |
-| Feed/OPML | FEED-INV-001–006 | `test_feed_refresh.py`, `test_opml.py`, `test_behavioral_contracts.py` | ING-002, ING-005, ING-007–013, API-012, API-016 |
+| Data | DATA-INV-001–004 | `test_feed_refresh.py`, `test_article_state_propagation.py`, `test_behavioral_contracts.py`, `test_postgresql_integration.py` | ING-002, ING-005–006, WEB-004–011, API-012, SAVE-001 |
+| Read | READ-INV-001–006 | `test_digest_views.py`, `test_article_state_propagation.py`, `test_api_validation.py`, `test_known_correctness_failures.py`, `test_behavioral_contracts.py`, `test_postgresql_integration.py` | WEB-002–011, WEB-019, API-007–010, API-013, API-018 |
+| Save | SAVE-INV-001–004 | `test_article_actions.py`, `test_article_state_propagation.py`, `test_newsletter_save_policy.py`, `test_behavioral_contracts.py`, `test_postgresql_integration.py` | AUTH-005, NEWS-005, SAVE-001–004, API-005, API-009, API-018 |
+| Newsletter | NEWS-INV-001–005 | `test_newsletters.py`, `test_newsletter_save_policy.py`, `test_api_validation.py`, `test_known_correctness_failures.py`, `test_behavioral_contracts.py`, `test_postgresql_integration.py` | NEWS-001–005, API-004, API-017 |
+| Feed/OPML | FEED-INV-001–006 | `test_feed_refresh.py`, `test_opml.py`, `test_behavioral_contracts.py`, `test_postgresql_integration.py` | ING-002, ING-005, ING-007–013, API-012, API-016 |
 | API auth/input/schema/capability | API-AUTH-INV-001–002, API-INPUT-INV-001, API-SCHEMA-INV-001–002, API-CAP-INV-001–002, API-COMPAT-INV-001–002 | `test_api.py`, `test_api_validation.py`, `test_newsletter_save_policy.py`, `test_behavioral_contracts.py` | AUTH-003, API-001–019 |
 | Progressive/a11y/mobile | UI-INV-001–005 | `test_article_actions.py`, `test_article_actions_browser.py`, `test_digest_views.py`, `test_mobile_today_browser.py`, `test_known_correctness_failures.py`, `test_behavioral_contracts.py` | WEB-001–002, WEB-007–010, WEB-012–014, WEB-018, WEB-020–021, ING-008, SAVE-003, API-001 |
-| Observability/recovery | OPS-INV-001–005 | `test_feed_refresh.py`, `test_api.py`, `test_production_settings.py`; documented manual evidence where automation is absent | ING-007–010, API-016, OPS-002, OPS-008–014 |
+| Observability/recovery | OPS-INV-001–005 | `test_feed_refresh.py`, `test_api.py`, `test_production_settings.py`, `test_postgresql_integration.py`; documented manual evidence where automation is absent | ING-007–010, API-016, OPS-002, OPS-008–014 |
 
 ## Expected-failure ledger
 
-The current suite contains **12 expected failures**: the catalog snapshot's eight
-expected-failure identities remain represented (with the changed-GUID assertion now
-requiring exactly one reconciled Article), and `test_behavioral_contracts.py` adds
-four narrow cross-feature characterizations:
+The current suite contains **20 expected failures**: the prior 12 remain, and the
+PostgreSQL integration module adds eight fixed-path characterizations for confirmed
+current defects:
 
-1. `test_opml_export_import_round_trip_preserves_category` — FEED-INV-005.
-2. `test_opml_reuses_same_name_category_with_different_slug` — FEED-INV-006.
-3. `test_all_authenticated_get_responses_are_private_no_store` — UI-INV-004.
-4. `test_negative_path_ids_use_auth_and_json_validation_envelopes` — API-SCHEMA-INV-002.
+1. Bulk marker database shapes — READ-INV-006.
+2. Duplicate period-marker PostgreSQL race — READ-INV-006.
+3. Duplicate Feed-marker PostgreSQL race — READ-INV-006.
+4. Concurrent Postmark MessageID replay — NEWS-INV-001.
+5. Complete Postmark rollback boundary — NEWS-INV-002.
+6. Concurrent stable-URL/new-GUID refresh — DATA-INV-001.
+7. Stale refresh completion fencing — FEED-INV-001 and OPS-INV-001.
+8. Concurrent category upsert — FEED-INV-006.
+
+The four cross-feature expected failures and eight original catalog characterizations
+remain in the ledger with their exact identities.
 
 A green run means acknowledged failures were observed; it does not mean these
 invariants conform. Unexpected success is a suite failure and requires removing the
@@ -731,7 +757,7 @@ required = ("Normative current contract", "Scope / precedence", "Executable evid
 assert all(all(label in block for label in required) for block in blocks)
 statuses = Counter("Known violation" if "**Known violation**" in block else "Conformant"
                    for block in blocks)
-assert statuses == Counter({"Conformant": 32, "Known violation": 12})
+assert statuses == Counter({"Conformant": 29, "Known violation": 15})
 test_paths = list(Path("feeds/tests").glob("test_*.py"))
 methods = expected = 0
 for path in test_paths:
@@ -743,7 +769,7 @@ for path in test_paths:
                     if isinstance(node, ast.FunctionDef)
                     and any(isinstance(d, ast.Name) and d.id == "expectedFailure"
                             for d in node.decorator_list))
-assert (len(test_paths), methods, expected) == (17, 225, 12)
+assert (len(test_paths), methods, expected) == (18, 241, 20)
 print(len(ids), statuses, len(test_paths), methods, expected)
 PY
 ```
