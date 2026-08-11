@@ -65,15 +65,97 @@ docker compose exec web python manage.py createsuperuser
 
 Open <http://127.0.0.1:8000/> and sign in.
 
+### Production configuration and preflight
+
+Canonical Compose defaults application services to fail-closed `production` so
+starting without `.env` cannot expose development mode. `.env.example`
+explicitly opts into `development` for local Compose. A production `.env` must
+set every value below rather than inherit development placeholders:
+
+```dotenv
+DJANGO_ENV=production
+DJANGO_DEBUG=false
+DJANGO_SECRET_KEY=<a unique high-entropy value of at least 50 characters>
+DJANGO_ALLOWED_HOSTS=daily-firehose.reedfish-regulus.ts.net
+DJANGO_CSRF_TRUSTED_ORIGINS=https://daily-firehose.reedfish-regulus.ts.net
+POSTGRES_DB=daily_firehose
+POSTGRES_USER=daily_firehose
+POSTGRES_PASSWORD=<a non-development database password>
+POSTGRES_HOST=db
+POSTGRES_PORT=5432
+```
+
+Generate a Django secret without committing it, for example with
+`uv run python -c 'import secrets; print(secrets.token_urlsafe(64))'`. Compose
+passes PostgreSQL fields separately, so reserved characters such as `%`, `@`,
+`/`, and `:` are not reinterpreted as URL syntax.
+
+For the existing production volume, preserve its stored database credential:
+the current password is already a non-default 43-character URL-safe value, so
+this deployment does **not** require rotation. Merely changing
+`POSTGRES_PASSWORD` in `.env` does not change the role password stored in the
+volume. Start only PostgreSQL, then run both the configuration check and a real
+connectivity probe before restarting the application:
+
+```bash
+docker compose up -d db
+docker compose run --rm --no-deps --build web \
+  python manage.py check --deploy --fail-level WARNING
+docker compose run --rm --no-deps web python manage.py shell -c \
+  "from django.db import connection; connection.ensure_connection(); print('database connection ok')"
+```
+
+The probe detects a stored-role/`.env` mismatch. If it fails authentication, do
+not remove the volume and do not start the full stack. Restore the last working
+`.env` password, or deliberately rotate the stored role interactively without
+placing a password in shell history:
+
+```bash
+docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+```
+
+At the `psql` prompt run `\password <database-role>`, enter the new value twice,
+then `\q`; update `.env` to the same value and rerun the connectivity probe.
+Never pass the password with `-c`, print it, or delete `postgres-data` during
+recovery.
+
+Production startup rejects debug mode, missing or development secrets,
+malformed/non-DNS/IP host entries, non-exact HTTPS CSRF origins, incomplete
+PostgreSQL fields, and the documented development database password. An
+explicit `DATABASE_URL` remains supported for non-Compose deployments and must
+be a complete PostgreSQL URL in production. Errors name invalid variables but
+never echo their values.
+
+Gunicorn listens on `0.0.0.0` inside the web container, while Docker publishes
+port 8000 only on host loopback. The verified Tailscale Funnel path terminates
+TLS and proxies to that port with `X-Forwarded-Proto: https`. Django trusts only
+that scheme header, redirects direct HTTP to HTTPS, and marks session and CSRF
+cookies secure. The refresh worker waits for the web healthcheck, which becomes
+healthy only after migrations finish and Gunicorn starts listening.
+
+HSTS remains explicitly disabled (`SECURE_HSTS_SECONDS=0`) until an operator
+confirms a staged rollout will not lock out recovery paths. Only deploy-check
+warning `security.W004` is silenced for that documented decision; the preflight
+above fails on every other warning.
+
+For an application-code rollback, check out the last known-good revision and run
+`docker compose up -d --build`; preserve `.env` and all volumes. Compose normally
+recreates only changed application services and leaves the unchanged `db`
+container running. Code rollback does not automatically reverse schema changes:
+use a migration-specific, verified reverse migration when safe, or restore a
+known-good database backup.
+
 ## Configuration
 
 Environment variables:
 
-- `DJANGO_SECRET_KEY` — production secret key.
-- `DJANGO_DEBUG` — defaults to `true` for local development.
-- `DJANGO_ALLOWED_HOSTS` — comma-separated host list, defaults to `localhost,127.0.0.1,daily-firehose.reedfish-regulus.ts.net`.
-- `DJANGO_CSRF_TRUSTED_ORIGINS` — comma-separated trusted origins for proxied HTTPS, defaults to `https://daily-firehose.reedfish-regulus.ts.net`.
-- `DATABASE_URL` — optional database URL. Defaults to local SQLite for uv development; compose sets this to PostgreSQL.
+- `DJANGO_ENV` — exactly `development` or `production`. Direct uv defaults to development; canonical Compose defaults to production, while `.env.example` explicitly selects development.
+- `DJANGO_SECRET_KEY` — optional development value; required, strong, and non-default in production.
+- `DJANGO_DEBUG` — strictly parsed boolean, defaulting to `true` only for development; must be `false` in production.
+- `DJANGO_ALLOWED_HOSTS` — comma-separated host list. Local defaults are supplied only in development; production requires explicit public hostnames.
+- `DJANGO_CSRF_TRUSTED_ORIGINS` — comma-separated origins. Production requires explicit HTTPS origins whose hostnames are allowed.
+- `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, and `POSTGRES_PORT` — discrete PostgreSQL connection fields used by Compose. Partial values fail startup; production rejects missing fields and the development password.
+- `DATABASE_URL` — optional alternative for non-Compose deployments. Direct uv development uses SQLite when neither it nor discrete PostgreSQL fields are set; production accepts only a complete PostgreSQL URL with a non-development password.
 - `LINKDING_URL` — defaults to `https://linkding.reedfish-regulus.ts.net`.
 - `LINKDING_TOKEN` — API token used by **Save to Linkding**.
 - `FEED_FETCH_CONNECT_TIMEOUT_SECONDS` — feed connection timeout, default `5`.

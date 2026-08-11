@@ -10,11 +10,223 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import ipaddress
 import os
+import re
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
+
+_TRUE_VALUES = {"1", "true", "yes", "on"}
+_FALSE_VALUES = {"0", "false", "no", "off"}
+_DEVELOPMENT_SECRET_KEYS = {
+    "change-me",
+    "django-insecure-development-key-change-me",
+    "django-insecure-compose-development-key-change-me",
+}
+_DEVELOPMENT_DATABASE_PASSWORD = "daily_firehose_dev_password"
+_DNS_LABEL_PATTERN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
+_POSTGRES_ENV_NAMES = (
+    "POSTGRES_DB",
+    "POSTGRES_USER",
+    "POSTGRES_PASSWORD",
+    "POSTGRES_HOST",
+    "POSTGRES_PORT",
+)
+
+
+def _env_bool(name: str, default: str) -> bool:
+    raw_value = os.environ.get(name, default)
+    normalized = raw_value.lower()
+    if normalized in _TRUE_VALUES:
+        return True
+    if normalized in _FALSE_VALUES:
+        return False
+    raise ImproperlyConfigured(
+        f"{name} must be one of: true, false, 1, 0, yes, no, on, off."
+    )
+
+
+def _csv_env(name: str, default: str = "") -> list[str]:
+    raw_value = os.environ.get(name, "")
+    if not raw_value.strip():
+        raw_value = default
+    return [value.strip() for value in raw_value.split(",") if value.strip()]
+
+
+def _production_error(message: str) -> ImproperlyConfigured:
+    return ImproperlyConfigured(f"Invalid production configuration: {message}")
+
+
+def _is_public_dns_name(host: str) -> bool:
+    if len(host) > 253 or host.endswith("."):
+        return False
+    try:
+        ipaddress.ip_address(host.removeprefix("[").removesuffix("]"))
+    except ValueError:
+        pass
+    else:
+        return False
+    labels = host.split(".")
+    return (
+        len(labels) >= 2
+        and not labels[-1].isdigit()
+        and all(_DNS_LABEL_PATTERN.fullmatch(label) is not None for label in labels)
+    )
+
+
+def _validate_production_configuration(
+    *,
+    debug: bool,
+    secret_key: str,
+    allowed_hosts: list[str],
+    csrf_trusted_origins: list[str],
+) -> None:
+    if debug:
+        raise _production_error("DJANGO_DEBUG must be false.")
+
+    if (
+        not secret_key
+        or secret_key in _DEVELOPMENT_SECRET_KEYS
+        or secret_key.startswith("django-insecure-")
+        or len(secret_key) < 50
+        or len(set(secret_key)) < 5
+    ):
+        raise _production_error(
+            "DJANGO_SECRET_KEY must be set to a strong, non-development value."
+        )
+
+    if not allowed_hosts:
+        raise _production_error("DJANGO_ALLOWED_HOSTS must be set.")
+    if not all(_is_public_dns_name(host) for host in allowed_hosts):
+        raise _production_error(
+            "DJANGO_ALLOWED_HOSTS must contain only well-formed public DNS names."
+        )
+
+    if not csrf_trusted_origins:
+        raise _production_error("DJANGO_CSRF_TRUSTED_ORIGINS must be set.")
+    allowed_hostnames = {host.lower() for host in allowed_hosts}
+    for origin in csrf_trusted_origins:
+        try:
+            parsed_origin = urlsplit(origin)
+            port = parsed_origin.port
+        except ValueError:
+            raise _production_error(
+                "DJANGO_CSRF_TRUSTED_ORIGINS contains an invalid origin."
+            ) from None
+        hostname = parsed_origin.hostname or ""
+        canonical_origin = f"https://{hostname}"
+        if (
+            parsed_origin.scheme != "https"
+            or port is not None
+            or parsed_origin.username is not None
+            or parsed_origin.password is not None
+            or parsed_origin.path
+            or parsed_origin.query
+            or parsed_origin.fragment
+            or origin.lower() != canonical_origin.lower()
+            or hostname.lower() not in allowed_hostnames
+        ):
+            raise _production_error(
+                "DJANGO_CSRF_TRUSTED_ORIGINS must contain exact HTTPS origins "
+                "for configured allowed hosts."
+            )
+
+
+def _database_from_url(
+    database_url: str, *, production: bool
+) -> dj_database_url.DBConfig:
+    if production:
+        try:
+            parsed_database = urlsplit(database_url)
+            database_port = parsed_database.port
+        except ValueError:
+            raise _production_error(
+                "DATABASE_URL must be a valid PostgreSQL URL."
+            ) from None
+        if parsed_database.scheme not in {"postgres", "postgresql"}:
+            raise _production_error("DATABASE_URL must use PostgreSQL.")
+        if not all(
+            (
+                parsed_database.username,
+                parsed_database.password,
+                parsed_database.hostname,
+                parsed_database.path.strip("/"),
+            )
+        ) or (database_port is not None and not 1 <= database_port <= 65535):
+            raise _production_error(
+                "DATABASE_URL must include a database name, host, user, and password."
+            )
+        if unquote(parsed_database.password or "") == _DEVELOPMENT_DATABASE_PASSWORD:
+            raise _production_error(
+                "DATABASE_URL must not use the documented development credential."
+            )
+    try:
+        return dj_database_url.parse(database_url, conn_max_age=600)
+    except (TypeError, ValueError):
+        message = "DATABASE_URL must be a valid database URL."
+        if production:
+            raise _production_error(message) from None
+        raise ImproperlyConfigured(message) from None
+
+
+def _database_from_environment(
+    *, production: bool, sqlite_path: Path
+) -> dj_database_url.DBConfig:
+    database_url = os.environ.get("DATABASE_URL", "")
+    if database_url:
+        return _database_from_url(database_url, production=production)
+
+    postgres_values = {name: os.environ.get(name, "") for name in _POSTGRES_ENV_NAMES}
+    has_discrete_configuration = any(postgres_values.values())
+    if not has_discrete_configuration and not production:
+        return dj_database_url.parse(f"sqlite:///{sqlite_path}", conn_max_age=600)
+
+    error = (
+        "POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, and "
+        "POSTGRES_PORT must all be set; non-password fields must not have "
+        "surrounding whitespace."
+    )
+    non_password_names = set(_POSTGRES_ENV_NAMES) - {"POSTGRES_PASSWORD"}
+    has_invalid_whitespace = any(
+        postgres_values[name] != postgres_values[name].strip()
+        for name in non_password_names
+    )
+    if (
+        not all(postgres_values.values())
+        or not postgres_values["POSTGRES_PASSWORD"].strip()
+        or has_invalid_whitespace
+    ):
+        if production:
+            raise _production_error(error)
+        raise ImproperlyConfigured(error)
+    if (
+        production
+        and postgres_values["POSTGRES_PASSWORD"] == _DEVELOPMENT_DATABASE_PASSWORD
+    ):
+        raise _production_error(
+            "POSTGRES_PASSWORD must not use the documented development credential."
+        )
+    try:
+        port = int(postgres_values["POSTGRES_PORT"])
+    except ValueError:
+        port = 0
+    if not 1 <= port <= 65535:
+        message = "POSTGRES_PORT must be an integer from 1 through 65535."
+        if production:
+            raise _production_error(message)
+        raise ImproperlyConfigured(message)
+    return {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": postgres_values["POSTGRES_DB"],
+        "USER": postgres_values["POSTGRES_USER"],
+        "PASSWORD": postgres_values["POSTGRES_PASSWORD"],
+        "HOST": postgres_values["POSTGRES_HOST"],
+        "PORT": port,
+        "CONN_MAX_AGE": 600,
+    }
 
 
 def _env_float(name: str, default: str) -> float:
@@ -38,33 +250,57 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
+DJANGO_ENV = os.environ.get("DJANGO_ENV", "development")
+if DJANGO_ENV not in {"development", "production"}:
+    raise ImproperlyConfigured(
+        "DJANGO_ENV must be exactly 'development' or 'production'."
+    )
+IS_PRODUCTION = DJANGO_ENV == "production"
+
+# Development remains zero-configuration. Production validates the explicit
+# source values below before Django initializes any application components.
 SECRET_KEY = os.environ.get(
-    "DJANGO_SECRET_KEY",
-    "django-insecure-development-key-change-me",
+    "DJANGO_SECRET_KEY", "django-insecure-development-key-change-me"
+)
+DEBUG = _env_bool("DJANGO_DEBUG", "true")
+ALLOWED_HOSTS = _csv_env(
+    "DJANGO_ALLOWED_HOSTS",
+    ""
+    if IS_PRODUCTION
+    else "localhost,127.0.0.1,daily-firehose.reedfish-regulus.ts.net",
+)
+CSRF_TRUSTED_ORIGINS = _csv_env(
+    "DJANGO_CSRF_TRUSTED_ORIGINS",
+    "" if IS_PRODUCTION else "https://daily-firehose.reedfish-regulus.ts.net",
 )
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get("DJANGO_DEBUG", "true").lower() in {"1", "true", "yes", "on"}
+if IS_PRODUCTION:
+    _validate_production_configuration(
+        debug=DEBUG,
+        secret_key=SECRET_KEY,
+        allowed_hosts=ALLOWED_HOSTS,
+        csrf_trusted_origins=CSRF_TRUSTED_ORIGINS,
+    )
 
-ALLOWED_HOSTS = [
-    host.strip()
-    for host in os.environ.get(
-        "DJANGO_ALLOWED_HOSTS",
-        "localhost,127.0.0.1,daily-firehose.reedfish-regulus.ts.net",
-    ).split(",")
-    if host.strip()
-]
-
-CSRF_TRUSTED_ORIGINS = [
-    origin.strip()
-    for origin in os.environ.get(
-        "DJANGO_CSRF_TRUSTED_ORIGINS",
-        "https://daily-firehose.reedfish-regulus.ts.net",
-    ).split(",")
-    if origin.strip()
-]
+# Tailscale Funnel terminates public TLS and proxies only from the local host to
+# 127.0.0.1:8000, setting X-Forwarded-Proto. Do not trust broader forwarded data.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SECURE_SSL_REDIRECT = IS_PRODUCTION
+SESSION_COOKIE_SECURE = IS_PRODUCTION
+CSRF_COOKIE_SECURE = IS_PRODUCTION
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin"
+SECURE_REFERRER_POLICY = "same-origin"
+X_FRAME_OPTIONS = "DENY"
+
+# HSTS is intentionally deferred until an operator verifies a staged rollout.
+# Keep the omission visible and silence only Django's corresponding deploy check;
+# every other deployment warning remains fatal in the documented validation.
+SECURE_HSTS_SECONDS = 0
+SILENCED_SYSTEM_CHECKS = ["security.W004"] if IS_PRODUCTION else []
 
 
 # Application definition
@@ -114,9 +350,9 @@ WSGI_APPLICATION = "daily_firehose.wsgi.application"
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 DATABASES = {
-    "default": dj_database_url.config(
-        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
-        conn_max_age=600,
+    "default": _database_from_environment(
+        production=IS_PRODUCTION,
+        sqlite_path=BASE_DIR / "db.sqlite3",
     )
 }
 
