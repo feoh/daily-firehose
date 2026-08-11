@@ -619,12 +619,21 @@ a claim that every normative rule is presently satisfied.
   practiced restore path before destructive migrations or host loss.
 - **Scope / precedence:** a Docker named volume is persistence, not a backup; code
   rollback does not reverse schema/data changes.
-- **Executable evidence:** no executable backup/restore drill exists; architecture and
-  catalog explicitly record the gap.
-- **Known violation status:** **Known violation** — repository evidence defines no
-  backup capability or restore drill.
-- **Source / feature IDs:** `docker-compose.yml`, `README.md`; OPS-002, OPS-013,
-  OPS-014.
+- **Executable evidence:** provider-neutral scripts and explicit local fake-adapter
+  cases cover allowlisted BatchMode SSH pull, custom-format creation/remote listing,
+  public-key encryption boundaries, active-CIFS/path confirmation, tiered retention,
+  anonymous plaintext-descriptor handling, and isolated restore failure/cleanup and
+  semantic checks. The
+  runbook records the owner-approved loki/NAS architecture and production stop gate.
+- **Known violation status:** **Known violation in production** — tooling and the
+  destination/retention design exist, but the dedicated age recipient/private-key
+  custody authority is undecided; no encrypted production pair, independently confirmed
+  NAS/off-site copy, activated schedule, alert, or timed restore drill exists. RPO/RTO
+  remain unknown.
+- **Source / feature IDs:** `docker-compose.yml`, `README.md`,
+  `docs/operations/postgresql-backups.md`, `scripts/postgres_backup.py`,
+  `scripts/postgres_backup_retention.py`, `scripts/postgres_restore_verify.py`,
+  `tests/postgres_backup_script_cases.py`; OPS-002, OPS-013, OPS-014.
 
 ### OPS-INV-005 — Failed refresh commands signal failure to supervision
 

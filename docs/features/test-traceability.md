@@ -207,8 +207,8 @@ Statuses: `C` executed coverage at the stated level; `XF` a focused expected-fai
 | current-HEAD production observation | none performed by this task | M | Revision-tagged smoke → `tk-harden-api-operations-security-and-release-verif-5f790a` |
 | migrations | `makemigrations --check` is a command validation; no PostgreSQL upgrade/rollback | M integration/rollback | `tk-add-required-postgresql-integration-and-concurre-0719fc`, `tk-document-and-rehearse-backup-restore-rollback-an-3bf520` |
 | Compose build/up/health | render only; no launch/build | M | `tk-harden-api-operations-security-and-release-verif-5f790a` |
-| backup creation/off-host/integrity | — | M | `tk-establish-production-postgresql-backup-and-resto-01b0c1` |
-| restore/RPO/RTO/rollback rehearsal | — | M | `tk-document-and-rehearse-backup-restore-rollback-an-3bf520` |
+| backup creation/NAS/integrity | explicit `tests/postgres_backup_script_cases.py` cases execute fake BatchMode SSH, Docker, encryption, anonymous mode-0600 plaintext descriptors, layered CIFS/path checks, fsync/full-metadata confirmation, last-known-good retention, and dry-run/apply mechanics; one exact-path loki check is guarded and read-only; these support cases are intentionally outside the 17-module/225-test Django ledger | C local mechanics; M encrypted production/NAS/off-site evidence | Dedicated age recipient/private-key custody, manual encrypted pair, independent NAS/off-site confirmation, and activation remain in `tk-establish-production-postgresql-backup-and-resto-01b0c1` |
+| restore/RPO/RTO/rollback rehearsal | explicit `tests/postgres_backup_script_cases.py` cases execute selected-NAS input, decrypt/readiness/schema/application failures, and exact disposable-resource cleanup/evidence paths; no real encrypted archive/cutover | C local mechanics; M real restore/RPO/RTO | Production-like timed drill → `tk-document-and-rehearse-backup-restore-rollback-an-3bf520` |
 
 ## Gap summary and priority
 
@@ -218,7 +218,7 @@ No-primary feature IDs: `API-019`, `AUTH-004`, `ING-010`, `OPS-006`, `OPS-007`, 
 
 No-primary invariant IDs: `API-CAP-INV-002`, `OPS-INV-002`, `OPS-INV-004`.
 
-Exact broad gaps: 12 expected failures; zero PostgreSQL race tests; zero launched-Compose tests; zero backup/restore tests; zero automated current-HEAD production observations; zero tests at 375/768/dedicated 1280; clipboard and uppercase T/W/M/A/L/F navigation behavior remain unexecuted; j/k/s/m/o and help behavior are controlled-DOM Chromium rather than a live Django page; zero axe/screen-reader tests. Risk priority follows `REL-RISK-001`–`004`, concurrency/integration risks, then `REL-RISK-019`–`020`.
+Exact broad gaps: 12 expected failures; zero PostgreSQL race tests; zero launched-Compose tests; explicit local backup/restore mechanics cases but zero real encrypted production backup or restore drill; zero automated current-HEAD production observations; zero tests at 375/768/dedicated 1280; clipboard and uppercase T/W/M/A/L/F navigation behavior remain unexecuted; j/k/s/m/o and help behavior are controlled-DOM Chromium rather than a live Django page; zero axe/screen-reader tests. Risk priority follows `REL-RISK-001`–`004`, concurrency/integration risks, then `REL-RISK-019`–`020`.
 
 ## Complete current-test ledger
 

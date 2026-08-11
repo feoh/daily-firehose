@@ -1,0 +1,5 @@
+# Non-secret wiring for the dormant loki backup service. The encryptor is a
+# public-key-only adapter; its age recipient configuration lives outside this file.
+# Do not install a decryption private key or application-host credentials here.
+BACKUP_OUTPUT_DIR=/nas/homes/backups/daily-firehose
+BACKUP_ENCRYPTOR=/usr/local/libexec/daily-firehose-backup-age-encrypt

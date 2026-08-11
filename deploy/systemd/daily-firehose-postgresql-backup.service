@@ -1,0 +1,26 @@
+[Unit]
+Description=Daily Firehose encrypted PostgreSQL pull backup on loki
+Documentation=file:/opt/daily-firehose/docs/operations/postgresql-backups.md
+Wants=network-online.target
+After=network-online.target remote-fs.target
+RequiresMountsFor=/nas/homes
+ConditionPathExists=/opt/daily-firehose/scripts/postgres_backup.py
+
+[Service]
+Type=oneshot
+# The existing CIFS mount is force-owned by feoh (uid/gid 1000, mode 0755), so a
+# separate service UID cannot write the approved NAS directory.
+User=feoh
+Group=feoh
+WorkingDirectory=/opt/daily-firehose
+EnvironmentFile=/etc/daily-firehose-backup/backup.conf
+UMask=0077
+ExecCondition=/usr/bin/mountpoint -q /nas/homes
+ExecStart=/usr/bin/python3 -m scripts.postgres_backup --output-dir ${BACKUP_OUTPUT_DIR}
+TimeoutStartSec=2h
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/nas/homes/backups/daily-firehose

@@ -116,7 +116,8 @@ INTRO_BASELINE = (
 )
 BROAD_GAP_BASELINE = (
     "Exact broad gaps: 12 expected failures; zero PostgreSQL race tests; zero "
-    "launched-Compose tests; zero backup/restore tests; zero automated current-HEAD "
+    "launched-Compose tests; explicit local backup/restore mechanics cases but zero "
+    "real encrypted production backup or restore drill; zero automated current-HEAD "
     "production observations; zero tests at 375/768/dedicated 1280; clipboard and "
     "uppercase T/W/M/A/L/F navigation behavior remain unexecuted; j/k/s/m/o and "
     "help behavior are controlled-DOM Chromium rather than a live Django page; zero "
