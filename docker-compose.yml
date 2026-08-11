@@ -21,17 +21,28 @@ services:
       sh -c "python manage.py migrate &&
              gunicorn daily_firehose.wsgi:application --bind 0.0.0.0:8000"
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-daily_firehose}:${POSTGRES_PASSWORD:-daily_firehose_dev_password}@db:5432/${POSTGRES_DB:-daily_firehose}
-      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0,daily-firehose.reedfish-regulus.ts.net}
-      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-https://daily-firehose.reedfish-regulus.ts.net}
+      DATABASE_URL: >-
+        postgres://${POSTGRES_USER:-daily_firehose}:${POSTGRES_PASSWORD:-daily_firehose_dev_password}@db:5432/${POSTGRES_DB:-daily_firehose}
+      DJANGO_ALLOWED_HOSTS: >-
+        ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0,daily-firehose.reedfish-regulus.ts.net}
+      DJANGO_CSRF_TRUSTED_ORIGINS: >-
+        ${DJANGO_CSRF_TRUSTED_ORIGINS:-https://daily-firehose.reedfish-regulus.ts.net}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-true}
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-compose-development-key-change-me}
+      DJANGO_SECRET_KEY: >-
+        ${DJANGO_SECRET_KEY:-django-insecure-compose-development-key-change-me}
       AGENT_LINK_SECRET: ${AGENT_LINK_SECRET:-}
       AGENT_LINK_USERNAME: ${AGENT_LINK_USERNAME:-}
       POSTMARK_INBOUND_SECRET: ${POSTMARK_INBOUND_SECRET:-}
-      POSTMARK_INBOUND_EMAIL: ${POSTMARK_INBOUND_EMAIL:-95d8c50c7df8d1ca38d7a6f55ee5a311@inbound.postmarkapp.com}
+      POSTMARK_INBOUND_EMAIL: >-
+        ${POSTMARK_INBOUND_EMAIL:-95d8c50c7df8d1ca38d7a6f55ee5a311@inbound.postmarkapp.com}
       LINKDING_TOKEN: ${LINKDING_TOKEN:-}
       LINKDING_URL: ${LINKDING_URL:-https://linkding.reedfish-regulus.ts.net}
+      FEED_FETCH_CONNECT_TIMEOUT_SECONDS: >-
+        ${FEED_FETCH_CONNECT_TIMEOUT_SECONDS:-5}
+      FEED_FETCH_READ_TIMEOUT_SECONDS: ${FEED_FETCH_READ_TIMEOUT_SECONDS:-20}
+      FEED_FETCH_TOTAL_TIMEOUT_SECONDS: ${FEED_FETCH_TOTAL_TIMEOUT_SECONDS:-60}
+      FEED_FETCH_MAX_BYTES: ${FEED_FETCH_MAX_BYTES:-5000000}
+      FEED_FETCH_MAX_REDIRECTS: ${FEED_FETCH_MAX_REDIRECTS:-3}
     ports:
       - "${WEB_PORT:-8000}:8000"
     depends_on:
@@ -47,12 +58,22 @@ services:
                sleep $${FEED_REFRESH_SECONDS:-3600};
              done"
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-daily_firehose}:${POSTGRES_PASSWORD:-daily_firehose_dev_password}@db:5432/${POSTGRES_DB:-daily_firehose}
-      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0,daily-firehose.reedfish-regulus.ts.net}
-      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-https://daily-firehose.reedfish-regulus.ts.net}
+      DATABASE_URL: >-
+        postgres://${POSTGRES_USER:-daily_firehose}:${POSTGRES_PASSWORD:-daily_firehose_dev_password}@db:5432/${POSTGRES_DB:-daily_firehose}
+      DJANGO_ALLOWED_HOSTS: >-
+        ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0,daily-firehose.reedfish-regulus.ts.net}
+      DJANGO_CSRF_TRUSTED_ORIGINS: >-
+        ${DJANGO_CSRF_TRUSTED_ORIGINS:-https://daily-firehose.reedfish-regulus.ts.net}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-true}
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-compose-development-key-change-me}
+      DJANGO_SECRET_KEY: >-
+        ${DJANGO_SECRET_KEY:-django-insecure-compose-development-key-change-me}
       FEED_REFRESH_SECONDS: ${FEED_REFRESH_SECONDS:-3600}
+      FEED_FETCH_CONNECT_TIMEOUT_SECONDS: >-
+        ${FEED_FETCH_CONNECT_TIMEOUT_SECONDS:-5}
+      FEED_FETCH_READ_TIMEOUT_SECONDS: ${FEED_FETCH_READ_TIMEOUT_SECONDS:-20}
+      FEED_FETCH_TOTAL_TIMEOUT_SECONDS: ${FEED_FETCH_TOTAL_TIMEOUT_SECONDS:-60}
+      FEED_FETCH_MAX_BYTES: ${FEED_FETCH_MAX_BYTES:-5000000}
+      FEED_FETCH_MAX_REDIRECTS: ${FEED_FETCH_MAX_REDIRECTS:-3}
       AGENT_LINK_SECRET: ${AGENT_LINK_SECRET:-}
       AGENT_LINK_USERNAME: ${AGENT_LINK_USERNAME:-}
       LINKDING_TOKEN: ${LINKDING_TOKEN:-}

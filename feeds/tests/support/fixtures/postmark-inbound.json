@@ -1,0 +1,10 @@
+{
+  "MessageID": "message-1",
+  "Subject": "Daily newsletter",
+  "From": "sender@example.com",
+  "FromFull": {"Name": "Newsletter Sender", "Email": "sender@example.com"},
+  "To": "reader@example.com",
+  "ToFull": [{"Name": "Reader", "Email": "reader@example.com"}],
+  "HtmlBody": "<h1>Hello</h1><script>alert(\"x\")</script><p><a href=\"https://example.com/story\">Story</a></p>",
+  "TextBody": "Hello\nStory: https://example.com/story"
+}

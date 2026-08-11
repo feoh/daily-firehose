@@ -15,6 +15,7 @@ from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
+from .feed_fetch import FeedFetchError
 from .models import (
     ApiToken,
     Article,
@@ -59,7 +60,9 @@ def _parse_json(request: HttpRequest) -> dict[str, Any]:
     except json.JSONDecodeError as exc:
         raise ValueError("Request body must be valid JSON.") from exc
     if not isinstance(value, dict):
-        raise ValueError("Request body must be a JSON object.")
+        raise ValueError(  # noqa: TRY004 - API input errors share one envelope.
+            "Request body must be a JSON object."
+        )
     return value
 
 
@@ -112,6 +115,8 @@ def api_view(
             request.user = user
             try:
                 return view(request, user, *args, **kwargs)
+            except FeedFetchError as exc:
+                return _json_error(str(exc), code=exc.code)
             except ValueError as exc:
                 return _json_error(str(exc))
 
@@ -614,11 +619,18 @@ def preferences_api(request: HttpRequest, user) -> JsonResponse:
 @api_view({"POST"})
 def refresh_feeds_api(request: HttpRequest, user) -> JsonResponse:
     results = refresh_active_feeds()
+    attempted = [result for result in results if not result.skipped]
     return JsonResponse(
         {
             "checked": len(results),
+            "attempted": len(attempted),
+            "succeeded": sum(result.success for result in results),
+            "failed": sum(
+                not result.success and not result.skipped for result in results
+            ),
+            "skipped": sum(result.skipped for result in results),
             "feeds_with_new_articles": sum(
-                1 for result in results if result.created > 0
+                1 for result in results if result.success and result.created > 0
             ),
             "created": sum(result.created for result in results),
             "updated": sum(result.updated for result in results),
@@ -626,8 +638,23 @@ def refresh_feeds_api(request: HttpRequest, user) -> JsonResponse:
                 {
                     "id": _pk(result.feed),
                     "title": result.feed.title,
+                    "status": result.status,
                     "created": result.created,
                     "updated": result.updated,
+                    "duration_seconds": result.duration_seconds,
+                    "error": (
+                        {
+                            "code": result.error_code,
+                            "message": result.error_message,
+                        }
+                        if not result.success
+                        else None
+                    ),
+                    "next_retry_at": (
+                        result.next_retry_at.isoformat()
+                        if result.next_retry_at is not None
+                        else None
+                    ),
                 }
                 for result in results
             ],

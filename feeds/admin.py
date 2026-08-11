@@ -30,9 +30,26 @@ class CategoryAdmin(admin.ModelAdmin):
 
 @admin.register(Feed)
 class FeedAdmin(admin.ModelAdmin):
-    list_display = ["title", "category", "feed_url", "is_active", "last_fetched_at"]
-    list_filter = ["is_active", "category"]
-    search_fields = ["title", "feed_url", "site_url"]
+    list_display = [
+        "title",
+        "category",
+        "feed_url",
+        "is_active",
+        "last_attempt_at",
+        "last_fetched_at",
+        "consecutive_failures",
+        "next_retry_at",
+    ]
+    list_filter = ["is_active", "category", "last_error_code"]
+    search_fields = ["title", "feed_url", "site_url", "last_error_message"]
+    readonly_fields = [
+        "last_attempt_at",
+        "last_fetched_at",
+        "last_error_code",
+        "last_error_message",
+        "consecutive_failures",
+        "next_retry_at",
+    ]
 
 
 @admin.register(Article)

@@ -14,6 +14,22 @@ import os
 from pathlib import Path
 
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
+
+
+def _env_float(name: str, default: str) -> float:
+    try:
+        return float(os.environ.get(name, default))
+    except ValueError as exc:
+        raise ImproperlyConfigured(f"{name} must be a number.") from exc
+
+
+def _env_int(name: str, default: str) -> int:
+    try:
+        return int(os.environ.get(name, default))
+    except ValueError as exc:
+        raise ImproperlyConfigured(f"{name} must be an integer.") from exc
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -166,6 +182,39 @@ POSTMARK_INBOUND_EMAIL = os.environ.get(
     "POSTMARK_INBOUND_EMAIL",
     "95d8c50c7df8d1ca38d7a6f55ee5a311@inbound.postmarkapp.com",
 )
+
+# Per-feed limits bound socket inactivity and memory. A process-level watchdog is
+# still required for a hard wall-clock limit against resolver or slow-drip stalls.
+FEED_FETCH_CONNECT_TIMEOUT_SECONDS = _env_float(
+    "FEED_FETCH_CONNECT_TIMEOUT_SECONDS", "5"
+)
+FEED_FETCH_READ_TIMEOUT_SECONDS = _env_float("FEED_FETCH_READ_TIMEOUT_SECONDS", "20")
+FEED_FETCH_TOTAL_TIMEOUT_SECONDS = _env_float("FEED_FETCH_TOTAL_TIMEOUT_SECONDS", "60")
+FEED_FETCH_MAX_BYTES = _env_int("FEED_FETCH_MAX_BYTES", "5000000")
+FEED_FETCH_MAX_REDIRECTS = _env_int("FEED_FETCH_MAX_REDIRECTS", "3")
+
+# Refresh success records are INFO-level operational signals. Configure their
+# logger explicitly so container logs include both successful and failed runs.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "plain": {"format": "%(levelname)s %(name)s %(message)s"},
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "plain",
+        },
+    },
+    "loggers": {
+        "feeds.services": {
+            "handlers": ["console"],
+            "level": os.environ.get("FEED_REFRESH_LOG_LEVEL", "INFO"),
+            "propagate": False,
+        },
+    },
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

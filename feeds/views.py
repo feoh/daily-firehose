@@ -11,8 +11,10 @@ from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest, JsonR
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
+from .feed_fetch import FeedFetchError
 from .forms import FeedForm, OPMLImportForm, ThemeForm
 from .models import (
     Article,
@@ -234,6 +236,7 @@ def newsletter_detail(request: HttpRequest, public_id) -> HttpResponse:
 
 
 @login_required
+@never_cache
 def today(request: HttpRequest) -> HttpResponse:
     current = timezone.localdate()
     articles = _articles_between(current, current)
@@ -342,14 +345,18 @@ def feed_list(request: HttpRequest) -> HttpResponse:
     form = FeedForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         feed = form.save(commit=False)
-        if not feed.title:
-            metadata = discover_feed_metadata(feed.feed_url)
-            feed.title = metadata["title"]
-            feed.site_url = feed.site_url or metadata["site_url"]
-            feed.description = feed.description or metadata["description"]
-        feed.save()
-        messages.success(request, f"Added feed {feed.title}.")
-        return redirect("feeds")
+        try:
+            if not feed.title:
+                metadata = discover_feed_metadata(feed.feed_url)
+                feed.title = metadata["title"]
+                feed.site_url = feed.site_url or metadata["site_url"]
+                feed.description = feed.description or metadata["description"]
+        except FeedFetchError as exc:
+            form.add_error("feed_url", str(exc))
+        else:
+            feed.save()
+            messages.success(request, f"Added feed {feed.title}.")
+            return redirect("feeds")
     return render(
         request,
         "feeds/feed_list.html",
@@ -405,17 +412,29 @@ def preferences(request: HttpRequest) -> HttpResponse:
 @login_required
 def refresh_feeds(request: HttpRequest) -> HttpResponse:
     results = refresh_active_feeds()
+    attempted = [result for result in results if not result.skipped]
+    failures = [result for result in attempted if not result.success]
+    skipped = [result for result in results if result.skipped]
     created = sum(result.created for result in results)
     updated = sum(result.updated for result in results)
-    feeds_with_new_articles = sum(1 for result in results if result.created > 0)
-    messages.success(
-        request,
-        (
-            f"Refresh complete: checked {len(results)} feeds; "
-            f"{feeds_with_new_articles} feeds had new articles; "
-            f"{created} new articles; {updated} existing articles updated."
-        ),
+    succeeded = sum(result.success for result in results)
+    feeds_with_new_articles = sum(
+        1 for result in results if result.success and result.created > 0
     )
+    summary = (
+        f"Refresh complete: checked {len(attempted)} feeds; succeeded {succeeded}; "
+        f"failed {len(failures)}; skipped {len(skipped)}; "
+        f"{feeds_with_new_articles} feeds had new articles; "
+        f"{created} new articles; {updated} existing articles updated."
+    )
+    if failures:
+        failed_titles = ", ".join(result.feed.title for result in failures)
+        messages.warning(request, f"{summary} Failed feeds: {failed_titles}.")
+    elif skipped:
+        skipped_titles = ", ".join(result.feed.title for result in skipped)
+        messages.warning(request, f"{summary} Backoff feeds: {skipped_titles}.")
+    else:
+        messages.success(request, summary)
     return redirect(request.POST.get("next") or reverse("today"))
 
 
@@ -507,7 +526,7 @@ def save_article_view(request: HttpRequest, article_id: int) -> HttpResponse:
         token=settings.LINKDING_TOKEN,
     )
     if saved.linkding_saved:
-        message = f'Saved “{saved.title}” to Linkding and Daily Firehose.'
+        message = f"Saved “{saved.title}” to Linkding and Daily Firehose."
         level = "success"
     else:
         message = f"Saved locally, but Linkding failed: {saved.linkding_error}"

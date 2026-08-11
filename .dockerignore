@@ -9,3 +9,5 @@ db.sqlite3
 staticfiles/
 .pytest_cache/
 .mypy_cache/
+.pi-subagents/
+feeds/tests/

@@ -1,27 +1,39 @@
 from __future__ import annotations
 
+import logging
+import math
 import re
+import time
+import unicodedata
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
-from typing import Any, cast
+from typing import Any, Literal, cast
 from urllib.parse import urljoin
 from xml.etree import ElementTree
 
 import bleach
 import feedparser
 import requests
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
 
+from .feed_fetch import FeedFetchError, fetch_feed_document
 from .models import Article, Category, Feed, NewsletterIssue, SavedArticle
 
 LINKDING_TOREAD_TAG = "toread"
 NEWSLETTER_FEED_URL = "https://daily-firehose.local/feeds/email-newsletters"
 NEWSLETTER_FEED_TITLE = "Email Newsletters"
+
+logger = logging.getLogger(__name__)
+_REFRESH_BACKOFF_BASE = timedelta(minutes=5)
+_REFRESH_BACKOFF_CAP = timedelta(hours=24)
+_SAFE_FEED_TITLE_MAX_LENGTH = 160
 
 
 class _TextExtractor(HTMLParser):
@@ -46,8 +58,98 @@ class ImportResult:
 @dataclass(frozen=True)
 class RefreshResult:
     feed: Feed
-    created: int
-    updated: int
+    created: int = 0
+    updated: int = 0
+    success: bool = True
+    skipped: bool = False
+    duration_seconds: float = 0.0
+    error_code: str = ""
+    error_message: str = ""
+    next_retry_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        for field_name, value in (("created", self.created), ("updated", self.updated)):
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError(f"{field_name} must be a non-negative integer")
+        if (
+            not isinstance(self.duration_seconds, (int, float))
+            or isinstance(self.duration_seconds, bool)
+            or not math.isfinite(self.duration_seconds)
+            or self.duration_seconds < 0
+        ):
+            raise ValueError("duration_seconds must be finite and non-negative")
+        if self.success:
+            if self.skipped:
+                raise ValueError("a successful refresh cannot be skipped")
+            if self.error_code or self.error_message or self.next_retry_at is not None:
+                raise ValueError("a successful refresh cannot contain failure metadata")
+        else:
+            if self.created or self.updated:
+                raise ValueError(
+                    "a failed or skipped refresh cannot contain write counts"
+                )
+            if not self.error_code or not self.error_message:
+                raise ValueError(
+                    "a failed or skipped refresh requires safe error metadata"
+                )
+            if self.next_retry_at is None:
+                raise ValueError("a failed or skipped refresh requires next_retry_at")
+
+    @property
+    def status(self) -> Literal["succeeded", "failed", "skipped"]:
+        if self.skipped:
+            return "skipped"
+        return "succeeded" if self.success else "failed"
+
+
+class _UnusableFeedError(Exception):
+    """A parsed document without usable feed or entry data."""
+
+
+def safe_feed_title(title: object) -> str:
+    """Return a bounded single-line title safe for logs and command output."""
+
+    normalized = unicodedata.normalize("NFKC", str(title))
+    without_controls = "".join(
+        " " if unicodedata.category(character).startswith("C") else character
+        for character in normalized
+    )
+    cleaned = " ".join(without_controls.split()) or "(untitled feed)"
+    if len(cleaned) > _SAFE_FEED_TITLE_MAX_LENGTH:
+        return f"{cleaned[: _SAFE_FEED_TITLE_MAX_LENGTH - 1]}…"
+    return cleaned
+
+
+def _refresh_log_context(
+    result: RefreshResult, *, consecutive_failures: int
+) -> tuple[str, dict[str, object]]:
+    title = safe_feed_title(result.feed.title)
+    next_retry = (
+        result.next_retry_at.isoformat() if result.next_retry_at is not None else "none"
+    )
+    context: dict[str, object] = {
+        "feed_id": result.feed.pk,
+        "feed_title": title,
+        "status": result.status,
+        "duration_seconds": result.duration_seconds,
+        "consecutive_failures": consecutive_failures,
+        "next_retry_at": result.next_retry_at,
+    }
+    message = (
+        f"feed_refresh_completed feed_id={result.feed.pk} title={title!r} "
+        f"status={result.status} duration_seconds={result.duration_seconds:.6f} "
+    )
+    if result.success:
+        context.update(
+            articles_created=result.created,
+            articles_updated=result.updated,
+        )
+        message += f"created={result.created} updated={result.updated} "
+    else:
+        context["error_code"] = result.error_code
+        message += f"error_code={result.error_code} "
+    message += f"consecutive_failures={consecutive_failures} next_retry_at={next_retry}"
+    return message, context
 
 
 @dataclass(frozen=True)
@@ -66,7 +168,7 @@ def _aware_datetime(value: Any) -> datetime:
             return timezone.now()
     else:
         try:
-            parsed = datetime(*value[:6])
+            parsed = datetime(*value[:6])  # noqa: DTZ001
         except (TypeError, ValueError):
             return timezone.now()
     if timezone.is_naive(parsed):
@@ -74,54 +176,165 @@ def _aware_datetime(value: Any) -> datetime:
     return parsed
 
 
-def refresh_feed(feed: Feed) -> RefreshResult:
-    parsed = cast(Any, feedparser.parse(feed.feed_url))
-    feed_info = parsed.get("feed", {})
-    feed.title = feed_info.get("title") or feed.title or feed.feed_url
-    feed.site_url = feed_info.get("link") or feed.site_url
-    feed.description = (
-        feed_info.get("subtitle") or feed_info.get("description") or feed.description
-    )
-    feed.last_fetched_at = timezone.now()
-    feed.save(
-        update_fields=[
-            "title",
-            "site_url",
-            "description",
-            "last_fetched_at",
-            "updated_at",
-        ]
-    )
-
-    created = 0
-    updated = 0
-    for entry in parsed.get("entries", []):
-        url = _entry_article_url(entry)
-        if not url:
-            continue
-        guid = entry.get("id") or url
-        defaults = {
-            "title": entry.get("title") or url,
-            "url": url,
-            "author": entry.get("author", ""),
-            "summary": entry.get("summary", ""),
-            "published_at": _aware_datetime(
-                entry.get("published_parsed")
-                or entry.get("updated_parsed")
-                or entry.get("published")
-                or entry.get("updated")
-            ),
-        }
-        _, was_created = Article.objects.update_or_create(
-            feed=feed,
-            guid=guid,
-            defaults=defaults,
+def _refresh_failure(exc: Exception) -> tuple[str, str, bool]:
+    if isinstance(exc, FeedFetchError):
+        return exc.code, str(exc), False
+    if isinstance(exc, _UnusableFeedError):
+        return "parse_error", "The feed document could not be parsed.", False
+    if isinstance(exc, ValidationError):
+        return "validation_error", "The feed contained invalid article data.", False
+    if isinstance(exc, IntegrityError):
+        return (
+            "integrity_error",
+            "The feed conflicted with existing article data.",
+            False,
         )
-        if was_created:
-            created += 1
+    return "unexpected_error", "An unexpected feed refresh error occurred.", True
+
+
+def _retry_delay(consecutive_failures: int) -> timedelta:
+    multiplier = 2 ** min(max(consecutive_failures - 1, 0), 16)
+    return min(_REFRESH_BACKOFF_BASE * multiplier, _REFRESH_BACKOFF_CAP)
+
+
+def _record_refresh_failure(
+    feed: Feed, *, code: str, message: str, failed_at: datetime
+) -> datetime:
+    with transaction.atomic():
+        stored_feed = Feed.objects.select_for_update().get(pk=feed.pk)
+        stored_feed.consecutive_failures += 1
+        stored_feed.last_error_code = code
+        stored_feed.last_error_message = message
+        stored_feed.next_retry_at = failed_at + _retry_delay(
+            stored_feed.consecutive_failures
+        )
+        stored_feed.save(
+            update_fields=[
+                "consecutive_failures",
+                "last_error_code",
+                "last_error_message",
+                "next_retry_at",
+                "updated_at",
+            ]
+        )
+    feed.refresh_from_db()
+    return cast(datetime, feed.next_retry_at)
+
+
+def refresh_feed(feed: Feed) -> RefreshResult:
+    started = time.monotonic()
+    attempted_at = timezone.now()
+    Feed.objects.filter(pk=feed.pk).update(last_attempt_at=attempted_at)
+    feed.last_attempt_at = attempted_at
+
+    try:
+        document = fetch_feed_document(feed.feed_url)
+        try:
+            parsed = cast(
+                Any,
+                feedparser.parse(
+                    document.content,
+                    response_headers=document.response_headers,
+                ),
+            )
+        except Exception as exc:
+            raise _UnusableFeedError from exc
+        feed_info = parsed.get("feed", {})
+        entries = parsed.get("entries", [])
+        if parsed.get("bozo") and not feed_info and not entries:
+            raise _UnusableFeedError
+
+        with transaction.atomic():
+            feed.title = feed_info.get("title") or feed.title or feed.feed_url
+            feed.site_url = feed_info.get("link") or feed.site_url
+            feed.description = (
+                feed_info.get("subtitle")
+                or feed_info.get("description")
+                or feed.description
+            )
+
+            created = 0
+            updated = 0
+            for entry in entries:
+                url = _entry_article_url(entry)
+                if not url:
+                    continue
+                guid = entry.get("id") or url
+                defaults = {
+                    "title": entry.get("title") or url,
+                    "url": url,
+                    "author": entry.get("author", ""),
+                    "summary": entry.get("summary", ""),
+                    "published_at": _aware_datetime(
+                        entry.get("published_parsed")
+                        or entry.get("updated_parsed")
+                        or entry.get("published")
+                        or entry.get("updated")
+                    ),
+                }
+                _, was_created = Article.objects.update_or_create(
+                    feed=feed,
+                    guid=guid,
+                    defaults=defaults,
+                )
+                if was_created:
+                    created += 1
+                else:
+                    updated += 1
+
+            succeeded_at = timezone.now()
+            feed.last_fetched_at = succeeded_at
+            feed.last_error_code = ""
+            feed.last_error_message = ""
+            feed.consecutive_failures = 0
+            feed.next_retry_at = None
+            feed.save(
+                update_fields=[
+                    "title",
+                    "site_url",
+                    "description",
+                    "last_fetched_at",
+                    "last_error_code",
+                    "last_error_message",
+                    "consecutive_failures",
+                    "next_retry_at",
+                    "updated_at",
+                ]
+            )
+    except Exception as exc:
+        code, message, unexpected = _refresh_failure(exc)
+        failed_at = timezone.now()
+        next_retry_at = _record_refresh_failure(
+            feed, code=code, message=message, failed_at=failed_at
+        )
+        result = RefreshResult(
+            feed=feed,
+            success=False,
+            duration_seconds=max(0.0, time.monotonic() - started),
+            error_code=code,
+            error_message=message,
+            next_retry_at=next_retry_at,
+        )
+        log_message, log_context = _refresh_log_context(
+            result, consecutive_failures=feed.consecutive_failures
+        )
+        if unexpected:
+            logger.exception(log_message, extra=log_context)
         else:
-            updated += 1
-    return RefreshResult(feed=feed, created=created, updated=updated)
+            logger.warning(log_message, extra=log_context)
+        return result
+
+    result = RefreshResult(
+        feed=feed,
+        created=created,
+        updated=updated,
+        duration_seconds=max(0.0, time.monotonic() - started),
+    )
+    log_message, log_context = _refresh_log_context(
+        result, consecutive_failures=feed.consecutive_failures
+    )
+    logger.info(log_message, extra=log_context)
+    return result
 
 
 def _entry_article_url(entry: Any) -> str:
@@ -143,7 +356,23 @@ def _entry_article_url(entry: Any) -> str:
 
 
 def refresh_active_feeds() -> list[RefreshResult]:
-    return [refresh_feed(feed) for feed in Feed.objects.filter(is_active=True)]
+    results: list[RefreshResult] = []
+    for feed in Feed.objects.filter(is_active=True):
+        eligibility_time = timezone.now()
+        if feed.next_retry_at is not None and feed.next_retry_at > eligibility_time:
+            results.append(
+                RefreshResult(
+                    feed=feed,
+                    success=False,
+                    skipped=True,
+                    error_code=feed.last_error_code,
+                    error_message=feed.last_error_message,
+                    next_retry_at=feed.next_retry_at,
+                )
+            )
+            continue
+        results.append(refresh_feed(feed))
+    return results
 
 
 def newsletter_feed() -> Feed:
@@ -291,7 +520,14 @@ def _newsletter_link_attrs(attrs, new=False):
 
 
 def discover_feed_metadata(feed_url: str) -> dict[str, str]:
-    parsed = cast(Any, feedparser.parse(feed_url))
+    document = fetch_feed_document(feed_url)
+    parsed = cast(
+        Any,
+        feedparser.parse(
+            document.content,
+            response_headers=document.response_headers,
+        ),
+    )
     info = parsed.get("feed", {})
     return {
         "title": info.get("title") or feed_url,
@@ -426,9 +662,7 @@ def _linkding_description(article: Article) -> str:
     return description
 
 
-def save_to_linkding(
-    *, base_url: str, token: str, article: Article
-) -> dict[str, Any]:
+def save_to_linkding(*, base_url: str, token: str, article: Article) -> dict[str, Any]:
     if not token:
         raise ValueError("LINKDING_TOKEN is not configured")
     payload = {

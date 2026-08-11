@@ -4,9 +4,11 @@ from .models import Feed, UserPreference
 
 
 class FeedForm(forms.ModelForm):
+    title = forms.CharField(max_length=255, required=False)
+
     class Meta:
         model = Feed
-        fields = [
+        fields = [  # noqa: RUF012 - declarative Django form metadata.
             "feed_url",
             "title",
             "site_url",
@@ -14,7 +16,7 @@ class FeedForm(forms.ModelForm):
             "category",
             "is_active",
         ]
-        widgets = {
+        widgets = {  # noqa: RUF012 - declarative Django form metadata.
             "description": forms.Textarea(attrs={"rows": 3}),
         }
 

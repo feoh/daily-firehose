@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Fixture RSS</title>
+    <link>https://example.com/</link>
+    <description>Representative RSS fixture.</description>
+    <item>
+      <guid>rss-entry-1</guid>
+      <title>RSS fixture article</title>
+      <link>https://example.com/rss-article</link>
+      <description>RSS summary.</description>
+      <pubDate>Mon, 05 Jan 2026 12:00:00 +0000</pubDate>
+    </item>
+  </channel>
+</rss>

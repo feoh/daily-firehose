@@ -32,6 +32,11 @@ class Feed(models.Model):
     )
     is_active = models.BooleanField(default=True)
     last_fetched_at = models.DateTimeField(blank=True, null=True)
+    last_attempt_at = models.DateTimeField(blank=True, null=True)
+    last_error_code = models.CharField(max_length=64, blank=True)
+    last_error_message = models.TextField(blank=True)
+    consecutive_failures = models.PositiveIntegerField(default=0)
+    next_retry_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

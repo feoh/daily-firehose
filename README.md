@@ -27,6 +27,26 @@ uv run python manage.py runserver
 
 Open <http://127.0.0.1:8000/> and sign in.
 
+### Tests, including Playwright
+
+Install the locked development dependencies and Chromium once per environment:
+
+```bash
+uv sync --dev
+uv run playwright install chromium
+```
+
+On a clean Ubuntu CI runner, install Chromium and its system packages with:
+
+```bash
+uv run playwright install --with-deps chromium
+```
+
+Run the complete Django suite with `uv run python manage.py test feeds`. Browser
+screenshots and DOM snapshots are written to the ignored
+`test-artifacts/playwright/` directory only when a browser assertion fails
+(including a documented expected-failure characterization).
+
 ## Docker Compose setup
 
 The compose stack includes the Django web app, PostgreSQL, and a simple feed-refresh loop.
@@ -56,6 +76,11 @@ Environment variables:
 - `DATABASE_URL` — optional database URL. Defaults to local SQLite for uv development; compose sets this to PostgreSQL.
 - `LINKDING_URL` — defaults to `https://linkding.reedfish-regulus.ts.net`.
 - `LINKDING_TOKEN` — API token used by **Save to Linkding**.
+- `FEED_FETCH_CONNECT_TIMEOUT_SECONDS` — feed connection timeout, default `5`.
+- `FEED_FETCH_READ_TIMEOUT_SECONDS` — maximum socket inactivity while reading a feed, default `20`.
+- `FEED_FETCH_TOTAL_TIMEOUT_SECONDS` — deadline checked before requests and between chunks, default `60`.
+- `FEED_FETCH_MAX_BYTES` — maximum identity-encoded feed response size, default `5000000`.
+- `FEED_FETCH_MAX_REDIRECTS` — maximum redirects per feed request, default `3`.
 
 ## Feeds and OPML
 
@@ -73,6 +98,35 @@ Run the management command manually or from cron/systemd:
 ```bash
 uv run python manage.py refresh_feeds
 ```
+
+Feed refresh and metadata discovery use the same bounded downloader. It accepts
+only credential-free HTTP(S) URLs on ports 80 and 443, rejects every non-global
+network target (including redirect destinations), requests identity encoding,
+and limits redirects and downloaded bytes. Separate connect/read timeouts apply;
+the total deadline is checked before requests and between response chunks.
+
+The total deadline is not a hard wall-clock interrupt: a socket operation may
+run until its read timeout, and an adversarial slow-drip response can exploit
+the interval between checks. Network-level egress controls plus a process-level
+watchdog or explicit minimum-rate enforcement are required to close that gap
+and the DNS-validation/request DNS-rebinding interval completely.
+
+For each active feed, metadata, article, and success-state writes commit in one
+atomic database transaction. A failed article write rolls back that transaction
+without aborting later feeds. Attempt state is recorded before network work, and
+classified failure state is recorded after rollback, so both intentionally
+persist outside the content transaction. Operational state is retained on
+`Feed`: `last_attempt_at`, safe error code/message,
+consecutive failures, and `next_retry_at`. `last_fetched_at` is the authoritative
+last-success timestamp and changes only after all feed metadata and article
+writes commit successfully. Failures use exponential backoff starting at five
+minutes and capped at 24 hours; skipped feeds remain visible in command, browser,
+and API summaries. Refresh completion logs include safe bounded feed identity,
+status, duration, write counts or error code, failure count, and retry time. The
+management command logs unexpected exceptions with tracebacks while returning
+only classified safe messages to users. In the refresh API, `checked` remains
+the total number of result rows, including backoff skips, while `attempted`
+counts only feeds for which a refresh was attempted during that request.
 
 ## Saved articles
 
