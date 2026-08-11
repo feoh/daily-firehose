@@ -127,8 +127,7 @@ class KnownCorrectnessFailureTests(StaticFilesTestCase):
         self.assertFalse(preferences.compact)
         self.assertFalse(preferences.focus_mode)
 
-    # Bug: Python truthiness currently treats the JSON string "false" as true.
-    @expectedFailure
+    # Regression: non-boolean JSON values must not be coerced by truthiness.
     def test_article_read_rejects_string_boolean(self) -> None:
         response = self.client.post(
             reverse("api-article-read", args=[model_id(self.article)]),
@@ -154,8 +153,7 @@ class KnownCorrectnessFailureTests(StaticFilesTestCase):
             ).exists()
         )
 
-    # Bug: Python truthiness currently saves when is_saved is the string "false".
-    @expectedFailure
+    # Regression: non-boolean saved state must not mutate persistence.
     def test_article_save_rejects_string_boolean(self) -> None:
         response = self.client.post(
             reverse("api-article-saved", args=[model_id(self.article)]),
@@ -181,8 +179,7 @@ class KnownCorrectnessFailureTests(StaticFilesTestCase):
             ).exists()
         )
 
-    # Bug: Python truthiness currently activates a feed for the string "false".
-    @expectedFailure
+    # Regression: feed activation accepts only a JSON boolean.
     def test_feed_creation_rejects_string_boolean(self) -> None:
         feed_url = "https://example.com/string-active.xml"
         response = self.client.post(
@@ -208,8 +205,7 @@ class KnownCorrectnessFailureTests(StaticFilesTestCase):
         )
         self.assertFalse(Feed.objects.filter(feed_url=feed_url).exists())
 
-    # Bug: Python truthiness currently enables preferences for string booleans.
-    @expectedFailure
+    # Regression: compact accepts only a JSON boolean.
     def test_preferences_rejects_string_compact_without_mutation(self) -> None:
         preferences = UserPreference.objects.create(user=self.user, compact=False)
 
@@ -224,8 +220,7 @@ class KnownCorrectnessFailureTests(StaticFilesTestCase):
         preferences.refresh_from_db()
         self.assertFalse(preferences.compact)
 
-    # Bug: Python truthiness currently enables preferences for string booleans.
-    @expectedFailure
+    # Regression: focus_mode accepts only a JSON boolean.
     def test_preferences_rejects_string_focus_mode_without_mutation(self) -> None:
         preferences = UserPreference.objects.create(user=self.user, focus_mode=False)
 
@@ -240,8 +235,7 @@ class KnownCorrectnessFailureTests(StaticFilesTestCase):
         preferences.refresh_from_db()
         self.assertFalse(preferences.focus_mode)
 
-    # Bug: POST/PATCH unsave hard-codes is_read false in its response.
-    @expectedFailure
+    # Regression: unsaving must report the independently persisted read state.
     def test_unsave_preserves_true_read_state_in_response(self) -> None:
         ArticleReadState.objects.create(
             user=self.user,
@@ -381,8 +375,7 @@ class KnownCorrectnessFailureTests(StaticFilesTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Upload a valid OPML file.")
 
-    # Bug: get_object_or_404 bypasses the API's JSON error envelope.
-    @expectedFailure
+    # Regression: resource misses use the documented JSON envelope.
     def test_missing_api_article_returns_json_404_envelope(self) -> None:
         response = self.client.post(
             reverse("api-article-read", args=[999999]),
