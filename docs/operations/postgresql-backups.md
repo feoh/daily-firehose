@@ -48,10 +48,49 @@ block future uploads, and occupy otherwise empty future buckets; alert and revok
 immediately rather than treating retention as compromise recovery.
 
 A read-only observation dated **2026-08-11** found approximately **33.2 TiB free** on
-the NAS. That is not a current capacity guarantee. The measured dump is **14.47 MiB**;
-56–60 retained points project to **0.79–0.85 GiB, under 0.9 GiB**, plus sidecars. At
-10× current data, budget roughly **8–10 GiB**. The dedicated dataset nevertheless has
-an exact **20 GiB quota**, while each accepted dump is bounded to **1 GiB**.
+the NAS. That is not a current capacity guarantee. The dedicated data dataset has an
+exact **20 GiB quota**, the separate control dataset has a **1 GiB quota**, and each
+accepted dump is bounded to **1 GiB**.
+
+## Capacity answer and checker
+
+The dependency-free executable checker uses the measured 15,173,740-byte dump plus
+1,387 bytes of metadata/receipt sidecars per live point, the receiver's 56–60-point
+calendar retention range, two points per day, and a conservative upper allowance for
+28 deleted points pinned by 14 days of local hourly snapshots. Snapshot accounting adds
+only deleted changed points: unchanged files shared by 336 hourly snapshots are not
+multiplied or double-counted.
+
+| Question | Answer as of 2026-08-11 |
+| --- | --- |
+| Current actual | One complete receipt-backed pair is approximately **14.6 MiB** locally (**14.47 MiB** logical bytes). |
+| Projected routine local, current size | Source live: **810.44–868.33 MiB**; conservative snapshot delta: **≤405.22 MiB**; total local source: **1.19–1.24 GiB**, or **5.94–6.22%** of the 20 GiB data quota. |
+| Projected routine local, 10× dump | Source live: **7.91–8.48 GiB**; conservative snapshot delta: **about 3.96 GiB**; total local source: **11.87–12.44 GiB**, or **59.35–62.18%** of the data quota. |
+| Local hourly snapshots | They share the same NAS and pool as the source dataset. They improve point-in-time recovery but are not an independent/off-site copy. |
+| Configured replication | Replication to `thought.feoh.org` is configured, but creation/receipt of the new child dataset, remote space used, and restore from that copy are unverified. Do not report configured transport as stored or restorable evidence. |
+| Total including remote | **Cannot yet be asserted.** Optionally use the checker's replicated-copy envelope for planning, but it is not attested remote usage. |
+
+The **20 GiB data quota is binding** for the live backup dataset and snapshot-retained
+blocks modeled above. The 1 GiB control quota is separate; backup artifacts do not use
+it, and current control usage/percentage is not measured by this model. At **60%**, open
+a capacity review so growth or snapshot variance cannot run directly into operational
+alerts. TrueNAS is configured to warn at **80%** and become critical at **95%**. A
+warning, rejected upload, backup failure, or unexpected snapshot growth is actionable;
+free space in the parent pool does not override the child dataset quota.
+
+Run the checked current model and planning scenarios from the repository root:
+
+```bash
+./scripts/postgres_backup_capacity.py
+./scripts/postgres_backup_capacity.py --scale 10
+./scripts/postgres_backup_capacity.py --scale 10 --replicated-copies 1
+# Select the threshold that should make a scenario fail automation:
+./scripts/postgres_backup_capacity.py --scale 10 --fail-at 60
+```
+
+`--replicated-copies` assumes each planned copy consumes a full local-footprint range.
+It deliberately labels the result planning-only and does not inspect or attest
+`thought.feoh.org`.
 
 ## Security and durability invariants
 
@@ -367,6 +406,9 @@ not off-site or restore evidence.
 
 ```bash
 uv run python -m unittest tests.postgres_backup_script_cases
+uv run python -m unittest tests.postgres_backup_capacity_cases
+./scripts/postgres_backup_capacity.py
+./scripts/postgres_backup_capacity.py --scale 10 --replicated-copies 1
 uv run python manage.py test feeds
 uv run python scripts/check_test_traceability.py
 ```
