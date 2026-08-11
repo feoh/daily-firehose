@@ -311,7 +311,7 @@ class FeedRefreshServiceTests(TestCase):
     def test_unexpected_exception_is_safe_and_logged_with_traceback(
         self, mock_fetch
     ) -> None:
-        remote_title = "Failure\r\nTitle\x00" + "x" * 200
+        remote_title = "Failure\r\nTitle\x1f" + "x" * 200
         feed = build_feed(title=remote_title)
 
         with self.assertLogs("feeds.services", level="ERROR") as logs:
@@ -336,7 +336,8 @@ class FeedRefreshServiceTests(TestCase):
         self.assertEqual(record.next_retry_at, result.next_retry_at)
         self.assertNotIn("\r", record.getMessage())
         self.assertNotIn("\n", record.getMessage())
-        self.assertNotIn("\x00", record.getMessage())
+        self.assertNotIn("\x1f", record.getMessage())
+        self.assertNotIn("\x00", safe_feed_title("Failure\x00Title"))
 
     @patch("feeds.services.feedparser.parse", return_value={"bozo": True})
     @patch("feeds.services.fetch_feed_document")
@@ -367,7 +368,7 @@ class FeedRefreshServiceTests(TestCase):
             final_url="https://example.com/feed.xml",
             response_headers={"content-location": "https://example.com/feed.xml"},
         )
-        remote_title = "Remote\r\nTitle\x00" + "x" * 200
+        remote_title = "Remote\r\nTitle\x1f" + "x" * 200
         mock_parse.return_value = {
             "feed": {"title": remote_title},
             "entries": [
@@ -399,7 +400,8 @@ class FeedRefreshServiceTests(TestCase):
         self.assertIn("created=1 updated=0", record.getMessage())
         self.assertNotIn("\r", record.getMessage())
         self.assertNotIn("\n", record.getMessage())
-        self.assertNotIn("\x00", record.getMessage())
+        self.assertNotIn("\x1f", record.getMessage())
+        self.assertNotIn("\x00", safe_feed_title("Remote\x00Title"))
 
 
 class RefreshActiveFeedsTests(TestCase):
@@ -586,7 +588,7 @@ class RefreshCommandTests(TestCase):
 
     @patch("feeds.management.commands.refresh_feeds.refresh_active_feeds")
     def test_command_sanitizes_and_bounds_remote_titles(self, mock_refresh) -> None:
-        remote_title = "Remote\r\nTitle\x00" + "x" * 200
+        remote_title = "Remote\r\nTitle\x1f" + "x" * 200
         feed = build_feed(title=remote_title)
         mock_refresh.return_value = [RefreshResult(feed=feed)]
         stdout = StringIO()
@@ -596,7 +598,8 @@ class RefreshCommandTests(TestCase):
         output = stdout.getvalue()
         self.assertIn(f"{safe_feed_title(remote_title)}: 0 created, 0 updated", output)
         self.assertNotIn("\r", output)
-        self.assertNotIn("\x00", output)
+        self.assertNotIn("\x1f", output)
+        self.assertNotIn("\x00", safe_feed_title("Remote\x00Title"))
         self.assertLessEqual(len(safe_feed_title(remote_title)), 160)
         self.assertEqual(safe_feed_title("Ｆｅｅｄ"), "Feed")
 

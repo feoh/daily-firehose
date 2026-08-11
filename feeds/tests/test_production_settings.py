@@ -409,6 +409,12 @@ class ComposeConfigurationTests(SimpleTestCase):
     CSRF_COOKIE_SECURE=True,
     SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO", "https"),
     SECURE_SSL_REDIRECT=True,
+    STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"
+        },
+    },
 )
 class ProxySchemeBehaviorTests(SimpleTestCase):
     def test_direct_http_redirects_to_https(self) -> None:
