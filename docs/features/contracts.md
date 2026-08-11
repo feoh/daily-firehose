@@ -1,7 +1,8 @@
 # Cross-feature behavioral contracts
 
 This document defines repository-wide invariants that multiple features or adapters
-must share. It complements the exhaustive [feature catalog](catalog.md) and the
+must share. It complements the exhaustive [feature catalog](catalog.md), detailed
+[current-suite test traceability matrix](test-traceability.md), and the
 [current-state architecture](../architecture/current-state.md). These are contracts
 of the current repository, including explicitly identified violations; they are not
 a claim that every normative rule is presently satisfied.
@@ -642,7 +643,8 @@ a claim that every normative rule is presently satisfied.
 
 This post-snapshot companion maps the **current suite: 16 test modules, 212 test
 methods, and 12 expected failures**. The pinned catalog retains its independent
-15/191/8 snapshot counts.
+15/191/8 snapshot counts. Exact `module::class::method` identities, evidence levels,
+and dimension-specific gaps are maintained in the [detailed matrix](test-traceability.md).
 
 | Invariant group | Stable invariant IDs | Primary executable evidence | Feature catalog IDs |
 | --- | --- | --- | --- |

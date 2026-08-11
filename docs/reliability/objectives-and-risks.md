@@ -2,11 +2,12 @@
 
 This document defines desired reliability objectives, the signals that can and cannot
 be measured today, and a ranked risk register for Daily Firehose. It is a current
-planning/control document, not a snapshot inventory. The pinned
-[architecture](../architecture/current-state.md), [feature catalog](../features/catalog.md),
-and [cross-feature contracts](../features/contracts.md) remain the sources for
-snapshot facts and counts; this document links to them rather than changing their
-semantics or counts.
+planning/control document, not a snapshot inventory. Only the pinned
+[architecture](../architecture/current-state.md) and [feature catalog](../features/catalog.md)
+own snapshot facts and counts. The [cross-feature contracts](../features/contracts.md)
+and [current-suite test traceability matrix](../features/test-traceability.md) are
+current/post-snapshot sources; they track live contracts, executable evidence, and
+gaps without changing the pinned documents' semantics or counts.
 
 Evidence also comes from the
 [2026-08-11 stale-ingestion incident](../incidents/2026-08-11-mobile-today-empty.md),

@@ -16,7 +16,7 @@ Notation used throughout:
 - **[U] Unknown** — not established by repository evidence.
 - **[R] Recommendation** — future work only; it does **not** exist today.
 
-Cross-cutting tracked evidence includes [`README.md`](../../README.md), [`AGENTS.md`](../../AGENTS.md), the historical [2026-08-11 ingestion incident](../incidents/2026-08-11-mobile-today-empty.md), the executable topology in [`docker-compose.yml`](../../docker-compose.yml), and the regression contracts in [`feeds/tests/`](../../feeds/tests/).
+Cross-cutting tracked evidence includes [`README.md`](../../README.md), [`AGENTS.md`](../../AGENTS.md), the historical [2026-08-11 ingestion incident](../incidents/2026-08-11-mobile-today-empty.md), the executable topology in [`docker-compose.yml`](../../docker-compose.yml), and the regression contracts in [`feeds/tests/`](../../feeds/tests/). The post-snapshot [current-suite test traceability matrix](../features/test-traceability.md) reviews live evidence without changing this inventory's pinned claims or counts.
 
 ## 2. System summary
 

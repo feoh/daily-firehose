@@ -2,7 +2,7 @@
 
 > Snapshot: commit [`03965d98aa51522a98266df28aa2ba45e80c03e7`](https://github.com/feoh/daily-firehose/tree/03965d98aa51522a98266df28aa2ba45e80c03e7). This is an inventory of behavior evidenced at that commit, not a roadmap or a claim about the currently deployed revision.
 
-The [cross-feature behavioral contracts](contracts.md) are a post-snapshot companion and own current-suite traceability; they do not change this catalog's pinned evidence counts.
+The [cross-feature behavioral contracts](contracts.md) and detailed [current-suite test traceability matrix](test-traceability.md) are post-snapshot companions; they do not change this catalog's pinned evidence counts.
 
 ## How to read and maintain this catalog
 
