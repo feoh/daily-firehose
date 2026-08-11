@@ -38,7 +38,7 @@ env \
 	-u POSTGRES_HOST \
 	-u POSTGRES_PORT \
 	DAILY_FIREHOSE_POSTGRES_TEST=1 \
-	DJANGO_SETTINGS_MODULE=daily_firehose.test_settings_postgresql \
+	DJANGO_SETTINGS_MODULE=daily_firehose.postgresql_test_settings \
 	POSTGRES_TEST_DB=daily_firehose_test_lane \
 	POSTGRES_TEST_USER=daily_firehose_test_lane \
 	POSTGRES_TEST_PASSWORD=daily_firehose_test_lane_password \

@@ -68,7 +68,7 @@ PostgreSQL 17 is the required integration lane:
 
 The integration runner starts a disposable Compose PostgreSQL 17 service on an
 ephemeral loopback port, runs the complete Django suite with the opt-in
-`daily_firehose.test_settings_postgresql` module, and always removes its
+`daily_firehose.postgresql_test_settings` module, and always removes its
 container, network, and tmpfs-backed data. It never uses the production Compose
 file or volume. Before Django starts, the script clears inherited `DJANGO_ENV`,
 `DJANGO_DEBUG`, `DATABASE_URL`, and base `POSTGRES_*` variables, then supplies

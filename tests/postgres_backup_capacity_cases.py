@@ -66,9 +66,7 @@ class CapacityModelCases(unittest.TestCase):
 
     def test_snapshot_delta_does_not_duplicate_unchanged_hourly_snapshots(self) -> None:
         model = capacity.build_model()
-        deleted_points = (
-            capacity.BACKUPS_PER_DAY * capacity.LOCAL_SNAPSHOT_PIN_DAYS
-        )
+        deleted_points = capacity.BACKUPS_PER_DAY * capacity.LOCAL_SNAPSHOT_PIN_DAYS
         self.assertEqual(deleted_points, 28)
         self.assertEqual(
             model.snapshot_delta_max_bytes,
@@ -94,8 +92,9 @@ class CapacityModelCases(unittest.TestCase):
             with self.subTest(percent=percent):
                 self.assertTrue(capacity.threshold_status(percent).startswith(prefix))
 
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
-            io.StringIO()
+        with (
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(io.StringIO()),
         ):
             self.assertEqual(capacity.main([]), 0)
             self.assertEqual(capacity.main(["--scale", "10", "--fail-at", "60"]), 1)

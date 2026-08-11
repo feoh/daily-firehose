@@ -13,7 +13,7 @@ from django.core.exceptions import ImproperlyConfigured
 
 if os.environ.get("DAILY_FIREHOSE_POSTGRES_TEST") != "1":
     raise ImproperlyConfigured(
-        "daily_firehose.test_settings_postgresql is test-only; "
+        "daily_firehose.postgresql_test_settings is test-only; "
         "set DAILY_FIREHOSE_POSTGRES_TEST=1 explicitly."
     )
 

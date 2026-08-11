@@ -50,7 +50,7 @@ class PostgreSQLRunnerIsolationCases(unittest.TestCase):
 
     def test_opt_in_is_rejected_before_hostile_base_settings_import(self) -> None:
         environment = self._environment(
-            DJANGO_SETTINGS_MODULE="daily_firehose.test_settings_postgresql"
+            DJANGO_SETTINGS_MODULE="daily_firehose.postgresql_test_settings"
         )
         environment.pop("DAILY_FIREHOSE_POSTGRES_TEST", None)
         result = subprocess.run(
@@ -135,7 +135,7 @@ class PostgreSQLRunnerIsolationCases(unittest.TestCase):
         self.assertEqual(captured["DAILY_FIREHOSE_POSTGRES_TEST"], "1")
         self.assertEqual(
             captured["DJANGO_SETTINGS_MODULE"],
-            "daily_firehose.test_settings_postgresql",
+            "daily_firehose.postgresql_test_settings",
         )
         self.assertEqual(captured["POSTGRES_TEST_HOST"], "127.0.0.1")
         self.assertEqual(captured["POSTGRES_TEST_PORT"], "55439")

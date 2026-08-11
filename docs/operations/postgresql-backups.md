@@ -149,10 +149,10 @@ container, network, and volume carries the same run-specific label. Evidence rec
 exact label, exact resource names, per-resource cleanup status, bounded check results,
 and no temporary passwords or error text.
 
-## TrueNAS middleware installation — owner-controlled, not yet run
+## TrueNAS middleware installation and recovery procedure
 
-The payloads below match the TrueNAS SCALE 25.10.5 middleware schemas used for this
-approved baseline. Use the UI/API/middleware, never `useradd`, `usermod`, or direct
+The production installation recorded above used these owner-controlled payloads. They
+match the TrueNAS SCALE 25.10.5 middleware schemas used for this approved baseline. Use the UI/API/middleware, never `useradd`, `usermod`, or direct
 account-database editing.
 
 ### 1. Remove dated empty paths, then create datasets

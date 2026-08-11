@@ -185,7 +185,7 @@ All rows below run through `scripts/test_postgresql.sh`: a bounded, disposable C
 | Race/boundary | Exact mechanism/evidence | Status | Exact downstream task |
 | --- | --- | --- | --- |
 | PostgreSQL version/migrations | server version query, migration graph/recorder, and catalog constraint introspection | C PostgreSQL 17/configuration/migration | Rollback rehearsal → `tk-document-and-rehearse-backup-restore-rollback-an-3bf520` |
-| Bulk marker shapes | direct invalid writes under savepoints | XF: all four invalid shapes commit | `tk-enforce-bulkreadmarker-scope-and-uniqueness-inva-db62c6` |
+| Bulk marker shapes | direct invalid writes under ordinary `transaction.atomic()` transactions on the test connection | XF: all four invalid shapes commit | `tk-enforce-bulkreadmarker-scope-and-uniqueness-inva-db62c6` |
 | Bulk marker nullable uniqueness | separate connections simultaneously insert identical period and Feed markers | XF: PostgreSQL NULL-distinct semantics allow two rows | `tk-enforce-bulkreadmarker-scope-and-uniqueness-inva-db62c6` |
 | SavedArticle uniqueness | separate connections simultaneously insert one user/Article key | C: one row, one real database `IntegrityError` | Command race semantics → `tk-extract-validated-transactional-commands-for-mut-466545` |
 | Postmark MessageID replay | barrier after both real MessageID lookups, then concurrent service writes | XF: one caller receives real integrity failure | `tk-make-postmark-newsletter-ingestion-atomic-and-ra-e3d06e` |
