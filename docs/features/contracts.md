@@ -627,11 +627,13 @@ a claim that every normative rule is presently satisfied.
   quota/size bounds, path/symlink and overwrite defenses, complete metadata, and
   isolated restore failure/evidence/cleanup checks. The runbook records the
   owner-approved direct application-host-to-TrueNAS architecture and activation gates.
-- **Known violation status:** **Known violation in production** — tooling and the
-  destination/retention design exist, but no middleware-created account/dataset,
-  installed key/receiver, production pair, independently confirmed NAS/off-site copy,
-  activated schedule, alert, or timed restore drill is evidenced. RPO/RTO remain
-  unknown.
+- **Known violation status:** **Partially mitigated in production** — at revision
+  `45c97cc`, the restricted TrueNAS account/datasets/receiver/key and local maintenance
+  were installed; one 15,173,740-byte receipt-backed production pair was independently
+  confirmed; and an isolated PostgreSQL 17/application restore passed in 15.384 seconds
+  with exact cleanup. The timer remains disabled pending scheduled-failure/20h-age/24h
+  containment alerts, administrator rekey/post-rekey-oneshot evidence, and independent
+  off-site confirmation. Full incident RPO/RTO remain unknown.
 - **Source / feature IDs:** `docker-compose.yml`, `README.md`,
   `docs/operations/postgresql-backups.md`, `scripts/postgres_backup.py`,
   `scripts/postgres_backup_receiver.py`, `scripts/postgres_restore_verify.py`,

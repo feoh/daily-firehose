@@ -116,9 +116,10 @@ INTRO_BASELINE = (
 )
 BROAD_GAP_BASELINE = (
     "Exact broad gaps: 12 expected failures; zero PostgreSQL race tests; zero "
-    "launched-Compose tests; explicit local backup/restore mechanics cases but zero "
-    "real production backup or restore drill; zero automated current-HEAD "
-    "production observations; zero tests at 375/768/dedicated 1280; clipboard and "
+    "automated launched-Compose tests; one real receipt-backed production backup "
+    "and isolated restore but no scheduled/alerted RPO or incident cutover drill; "
+    "zero automated current-HEAD production observations; zero tests at "
+    "375/768/dedicated 1280; clipboard and "
     "uppercase T/W/M/A/L/F navigation behavior remain unexecuted; j/k/s/m/o and "
     "help behavior are controlled-DOM Chromium rather than a live Django page; zero "
     "axe/screen-reader tests."
@@ -1003,8 +1004,10 @@ def _check_specialized_sections(trace: str) -> None:
         "`tk-harden-api-operations-security-and-release-verif-5f790a` |"
     )
     current = (
-        "| current-HEAD production observation | none performed by this task | M | "
-        "Revision-tagged smoke → "
+        "| current-HEAD production observation | bounded 2026-08-11 deployment at "
+        "`45c97cc`: deploy check, DB connection, Compose health/logs, direct 301, "
+        "proxy/public 302, restricted backup, and isolated restore | C manual at "
+        "revision | Automate revision-tagged smoke → "
         "`tk-harden-api-operations-security-and-release-verif-5f790a` |"
     )
     if historical not in specialized or current not in specialized:

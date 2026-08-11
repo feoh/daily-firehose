@@ -4,8 +4,18 @@
 
 This repository implements a **direct push** from the canonical application checkout
 `daily-firehose:/home/ubuntu/daily-firehose` to TrueNAS SCALE 25.10.5 at
-`192.168.1.2`. No production host or NAS change is performed by this repository work.
-The timer remains disabled until every manual gate below passes.
+`192.168.1.2`.
+
+A bounded production installation on **2026-08-11** at revision `45c97cc` created the
+restricted TrueNAS user, exact data/control datasets, 20 GiB quota, dataset-persistent
+receiver, local maintenance job, pinned SSH host key, root-owned application-host
+credential, and dormant systemd units. One foreground service run produced and
+independently confirmed backup `20260811T200522Z-077caa88`: 15,173,740 bytes, 165
+manifest entries, matching size/SHA-256 metadata, and a receiver receipt. An isolated
+PostgreSQL 17/application restore passed every check in 15.384 seconds and removed its
+exact temporary container, volume, and network. This measures script execution, not
+full incident RTO or application cutover. The timer remains disabled until every
+remaining alert/rekey gate below passes.
 
 The application host creates an unencrypted PostgreSQL custom-format, compression-9
 dump with an exact local Docker Compose command, validates it with the exact local
@@ -106,23 +116,24 @@ The payloads below match the TrueNAS SCALE 25.10.5 middleware schemas used for t
 approved baseline. Use the UI/API/middleware, never `useradd`, `usermod`, or direct
 account-database editing.
 
-### 1. Remove the dated empty path, then create datasets
+### 1. Remove dated empty paths, then create datasets
 
-A read-only observation dated **2026-08-11** found
-`/mnt/nas_general/homes/backups/daily-firehose` was an existing empty ordinary
-directory, not a mounted dataset. Dataset creation at that exact name requires removing
-that empty directory first. This is a separate owner-controlled prerequisite: reconfirm
-it is the exact path, a real directory, empty, and not a mount; then use only `rmdir`
-(which refuses nonempty directories). Do not use recursive removal.
+The 2026-08-11 installation found both `/mnt/nas_general/homes/backups` and its
+`daily-firehose` child were empty ordinary directories rather than datasets. TrueNAS
+requires every parent dataset to exist before a child can be created. Reconfirm the
+exact paths are real, empty, and not mounts; use only `rmdir`, which refuses a nonempty
+directory. Never use recursive removal.
 
 ```bash
-test "$(find /mnt/nas_general/homes/backups/daily-firehose -mindepth 1 -maxdepth 1 -print -quit)" = ""
-findmnt --mountpoint /mnt/nas_general/homes/backups/daily-firehose && exit 1 || true
-rmdir -- /mnt/nas_general/homes/backups/daily-firehose
+test "$(find /mnt/nas_general/homes/backups -mindepth 1 -maxdepth 1 -print -quit)" = ""
+findmnt --mountpoint /mnt/nas_general/homes/backups && exit 1 || true
+rmdir -- /mnt/nas_general/homes/backups
+midclt call pool.dataset.create '{"name":"nas_general/homes/backups","type":"FILESYSTEM","compression":"INHERIT","exec":"ON"}'
+midclt call filesystem.setperm '{"path":"/mnt/nas_general/homes/backups","uid":0,"gid":0,"mode":"755","options":{"stripacl":true,"recursive":false,"traverse":false}}'
 ```
 
-Create the data dataset with an exact 20 GiB quota, inherited compression, execution
-disabled, and 80/95 percent quota alerts:
+Create the data child dataset with an exact 20 GiB quota, inherited compression,
+execution disabled, and 80/95 percent quota alerts:
 
 ```bash
 midclt call pool.dataset.create '{"name":"nas_general/homes/backups/daily-firehose","type":"FILESYSTEM","compression":"INHERIT","exec":"OFF","quota":21474836480,"quota_warning":80,"quota_critical":95}'
@@ -325,8 +336,8 @@ sudo systemd-run --wait --collect --pipe \
   --working-directory=/home/ubuntu/daily-firehose \
   -p LoadCredential=ssh-private-key:/etc/daily-firehose-backup/ssh/id_ed25519 \
   -p LoadCredential=ssh-known-hosts:/etc/daily-firehose-backup/ssh/known_hosts \
-  -p 'Environment=BACKUP_SSH_IDENTITY_FILE=%d/ssh-private-key' \
-  -p 'Environment=BACKUP_SSH_KNOWN_HOSTS_FILE=%d/ssh-known-hosts' \
+  -p Environment=BACKUP_SSH_IDENTITY_FILE=/run/credentials/daily-firehose-restore-verify.service/ssh-private-key \
+  -p Environment=BACKUP_SSH_KNOWN_HOSTS_FILE=/run/credentials/daily-firehose-restore-verify.service/ssh-known-hosts \
   /usr/bin/python3 -m scripts.postgres_restore_verify \
   --backup-id 20260101T000000Z-0123abcd \
   --evidence-dir /home/ubuntu/.local/state/daily-firehose/restore-evidence

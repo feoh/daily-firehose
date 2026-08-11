@@ -284,11 +284,11 @@ a higher product score.
 - **Linked Witan work:** `tk-add-structured-observability-health-readiness-an-16ba73`,
   `tk-harden-ingestion-external-i-o-and-data-integrity-1adf3c`.
 
-### REL-RISK-002 — PostgreSQL has no evidenced production backup or verified restore
+### REL-RISK-002 — PostgreSQL backup exists but scheduling and alert gates remain open
 
 - **Affected IDs/objectives:** OPS-002, OPS-013–OPS-014; DATA-INV-004,
   OPS-INV-003–OPS-INV-004; `REL-OBJ-010`–`011`.
-- **Present status/evidence:** **open-known**. Compose has one local named volume.
+- **Present status/evidence:** **mitigating/open-known**. Compose has one local named volume.
   Owner-approved tooling runs on `daily-firehose` from
   `/home/ubuntu/daily-firehose`, validates a custom-format dump through the exact local
   db-container command, and pushes an unencrypted dump plus complete metadata through
@@ -296,11 +296,15 @@ a higher product score.
   deletion command. Receiver receipts drive local-only fixed retention; immutable
   earliest-received tier points prevent later compromised-key uploads from displacing
   already received points. The receiver serializes operations, each dump is limited to
-  1 GiB, and the exact data dataset has
-  a specified 20 GiB quota. One compression-9 dump measured 14.47 MiB. No
-  middleware-created account/datasets, installed key/receiver/jobs, production pair,
-  independent NAS/off-site confirmation, alert, or restore drill exists. Production
-  RPO/RTO remain unknown.
+  1 GiB, and the exact data dataset has a 20 GiB quota. At revision `45c97cc`, the
+  TrueNAS account/data/control datasets, persistent receiver, restricted key, local
+  maintenance, and dormant application-host units were installed. Production backup
+  `20260811T200522Z-077caa88` was independently confirmed at 15,173,740 bytes with 165
+  manifest entries and matching metadata/receipt hashes. Its isolated PostgreSQL
+  17/application restore passed in 15.384 seconds with exact cleanup. The timer remains
+  disabled; scheduled-failure/20h-age/24h-containment alerts, administrator rekey drill,
+  post-rekey application oneshot, and independent off-site confirmation remain open.
+  Full incident RPO/RTO remain unknown.
 - **Owner boundary:** production database/infrastructure operator; application supplies
   migrations and semantic restore verification.
 - **Triggers:** host/disk/volume loss, operator deletion, corruption, destructive
