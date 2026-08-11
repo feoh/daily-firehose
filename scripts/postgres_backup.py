@@ -1,65 +1,35 @@
 #!/usr/bin/env python3
-"""Pull, validate, encrypt, and confirm a PostgreSQL backup on the loki NAS mount."""
+"""Create, locally validate, and push a PostgreSQL dump to restricted TrueNAS SSH."""
 
 from __future__ import annotations
 
-import argparse
+import json
 import os
 import secrets
 import tempfile
-from pathlib import Path
 from typing import BinaryIO
 
 from scripts.postgres_backup_common import (
     BACKUP_PREFIX,
     CANONICAL_SOURCE_HOST,
     CANONICAL_SOURCE_PATH,
-    NAS_BACKUP_ROOT,
-    REMOTE_DUMP_COMMAND,
+    DUMP_CONTAINER_COMMAND,
+    MAX_DUMP_BYTES,
     OperatorError,
     fail_safely,
     format_utc,
-    fsync_directory,
-    fsync_file,
-    read_json,
-    remote_compose_command,
-    require_remote_compose_db,
-    resolve_adapter,
+    production_compose_command,
+    require_production_compose_db,
     run,
-    sha256_file,
+    sha256_stream,
     utc_now,
-    validate_nas_destination,
-    validate_source,
-    write_json_atomic,
 )
+from scripts.postgres_backup_ssh import ssh_command
 
 
-def parse_arguments() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source-host", default=CANONICAL_SOURCE_HOST)
-    parser.add_argument("--source-path", type=Path, default=CANONICAL_SOURCE_PATH)
-    parser.add_argument("--output-dir", type=Path, default=NAS_BACKUP_ROOT)
-    parser.add_argument(
-        "--temporary-dir",
-        type=Path,
-        help="private loki plaintext spool; defaults to the OS temporary directory",
-    )
-    return parser.parse_args()
-
-
-def _validate_custom_archive(
-    source_host: str, source_path: Path, source: BinaryIO
-) -> int:
+def _archive_manifest_entries(source: BinaryIO) -> int:
     result = run(
-        remote_compose_command(
-            source_host,
-            source_path,
-            "exec",
-            "-T",
-            "db",
-            "pg_restore",
-            "--list",
-        ),
+        production_compose_command("exec", "-T", "db", "pg_restore", "--list"),
         stdin=source,
         capture_output=True,
     )
@@ -70,120 +40,96 @@ def _validate_custom_archive(
     )
 
 
-def main() -> int:
-    arguments = parse_arguments()
-    source_host, source_path = validate_source(
-        arguments.source_host, arguments.source_path
-    )
-    output_dir = validate_nas_destination(arguments.output_dir)
-    temporary_dir = (
-        arguments.temporary_dir.resolve(strict=True)
-        if arguments.temporary_dir is not None
-        else None
-    )
-    if temporary_dir is not None and not temporary_dir.is_dir():
-        raise OperatorError("--temporary-dir must be an existing private directory")
+def _push(kind: str, backup_id: str, source: BinaryIO) -> None:
+    size = os.fstat(source.fileno()).st_size
+    source.seek(0)
+    checksum = sha256_stream(source)
+    source.seek(0)
+    run(ssh_command("put", backup_id, kind, str(size), checksum), stdin=source)
 
-    encryptor = resolve_adapter("BACKUP_ENCRYPTOR")
-    require_remote_compose_db(source_host, source_path)
+
+def main() -> int:
+    require_production_compose_db()
+    run(ssh_command("health"), capture_output=True)
 
     started_at = utc_now()
-    stamp = started_at.strftime("%Y%m%dT%H%M%SZ")
-    backup_id = f"{stamp}-{secrets.token_hex(4)}"
-    base_name = f"{BACKUP_PREFIX}{backup_id}"
-    artifact_path = output_dir / f"{base_name}.dump.age"
-    partial_artifact_path = output_dir / f".{base_name}.dump.age.part"
-    metadata_path = output_dir / f"{base_name}.json"
+    backup_id = f"{started_at.strftime('%Y%m%dT%H%M%SZ')}-{secrets.token_hex(4)}"
+    artifact_name = f"{BACKUP_PREFIX}{backup_id}.dump"
 
-    if artifact_path.exists() or metadata_path.exists():
-        raise OperatorError("refusing to overwrite an existing backup artifact")
+    # The plaintext archive never receives a pathname. On supported Unix,
+    # TemporaryFile is anonymous or immediately unlinked.
+    with tempfile.TemporaryFile(mode="w+b") as archive:
+        os.fchmod(archive.fileno(), 0o600)
+        run(
+            production_compose_command(
+                "exec", "-T", "db", "sh", "-eu", "-c", DUMP_CONTAINER_COMMAND
+            ),
+            stdout=archive,
+        )
+        archive.flush()
+        os.fsync(archive.fileno())
+        archive_size = os.fstat(archive.fileno()).st_size
+        if archive_size < 1:
+            raise OperatorError("pg_dump produced an empty archive")
+        if archive_size > MAX_DUMP_BYTES:
+            raise OperatorError("pg_dump archive exceeds the 1 GiB safety bound")
 
-    try:
-        # TemporaryFile is anonymous (or immediately unlinked) on supported Unix
-        # platforms, so even SIGKILL cannot strand a named plaintext dump.
-        with tempfile.TemporaryFile(mode="w+b", dir=temporary_dir) as plain_archive:
-            os.fchmod(plain_archive.fileno(), 0o600)
-            run(
-                remote_compose_command(
-                    source_host,
-                    source_path,
-                    "exec",
-                    "-T",
-                    "db",
-                    "sh",
-                    "-eu",
-                    "-c",
-                    REMOTE_DUMP_COMMAND,
-                ),
-                stdout=plain_archive,
-            )
-            plain_archive.flush()
-            os.fsync(plain_archive.fileno())
-            if os.fstat(plain_archive.fileno()).st_size == 0:
-                raise OperatorError("pg_dump produced an empty archive")
-
-            plain_archive.seek(0)
-            manifest_entries = _validate_custom_archive(
-                source_host, source_path, plain_archive
-            )
-            if manifest_entries == 0:
-                raise OperatorError("pg_restore listed no archive entries")
-
-            plain_archive.seek(0)
-            run([encryptor, str(partial_artifact_path)], stdin=plain_archive)
-        fsync_file(partial_artifact_path)
-        partial_artifact_path.replace(artifact_path)
-        fsync_file(artifact_path)
-        fsync_directory(output_dir)
-        validate_nas_destination(output_dir)
+        archive.seek(0)
+        manifest_entries = _archive_manifest_entries(archive)
+        if manifest_entries < 1:
+            raise OperatorError("pg_restore listed no archive entries")
+        archive.seek(0)
+        archive_sha256 = sha256_stream(archive)
 
         completed_at = utc_now()
         metadata = {
             "artifact": {
-                "bytes": artifact_path.stat().st_size,
-                "file": artifact_path.name,
-                "sha256": sha256_file(artifact_path),
+                "bytes": archive_size,
+                "file": artifact_name,
+                "sha256": archive_sha256,
             },
             "backup_id": backup_id,
             "completed_at": format_utc(completed_at),
-            "recovery_point_at": format_utc(started_at),
             "database": {
                 "archive_format": "pg_dump-custom",
                 "compression": 9,
                 "ownership_included": False,
                 "privileges_included": False,
             },
-            "schema_version": 2,
+            "recovery_point_at": format_utc(started_at),
+            "schema_version": 3,
             "source": {
-                "compose_path": str(source_path),
-                "host": source_host,
+                "compose_path": str(CANONICAL_SOURCE_PATH),
+                "host": CANONICAL_SOURCE_HOST,
             },
             "started_at": format_utc(started_at),
             "storage": {
-                "offsite_backup": "not_verified_by_this_script",
-                "root": str(NAS_BACKUP_ROOT),
-                "status": "nas_cifs_confirmed",
+                "offsite": "not_verified_by_this_script",
+                "transport": "ssh_push",
             },
             "validation": {
                 "dump_manifest_entries": manifest_entries,
-                "encryption_adapter_completed": True,
-                "encrypted_artifact_fsynced": True,
-                "plain_archive_list": True,
+                "local_pg_restore_list": True,
+                "source_archive_fsynced": True,
             },
         }
-        write_json_atomic(metadata_path, metadata)
-        fsync_file(metadata_path)
-        validate_nas_destination(output_dir)
-        confirmed_metadata = read_json(metadata_path)
-        if confirmed_metadata != metadata:
-            raise OperatorError("written metadata confirmation failed")
+        metadata_bytes = (
+            json.dumps(metadata, indent=2, sort_keys=True) + "\n"
+        ).encode()
 
-        print(f"backup complete on loki NAS: {backup_id}")
-        print(f"encrypted artifact: {artifact_path.name}")
-        print(f"metadata: {metadata_path.name}")
-        return 0
-    finally:
-        partial_artifact_path.unlink(missing_ok=True)
+        archive.seek(0)
+        _push("dump", backup_id, archive)
+        with tempfile.TemporaryFile(mode="w+b") as metadata_file:
+            os.fchmod(metadata_file.fileno(), 0o600)
+            metadata_file.write(metadata_bytes)
+            metadata_file.flush()
+            os.fsync(metadata_file.fileno())
+            _push("metadata", backup_id, metadata_file)
+
+    print(f"backup pushed to TrueNAS: {backup_id}")
+    print(f"artifact: {artifact_name}")
+    print(f"metadata: {BACKUP_PREFIX}{backup_id}.json")
+    return 0
 
 
 if __name__ == "__main__":

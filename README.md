@@ -25,7 +25,7 @@ See the [current-suite feature-to-test traceability matrix](docs/features/test-t
 
 See the [reliability objectives and risk register](docs/reliability/objectives-and-risks.md) for desired SLIs/SLOs, current measurement gaps, ranked risks, alert policy, and the dependency-ordered mitigation portfolio.
 
-See the [PostgreSQL backup and isolated restore runbook](docs/operations/postgresql-backups.md) for the approved loki pull/NAS design, safe repository tooling, the age key-custody activation stop gate, and the currently unknown RPO/RTO evidence.
+See the [PostgreSQL backup and isolated restore runbook](docs/operations/postgresql-backups.md) for the approved direct SSH push with no remote deletion operation, receipt-based local TrueNAS maintenance, isolated-restore tooling, exact middleware installation gates, and the currently unknown RPO/RTO evidence.
 
 ## Local setup with uv
 

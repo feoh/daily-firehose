@@ -1,26 +1,29 @@
 [Unit]
-Description=Daily Firehose encrypted PostgreSQL pull backup on loki
-Documentation=file:/opt/daily-firehose/docs/operations/postgresql-backups.md
+Description=Push Daily Firehose PostgreSQL backup to restricted TrueNAS SSH
+Documentation=file:/home/ubuntu/daily-firehose/docs/operations/postgresql-backups.md
 Wants=network-online.target
-After=network-online.target remote-fs.target
-RequiresMountsFor=/nas/homes
-ConditionPathExists=/opt/daily-firehose/scripts/postgres_backup.py
+After=network-online.target docker.service
+ConditionPathExists=/home/ubuntu/daily-firehose/docker-compose.yml
 
 [Service]
 Type=oneshot
-# The existing CIFS mount is force-owned by feoh (uid/gid 1000, mode 0755), so a
-# separate service UID cannot write the approved NAS directory.
-User=feoh
-Group=feoh
-WorkingDirectory=/opt/daily-firehose
-EnvironmentFile=/etc/daily-firehose-backup/backup.conf
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/daily-firehose
 UMask=0077
-ExecCondition=/usr/bin/mountpoint -q /nas/homes
-ExecStart=/usr/bin/python3 -m scripts.postgres_backup --output-dir ${BACKUP_OUTPUT_DIR}
+LoadCredential=ssh-private-key:/etc/daily-firehose-backup/ssh/id_ed25519
+LoadCredential=ssh-known-hosts:/etc/daily-firehose-backup/ssh/known_hosts
+Environment=BACKUP_SSH_IDENTITY_FILE=%d/ssh-private-key
+Environment=BACKUP_SSH_KNOWN_HOSTS_FILE=%d/ssh-known-hosts
+ExecStart=/usr/bin/python3 -m scripts.postgres_backup
 TimeoutStartSec=2h
 Nice=10
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/nas/homes/backups/daily-firehose
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
+LockPersonality=true

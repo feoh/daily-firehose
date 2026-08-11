@@ -1,0 +1,10 @@
+#!/bin/sh
+# Install root:root 0755 on the persistent control dataset.
+set -eu
+# Clear every Python environment control while preserving sshd's SSH_* protocol fields.
+for variable in $(/usr/bin/env | /usr/bin/sed -n 's/^\(PYTHON[A-Za-z0-9_]*\)=.*/\1/p'); do
+    unset "$variable"
+done
+exec /usr/bin/python3 -I -c \
+  'import runpy,sys; sys.path.insert(0,"/mnt/nas_general/homes/backups/daily-firehose-control"); runpy.run_module("scripts.postgres_backup_receiver",run_name="__main__")' \
+  "$@"

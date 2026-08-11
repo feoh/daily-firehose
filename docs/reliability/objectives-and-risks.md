@@ -153,7 +153,7 @@ security, or hard freshness gates.
 | `REL-OBJ-007` Authenticated cache correctness | **100%** of authenticated session, legacy JSON, bearer GET and authenticated OPML/newsletter responses emit at least `Cache-Control: private, no-store`. The public newsletter URL varies by auth: authenticated and anonymous responses both emit `Vary: Cookie`; anonymous may be cacheable only under an explicit public policy, otherwise it also uses `no-store`. Zero authenticated-to-anonymous or cross-user reuse. | Every release/continuous sample; zero budget. Probe the same newsletter UUID anonymously and authenticated and compare headers/body predicates without retaining private body data. | Today has `never_cache`; `UI-INV-004` proves other authenticated surfaces are not conformant. Public newsletter anonymous GET is display-only, but auth/cache variation is not established. | Passing all-route header matrix, same-URL anonymous/auth synthetic and cache-isolation canary. |
 | `REL-OBJ-008` Postmark acceptance and idempotency | Eligible valid webhooks are good within **10s**, availability **≥99.5%**, p95 **≤5s**; **100%** of accepted MessageIDs resolve to one complete Article/Issue. Lost response after commit resolves by replay, with no accepted ID ambiguous >24h. | Rolling 30d, 0.5% availability; zero atomicity/idempotency budget. Use p95 only at ≥100 eligible events/30d; below it, every provider-correlated event uses the 10s maximum and exact failure thresholds. | Response and Issue ID can be checked manually; sequential dedupe passes. No provider series, ambiguity state, orphan detector or concurrency proof exists. | Provider/app correlation by non-secret event ID, outcome/ambiguity/orphan/replay/race counters and PostgreSQL atomic tests. |
 | `REL-OBJ-009` Linkding outcome and ambiguity | Local save survives **100%** of remote failures. **≥99%** of remote attempts reach definitive confirmed/failed state within **20s**; ambiguous/lost-response outcomes are **<0.1%**, never blindly retried and reconciled within 24h. | Rolling 30d; 1% definitive-outcome and 0.1% ambiguity budgets; local preservation zero budget. Low volume uses first-ambiguity notification and 24h deadline, not percentages. | Current SavedArticle boolean/error collapses definite failure and timeout-after-success; tests cover exact URL and ordinary failures. | Durable attempt/idempotency/reconciliation state and provider-aware counters, without token/header values. |
-| `REL-OBJ-010` Backup and restore | Encrypted off-host backups run at **00:00 and 12:00 UTC**, complete/verify by `+2h`, and provide **RPO ≤24h**. Missing the `+2h` completion is actionable; page when latest verified backup age reaches **20h**, and at/before **24h** stop destructive changes and contain writes until recovery. Quarterly isolated restore demonstrates **RTO ≤4h**, integrity, migration compatibility and semantic reads. | Continuous age; 90d drill. Zero budget for crossing 24h, failed integrity or missed drill. Twice-daily schedule provides ≥10h operational margin before the RPO boundary. | The loki pull/NAS path and tiered retention are approved and locally tested with fakes. Production is 42 MB and one custom compression-9 stream measured 14.47 MiB, but no age key authority, encrypted pair, activated schedule, independent NAS/off-site confirmation, alert, or drill exists. Production RPO/RTO remain unknown. | Approved age recipient/private-key custody, activated schedule/deadline/result/age, independent NAS/off-site confirmation, 20h/24h alerts, and recurring timed restore records including retrieval/cutover. |
+| `REL-OBJ-010` Backup and restore | Unencrypted custom-format backups push over restricted SSH to TrueNAS at **00:00 and 12:00 UTC**, complete/verify by `+2h`, and provide **RPO ≤24h**. Missing the `+2h` completion is actionable; page when latest verified backup age reaches **20h**, and at/before **24h** stop destructive changes and contain writes until recovery. Quarterly isolated restore demonstrates **RTO ≤4h**, integrity, migration compatibility and semantic reads. | Continuous age; 90d drill. Zero budget for crossing 24h, failed integrity or missed drill. Twice-daily schedule provides ≥10h operational margin before the RPO boundary. | The direct application-host SSH push with no delete operation, receiver-controlled immutable first-receipt retention, exact effective-ZFS mount validation, 1 GiB object bound, 20 GiB dataset quota, and serialized receiver are approved and locally tested with fakes. One custom compression-9 stream measured 14.47 MiB, but no installed middleware-created account/datasets/key/receiver, production receipt-backed pair, activated jobs, independent NAS/off-site confirmation, quota alert, or drill exists. Production RPO/RTO remain unknown. | Installed restricted receiver/credentials and local maintenance, activated schedule/deadline/result/age, tested quota/off-site alerts, administrator rekey/read/restore recovery drill, independent NAS/off-site confirmation, scheduled-failure plus 20h/24h alerts, and recurring timed restore records including retrieval/cutover. |
 | `REL-OBJ-011` Deployment verification and rollback readiness | **100%** of deploys pass deploy check, DB connection, migration/backup review, Compose state/logs, direct 301, proxy/public 302, and authenticated semantic smoke within 15m; every schema change has tested stop/rollback. | Per deploy/rolling 90d; zero skipped-gate budget. | Manual procedure and dated observation only; no durable release record or automatic rollback. | Revision-tagged gate results/durations, backup reference, smoke and explicit rollback decision. |
 | `REL-OBJ-012` 320/390/desktop parity and accessibility | Every release has identical Today Article IDs/state at desktop, 390×844 and 320×844; zero overflow; first content discoverable; target-only save/read survives reload. Shared pages have no critical automated accessibility violations and native keyboard paths work. | Every change/release; zero correctness budget, 100% matrix pass. | Chrome Today geometry/state and markup baseline only; other pages/browsers/AT/zoom/full keyboard unmeasured. | Release browser matrix, executable JS/keyboard tests, accessibility scan and periodic manual AT check. |
 
@@ -289,14 +289,18 @@ a higher product score.
 - **Affected IDs/objectives:** OPS-002, OPS-013–OPS-014; DATA-INV-004,
   OPS-INV-003–OPS-INV-004; `REL-OBJ-010`–`011`.
 - **Present status/evidence:** **open-known**. Compose has one local named volume.
-  Owner-approved tooling pulls only from
-  `daily-firehose:/home/ubuntu/daily-firehose` over BatchMode SSH on loki, validates
-  custom-format dump/list data, requires public-key encryption and an active CIFS path,
-  writes confirmed pairs under `/nas/homes/backups/daily-firehose`, applies tiered
-  dry-run-first retention, and verifies restores in disposable loki/new resources.
-  Production is 42 MB and one streamed compression-9 dump measured 14.47 MiB. No age
-  key authority, deployed job, encrypted pair, independent NAS/off-site confirmation,
-  alert, or restore drill exists. Production RPO/RTO remain unknown.
+  Owner-approved tooling runs on `daily-firehose` from
+  `/home/ubuntu/daily-firehose`, validates a custom-format dump through the exact local
+  db-container command, and pushes an unencrypted dump plus complete metadata through
+  pinned restricted SSH to a forced TrueNAS receiver at `192.168.1.2`. SSH has no
+  deletion command. Receiver receipts drive local-only fixed retention; immutable
+  earliest-received tier points prevent later compromised-key uploads from displacing
+  already received points. The receiver serializes operations, each dump is limited to
+  1 GiB, and the exact data dataset has
+  a specified 20 GiB quota. One compression-9 dump measured 14.47 MiB. No
+  middleware-created account/datasets, installed key/receiver/jobs, production pair,
+  independent NAS/off-site confirmation, alert, or restore drill exists. Production
+  RPO/RTO remain unknown.
 - **Owner boundary:** production database/infrastructure operator; application supplies
   migrations and semantic restore verification.
 - **Triggers:** host/disk/volume loss, operator deletion, corruption, destructive
@@ -305,18 +309,25 @@ a higher product score.
   tooling → twice-daily scheduled result by `+2h`, verified-backup age,
   checksum/integrity, independent off-host confirmation, 20h page, 24h containment,
   quarterly timed restore and application read smoke.
-- **Mitigation sequence:** owner approves a dedicated age recipient and private-key
-  custody/recovery authority; install only the public-key adapter on loki; manually
-  create and independently confirm one NAS/off-site pair; pass an isolated restore;
-  only then activate the supplied 00:00/12:00 UTC loki timer and alerts. Permit
-  destructive migrations only after observed age and drill evidence. Final all-feature
-  rehearsal stays later and does not block this baseline.
+- **Mitigation sequence:** create the dedicated TrueNAS dataset/account through
+  supported middleware, install the root-owned persistent receiver/control files and
+  restricted authorized key, configure local maintenance plus scheduled-failure,
+  quota, 20h-age, and 24h-containment alerts, pin the NAS host key, and stage the
+  dedicated client key with systemd credentials; manually create and independently
+  confirm one NAS/off-site pair; pass an administrator rekey/read/restore drill and an
+  isolated restore; only then activate the supplied 00:00/12:00 UTC application-host
+  timer and alerts. Permit destructive migrations only after observed age and drill
+  evidence. Final all-feature rehearsal stays later and does not block this baseline.
 - **Rollback/containment:** **present:** stop application writes on suspected corruption,
   preserve volume/forensic copy, never `down -v`, and restore only to a new location
   before cutover. There is no current backup kill switch to rely on.
-- **Residual risk:** once activated, the objective permits up to 24h loss; restore
-  depends on loki, NAS/off-site availability, and private-key custody. Twice-daily
-  margin, independent NAS monitoring, and recurring drills are required.
+- **Residual risk:** once activated, the objective permits up to 24h loss; dumps are
+  intentionally unencrypted on the protected dataset, and restore depends on TrueNAS,
+  TrueNAS administrator recovery access, 20 GiB quota exhaustion or future-bucket
+  occupation from a write flood, receiver/control dataset availability, and any
+  independently managed off-site copy. Twice-daily
+  margin, dataset/access controls, quota alerts/local maintenance,
+  independent NAS monitoring, and recurring drills are required.
 - **Linked Witan work:** `tk-establish-production-postgresql-backup-and-resto-01b0c1`,
   later `tk-document-and-rehearse-backup-restore-rollback-an-3bf520`, and
   `tk-harden-api-operations-security-and-release-verif-5f790a`.

@@ -1,0 +1,2 @@
+# Replace only the public-key placeholder. Keep every restriction and forced command.
+restrict,command="/mnt/nas_general/homes/backups/daily-firehose-control/daily-firehose-backup-receiver" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA_REPLACE_WITH_DEDICATED_PUBLIC_KEY daily-firehose-backup
