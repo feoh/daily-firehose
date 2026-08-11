@@ -21,6 +21,8 @@ See the [current-state architecture inventory](docs/architecture/current-state.m
 
 See the [feature and behavioral-contract catalog](docs/features/catalog.md) for stable feature IDs, browser/API/operational behavior, test traceability, known defects, and the catalog maintenance protocol.
 
+See the [reliability objectives and risk register](docs/reliability/objectives-and-risks.md) for desired SLIs/SLOs, current measurement gaps, ranked risks, alert policy, and the dependency-ordered mitigation portfolio.
+
 ## Local setup with uv
 
 ```bash
