@@ -133,7 +133,7 @@ const isTypingTarget = (target) => {
 		return false;
 	}
 	return Boolean(
-		target.closest("input, textarea, select, button, [contenteditable='true']"),
+		target.closest("input, textarea, select, button") || target.isContentEditable,
 	);
 };
 
@@ -253,6 +253,10 @@ document.addEventListener("keydown", (event) => {
 		return;
 	}
 
+	if (isTypingTarget(event.target)) {
+		return;
+	}
+
 	if (event.key === "?") {
 		event.preventDefault();
 		openKeyboardHelp();
@@ -261,10 +265,6 @@ document.addEventListener("keydown", (event) => {
 
 	const help = document.querySelector("#keyboard-help");
 	if (help && !help.hidden) {
-		return;
-	}
-
-	if (isTypingTarget(event.target)) {
 		return;
 	}
 

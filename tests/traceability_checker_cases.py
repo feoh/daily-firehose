@@ -62,8 +62,8 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
     def test_rejects_stale_primary_support_summary(self) -> None:
         self.mutate(
             "docs/features/test-traceability.md",
-            "Ledger classification: **202 primary**, **10 support/redundant**.",
-            "Ledger classification: **203 primary**, **9 support/redundant**.",
+            "Ledger classification: **216 primary**, **9 support/redundant**.",
+            "Ledger classification: **217 primary**, **8 support/redundant**.",
         )
         self.assert_rejected("stale primary/support")
 
@@ -150,7 +150,7 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
             "**82 feature IDs**",
             "**81 feature IDs**",
         )
-        self.assert_rejected("stale rendered 82/44/16/212/12 intro")
+        self.assert_rejected("stale rendered 82/44/17/225/12 intro")
 
     def test_rejects_stale_intro_invariant_count(self) -> None:
         self.mutate(
@@ -158,23 +158,23 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
             "**44 invariant IDs**",
             "**43 invariant IDs**",
         )
-        self.assert_rejected("stale rendered 82/44/16/212/12 intro")
+        self.assert_rejected("stale rendered 82/44/17/225/12 intro")
 
     def test_rejects_stale_intro_module_count(self) -> None:
         self.mutate(
             "docs/features/test-traceability.md",
+            "**17 app test modules**",
             "**16 app test modules**",
-            "**15 app test modules**",
         )
-        self.assert_rejected("stale rendered 82/44/16/212/12 intro")
+        self.assert_rejected("stale rendered 82/44/17/225/12 intro")
 
     def test_rejects_stale_intro_method_count(self) -> None:
         self.mutate(
             "docs/features/test-traceability.md",
-            "**212 app test methods**",
-            "**211 app test methods**",
+            "**225 app test methods**",
+            "**224 app test methods**",
         )
-        self.assert_rejected("stale rendered 82/44/16/212/12 intro")
+        self.assert_rejected("stale rendered 82/44/17/225/12 intro")
 
     def test_rejects_stale_intro_expected_failure_count(self) -> None:
         self.mutate(
@@ -182,7 +182,7 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
             "**12 `expectedFailure` methods**",
             "**11 `expectedFailure` methods**",
         )
-        self.assert_rejected("stale rendered 82/44/16/212/12 intro")
+        self.assert_rejected("stale rendered 82/44/17/225/12 intro")
 
     def test_rejects_stale_broad_expected_failure_count(self) -> None:
         self.mutate(
@@ -190,27 +190,43 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
             "Exact broad gaps: 12 expected failures;",
             "Exact broad gaps: 11 expected failures;",
         )
-        self.assert_rejected("stale rendered 12-XF broad gap")
+        self.assert_rejected("stale exact broad gap summary")
+
+    def test_rejects_missing_uppercase_navigation_gap(self) -> None:
+        self.mutate(
+            "docs/features/test-traceability.md",
+            "clipboard and uppercase T/W/M/A/L/F navigation behavior remain unexecuted",
+            "clipboard behavior remains unexecuted",
+        )
+        self.assert_rejected("stale exact broad gap summary")
 
     def test_rejects_stale_contracts_module_count(self) -> None:
         self.mutate(
             "docs/features/contracts.md",
+            "current suite: 17 test modules",
             "current suite: 16 test modules",
-            "current suite: 15 test modules",
         )
-        self.assert_rejected("stale contracts current-suite 16/212/12 prose")
+        self.assert_rejected("stale contracts current-suite 17/225/12 prose")
 
     def test_rejects_stale_contracts_method_count(self) -> None:
         self.mutate(
-            "docs/features/contracts.md", "212 test\nmethods", "211 test\nmethods"
+            "docs/features/contracts.md", "225 test\nmethods", "224 test\nmethods"
         )
-        self.assert_rejected("stale contracts current-suite 16/212/12 prose")
+        self.assert_rejected("stale contracts current-suite 17/225/12 prose")
 
     def test_rejects_stale_contracts_expected_failure_count(self) -> None:
         self.mutate(
             "docs/features/contracts.md", "12 expected failures", "11 expected failures"
         )
-        self.assert_rejected("stale contracts current-suite 16/212/12 prose")
+        self.assert_rejected("stale contracts current-suite 17/225/12 prose")
+
+    def test_rejects_missing_progressive_browser_primary_evidence(self) -> None:
+        self.mutate(
+            "docs/features/contracts.md",
+            "`test_article_actions_browser.py`, ",
+            "",
+        )
+        self.assert_rejected("stale contracts progressive/a11y/mobile primary evidence")
 
     def test_rejects_unknown_syntactic_witan_slug(self) -> None:
         self.mutate(
@@ -226,6 +242,16 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
         index = next(i for i, line in enumerate(lines) if line.startswith("| T005 |"))
         cells = lines[index].split("|")
         cells[4] = " request/no-DB "
+        lines[index] = "|".join(cells)
+        path.write_text("\n".join(lines) + "\n")
+        self.assert_rejected("audited ledger semantic expectation")
+
+    def test_rejects_executed_dom_mislabeled_as_live_browser(self) -> None:
+        path = self.root / "docs/features/test-traceability.md"
+        lines = path.read_text().splitlines()
+        index = next(i for i, line in enumerate(lines) if line.startswith("| T038 |"))
+        cells = lines[index].split("|")
+        cells[4] = " real Playwright browser/SQLite "
         lines[index] = "|".join(cells)
         path.write_text("\n".join(lines) + "\n")
         self.assert_rejected("audited ledger semantic expectation")

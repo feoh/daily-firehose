@@ -496,8 +496,9 @@ a claim that every normative rule is presently satisfied.
   enhances only marked forms and server persistence remains authoritative.
 - **Scope / precedence:** network/schema errors retain the card and native redirect
   behavior is the fallback.
-- **Executable evidence:** request suites for native/AJAX behavior and target-removal
-  Playwright tests.
+- **Executable evidence:** `test_article_actions_browser.py` executes AJAX DOM behavior
+  in Chromium and submits the real read/save forms against Django with JavaScript
+  disabled; request and live-server Playwright suites cover persistence and removal.
 - **Known violation status:** **Conformant** for covered paths.
 - **Source / feature IDs:** `templates/feeds/includes/article_card.html`,
   `static/js/article-actions.js`; WEB-008, WEB-012, SAVE-003.
@@ -509,8 +510,9 @@ a claim that every normative rule is presently satisfied.
   focus, and live status/error regions.
 - **Scope / precedence:** shared template semantics apply across desktop/mobile; each
   specialized surface may add labels but must not remove the baseline.
-- **Executable evidence:** template assertions and Today Playwright geometry/action
-  tests.
+- **Executable evidence:** template assertions, Today Playwright geometry/action
+  tests, and executed Chromium DOM tests for editable suppression and help-dialog
+  focus restoration.
 - **Known violation status:** **Conformant baseline**; no assistive-technology/axe
   proof, help focus trap, or removal-focus contract exists.
 - **Source / feature IDs:** `templates/base.html`, `static/css/site.css`,
@@ -641,7 +643,7 @@ a claim that every normative rule is presently satisfied.
 
 ## Traceability matrix
 
-This post-snapshot companion maps the **current suite: 16 test modules, 212 test
+This post-snapshot companion maps the **current suite: 17 test modules, 225 test
 methods, and 12 expected failures**. The pinned catalog retains its independent
 15/191/8 snapshot counts. Exact `module::class::method` identities, evidence levels,
 and dimension-specific gaps are maintained in the [detailed matrix](test-traceability.md).
@@ -654,7 +656,7 @@ and dimension-specific gaps are maintained in the [detailed matrix](test-traceab
 | Newsletter | NEWS-INV-001–005 | `test_newsletters.py`, `test_newsletter_save_policy.py`, `test_api_validation.py`, `test_known_correctness_failures.py`, `test_behavioral_contracts.py` | NEWS-001–005, API-004, API-017 |
 | Feed/OPML | FEED-INV-001–006 | `test_feed_refresh.py`, `test_opml.py`, `test_behavioral_contracts.py` | ING-002, ING-005, ING-007–013, API-012, API-016 |
 | API auth/input/schema/capability | API-AUTH-INV-001–002, API-INPUT-INV-001, API-SCHEMA-INV-001–002, API-CAP-INV-001–002, API-COMPAT-INV-001–002 | `test_api.py`, `test_api_validation.py`, `test_newsletter_save_policy.py`, `test_behavioral_contracts.py` | AUTH-003, API-001–019 |
-| Progressive/a11y/mobile | UI-INV-001–005 | `test_article_actions.py`, `test_digest_views.py`, `test_mobile_today_browser.py`, `test_known_correctness_failures.py`, `test_behavioral_contracts.py` | WEB-001–002, WEB-007–010, WEB-012–014, WEB-018, WEB-020–021, ING-008, SAVE-003, API-001 |
+| Progressive/a11y/mobile | UI-INV-001–005 | `test_article_actions.py`, `test_article_actions_browser.py`, `test_digest_views.py`, `test_mobile_today_browser.py`, `test_known_correctness_failures.py`, `test_behavioral_contracts.py` | WEB-001–002, WEB-007–010, WEB-012–014, WEB-018, WEB-020–021, ING-008, SAVE-003, API-001 |
 | Observability/recovery | OPS-INV-001–005 | `test_feed_refresh.py`, `test_api.py`, `test_production_settings.py`; documented manual evidence where automation is absent | ING-007–010, API-016, OPS-002, OPS-008–014 |
 
 ## Expected-failure ledger
@@ -727,7 +729,7 @@ for path in test_paths:
                     if isinstance(node, ast.FunctionDef)
                     and any(isinstance(d, ast.Name) and d.id == "expectedFailure"
                             for d in node.decorator_list))
-assert (len(test_paths), methods, expected) == (16, 212, 12)
+assert (len(test_paths), methods, expected) == (17, 225, 12)
 print(len(ids), statuses, len(test_paths), methods, expected)
 PY
 ```

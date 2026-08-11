@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from pathlib import Path
 from unittest.mock import patch
 
 from django.test import override_settings
@@ -191,14 +190,6 @@ class ArticleActionTests(DigestTestCase):
         saved = SavedArticle.objects.get(user=self.user, article=self.unread_article)
         self.assertFalse(saved.linkding_saved)
         self.assertIn("different bookmark URL", saved.linkding_error)
-
-    def test_article_action_script_blocks_repeat_and_duplicate_saves(self) -> None:
-        script = (
-            Path(__file__).resolve().parents[2] / "static/js/article-actions.js"
-        ).read_text()
-
-        self.assertIn('event.repeat && ["s", "m"].includes(event.key)', script)
-        self.assertIn('form.dataset.actionPending === "true"', script)
 
     @patch("feeds.services.requests.post")
     def test_linkding_save_uses_article_url_and_toread_tag(self, mock_post) -> None:

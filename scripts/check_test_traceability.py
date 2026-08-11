@@ -7,8 +7,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-EXPECTED_MODULES = 16
-EXPECTED_TESTS = 212
+EXPECTED_MODULES = 17
+EXPECTED_TESTS = 225
 EXPECTED_XFAILS = 12
 DIMENSIONS = (
     "positive",
@@ -40,6 +40,7 @@ LEVELS = {
     "settings subprocess",
     "source assertion",
     "request/markup",
+    "executed DOM/Chromium",
     "Compose render",
     "real Playwright browser/SQLite",
     "historical production observation",
@@ -63,6 +64,7 @@ MECHANISMS = {
     "command/SQLite",
     "settings subprocess",
     "source assertion",
+    "executed DOM/Chromium",
     "Compose render",
     "real Playwright browser/SQLite",
 }
@@ -109,16 +111,29 @@ REQUIRED_HEADINGS = {
 }
 INTRO_BASELINE = (
     "Current AST baseline: **82 feature IDs**, **44 invariant IDs**, "
-    "**16 app test modules**, **212 app test methods**, and "
+    "**17 app test modules**, **225 app test methods**, and "
     "**12 `expectedFailure` methods**."
 )
-BROAD_GAP_BASELINE = "Exact broad gaps: 12 expected failures;"
+BROAD_GAP_BASELINE = (
+    "Exact broad gaps: 12 expected failures; zero PostgreSQL race tests; zero "
+    "launched-Compose tests; zero backup/restore tests; zero automated current-HEAD "
+    "production observations; zero tests at 375/768/dedicated 1280; clipboard and "
+    "uppercase T/W/M/A/L/F navigation behavior remain unexecuted; j/k/s/m/o and "
+    "help behavior are controlled-DOM Chromium rather than a live Django page; zero "
+    "axe/screen-reader tests."
+)
 CONTRACTS_EXPECTED_FAILURE_SENTENCE = (
     "The current suite contains **12 expected failures**:"
 )
 CONTRACTS_CURRENT_SUITE = (
-    "This post-snapshot companion maps the **current suite: 16 test modules, "
-    "212 test methods, and 12 expected failures**."
+    "This post-snapshot companion maps the **current suite: 17 test modules, "
+    "225 test methods, and 12 expected failures**."
+)
+CONTRACTS_PROGRESSIVE_EVIDENCE = (
+    "| Progressive/a11y/mobile | UI-INV-001–005 | `test_article_actions.py`, "
+    "`test_article_actions_browser.py`, `test_digest_views.py`, "
+    "`test_mobile_today_browser.py`, `test_known_correctness_failures.py`, "
+    "`test_behavioral_contracts.py` |"
 )
 PINNED_TEXT = {
     "docs/architecture/current-state.md": (
@@ -132,7 +147,7 @@ PINNED_TEXT = {
         "**8/8** snapshot expected failures mapped",
     ),
     "docs/features/contracts.md": (
-        "**current suite: 16 test modules, 212 test",
+        "**current suite: 17 test modules, 225 test",
         "15/191/8 snapshot counts",
     ),
 }
@@ -152,6 +167,12 @@ AUDITED_LEDGER = {
         "primary",
         "API/SQLite",
         ("API-018", "API-COMPAT-INV-002"),
+    ),
+    38: (
+        "test_read_and_save_forms_use_the_ajax_enhancement_contract",
+        "primary",
+        "executed DOM/Chromium",
+        ("WEB-012", "UI-INV-001"),
     ),
     50: (
         "test_week_is_inclusive_monday_through_sunday_across_year_boundary",
@@ -363,6 +384,84 @@ AUDITED_LEDGER = {
         "request/no-DB",
         ("AUTH-003", "OPS-003"),
     ),
+    213: (
+        "test_form_id_mismatch_keeps_both_cards_without_fetching",
+        "primary",
+        "executed DOM/Chromium",
+        ("WEB-012", "SAVE-003"),
+    ),
+    214: (
+        "test_pending_actions_disable_and_suppress_duplicate_and_repeated_submits",
+        "primary",
+        "executed DOM/Chromium",
+        ("WEB-012",),
+    ),
+    215: (
+        "test_success_removes_only_the_submitted_card_and_selects_the_survivor",
+        "primary",
+        "executed DOM/Chromium",
+        ("WEB-008", "WEB-012"),
+    ),
+    216: (
+        "test_inline_success_and_error_states_keep_forms_retryable",
+        "primary",
+        "executed DOM/Chromium",
+        ("WEB-012", "WEB-017"),
+    ),
+    217: (
+        "test_j_and_k_select_and_focus_articles_and_feeds",
+        "primary",
+        "executed DOM/Chromium",
+        ("WEB-013",),
+    ),
+    218: (
+        "test_s_and_m_submit_the_selected_cards_matching_forms",
+        "primary",
+        "executed DOM/Chromium",
+        ("WEB-013",),
+    ),
+    219: (
+        "test_o_opens_the_selected_article",
+        "primary",
+        "executed DOM/Chromium",
+        ("WEB-013",),
+    ),
+    220: (
+        "test_shortcuts_are_suppressed_for_every_editable_element",
+        "primary",
+        "executed DOM/Chromium",
+        ("WEB-013", "WEB-021", "UI-INV-002"),
+    ),
+    221: (
+        "test_help_opens_and_closes_by_button_and_escape_with_focus_restored",
+        "primary",
+        "executed DOM/Chromium",
+        ("WEB-001", "WEB-014", "WEB-021", "UI-INV-002"),
+    ),
+    222: (
+        "test_read_and_save_native_forms_submit_without_javascript",
+        "primary",
+        "real Playwright browser/SQLite",
+        ("WEB-008", "WEB-012", "SAVE-003", "UI-INV-001"),
+    ),
+    223: (
+        "test_form_url_mismatch_keeps_both_cards_without_fetching",
+        "primary",
+        "executed DOM/Chromium",
+        ("WEB-012", "SAVE-003"),
+    ),
+    224: (
+        "test_response_id_mismatch_keeps_both_cards",
+        "primary",
+        "executed DOM/Chromium",
+        ("WEB-012", "SAVE-003"),
+    ),
+    225: (
+        "test_response_url_mismatch_keeps_both_cards",
+        "primary",
+        "executed DOM/Chromium",
+        ("WEB-012", "SAVE-003"),
+    ),
 }
 
 AUDITED_LEVELS = {
@@ -371,9 +470,60 @@ AUDITED_LEVELS = {
     "ING-002": "API/SQLite",
     "API-002": "API/SQLite",
     "ING-010": "none",
+    "WEB-013": "executed DOM/Chromium",
+    "WEB-014": "executed DOM/Chromium",
+    "WEB-017": "executed DOM/Chromium",
+    "WEB-021": "executed DOM/Chromium",
 }
 
 AUDITED_MATRIX = {
+    "WEB-001": (
+        {"positive": "C", "negative": "C", "accessibility": "M"},
+        {
+            "tk-complete-browser-view-form-command-and-api-contr-55d622",
+            "tk-add-real-browser-responsive-theme-keyboard-and-a-147e09",
+        },
+    ),
+    "WEB-012": (
+        {"negative": "C", "validation": "C", "accessibility": "C"},
+        {
+            "tk-complete-browser-view-form-command-and-api-contr-55d622",
+            "tk-add-real-browser-responsive-theme-keyboard-and-a-147e09",
+        },
+    ),
+    "WEB-013": (
+        {"positive": "C", "negative": "C", "validation": "M", "accessibility": "C"},
+        {"tk-add-real-browser-responsive-theme-keyboard-and-a-147e09"},
+    ),
+    "WEB-014": (
+        {"positive": "C", "negative": "C", "accessibility": "C"},
+        {"tk-add-real-browser-responsive-theme-keyboard-and-a-147e09"},
+    ),
+    "WEB-017": (
+        {"positive": "C", "negative": "C", "accessibility": "C"},
+        {
+            "tk-complete-browser-view-form-command-and-api-contr-55d622",
+            "tk-add-real-browser-responsive-theme-keyboard-and-a-147e09",
+        },
+    ),
+    "WEB-021": (
+        {"positive": "C", "negative": "C", "accessibility": "M"},
+        {
+            "tk-complete-browser-view-form-command-and-api-contr-55d622",
+            "tk-add-real-browser-responsive-theme-keyboard-and-a-147e09",
+        },
+    ),
+    "UI-INV-001": (
+        {"negative": "C", "validation": "C", "accessibility": "C"},
+        {
+            "tk-complete-browser-view-form-command-and-api-contr-55d622",
+            "tk-add-real-browser-responsive-theme-keyboard-and-a-147e09",
+        },
+    ),
+    "UI-INV-002": (
+        {"negative": "C", "accessibility": "M"},
+        {"tk-add-real-browser-responsive-theme-keyboard-and-a-147e09"},
+    ),
     "AUTH-003": (
         {"mobile": "NA", "accessibility": "NA", "production": "NA"},
         {"tk-complete-browser-view-form-command-and-api-contr-55d622"},
@@ -505,13 +655,12 @@ AUDITED_MATRIX = {
         {
             "authorization": "M",
             "mobile": "C",
-            "accessibility": "M",
+            "accessibility": "C",
             "production": "NA",
         },
         {
             "tk-complete-browser-view-form-command-and-api-contr-55d622",
             "tk-add-real-browser-responsive-theme-keyboard-and-a-147e09",
-            "tk-execute-javascript-behavior-tests-instead-of-sou-141553",
         },
     ),
     "SAVE-004": (
@@ -867,14 +1016,17 @@ def validate(root: Path) -> str:
     trace_path = root / "docs/features/test-traceability.md"
     trace = trace_path.read_text()
     if trace.count(INTRO_BASELINE) != 1:
-        raise AssertionError("stale rendered 82/44/16/212/12 intro baseline")
+        raise AssertionError("stale rendered 82/44/17/225/12 intro baseline")
     if trace.count(BROAD_GAP_BASELINE) != 1:
-        raise AssertionError("stale rendered 12-XF broad gap summary")
-    contracts_flat = " ".join((root / "docs/features/contracts.md").read_text().split())
+        raise AssertionError("stale exact broad gap summary")
+    contracts_text = (root / "docs/features/contracts.md").read_text()
+    contracts_flat = " ".join(contracts_text.split())
     if CONTRACTS_CURRENT_SUITE not in contracts_flat:
-        raise AssertionError("stale contracts current-suite 16/212/12 prose")
+        raise AssertionError("stale contracts current-suite 17/225/12 prose")
     if contracts_flat.count(CONTRACTS_EXPECTED_FAILURE_SENTENCE) != 1:
         raise AssertionError("stale contracts repeated 12-expected-failures sentence")
+    if contracts_text.count(CONTRACTS_PROGRESSIVE_EVIDENCE) != 1:
+        raise AssertionError("stale contracts progressive/a11y/mobile primary evidence")
     rendered_tasks = set(TASK_PATTERN.findall(trace))
     unknown_tasks = rendered_tasks - KNOWN_WITAN_TASKS
     if unknown_tasks:
