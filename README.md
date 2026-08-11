@@ -15,9 +15,11 @@ Daily Firehose is a personal, accessible Django RSS reader for daily information
 - Save articles to Linkding and track local saved-article metadata for future recommendations.
 - Expose agent-friendly digest JSON.
 
-## Architecture
+## Architecture and features
 
 See the [current-state architecture inventory](docs/architecture/current-state.md) for the component, route, data, integration, deployment, operational-risk, and incremental-refactor maps at the documented commit snapshot.
+
+See the [feature and behavioral-contract catalog](docs/features/catalog.md) for stable feature IDs, browser/API/operational behavior, test traceability, known defects, and the catalog maintenance protocol.
 
 ## Local setup with uv
 
