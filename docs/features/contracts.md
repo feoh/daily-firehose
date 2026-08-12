@@ -332,8 +332,9 @@ a claim that every normative rule is presently satisfied.
 - **Scope / precedence:** GUID and URL are independent evidence; if they identify two
   different stored rows, reconciliation fails safely instead of choosing or deleting.
 - **Executable evidence:** sequential tests preserve first-seen/associations and reject
-  split evidence; PostgreSQL tests prove two same-GUID or stable-URL/new-GUID refreshes
-  produce one create and one update.
+  split evidence. The PostgreSQL same-GUID race proves the owning attempt creates once,
+  the superseded attempt writes zero Articles, and one Article remains; the
+  stable-URL/new-GUID race proves one reconciled Article remains.
 - **Known violation status:** **Conformant** for sequential and concurrent refresh.
 - **Source / feature IDs:** `feeds/services.py`, `feeds/models.py`; DATA-INV-001,
   DATA-INV-002, ING-005.

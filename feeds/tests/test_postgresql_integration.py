@@ -286,7 +286,9 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
         self.assertFalse(leaked_feed)
         self.assertFalse(leaked_article)
 
-    def test_concurrent_same_guid_refresh_has_one_create_and_one_update(self) -> None:
+    def test_concurrent_same_guid_refresh_has_one_owning_create_and_superseded_zero_writes(
+        self,
+    ) -> None:
         feed = build_feed()
         lock_hook_calls = 0
         claims_completed = threading.Barrier(2, timeout=_RACE_TIMEOUT)

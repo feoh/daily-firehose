@@ -377,7 +377,7 @@ AUDITED_LEDGER = {
         ("NEWS-002", "NEWS-INV-002"),
     ),
     209: (
-        "test_concurrent_same_guid_refresh_has_one_create_and_one_update",
+        "test_concurrent_same_guid_refresh_has_one_owning_create_and_superseded_zero_writes",
         "primary",
         "service/PostgreSQL separate connections/barrier",
         ("ING-005", "FEED-INV-002"),
