@@ -327,12 +327,11 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
         self.assertEqual(sorted(result.updated for result in results if result), [0, 1])
         self.assertEqual(Article.objects.filter(feed=feed, guid="same-guid").count(), 1)
 
-    @expectedFailure
     def test_concurrent_changed_guids_for_one_url_are_reconciled(self) -> None:
         feed = build_feed()
         local = threading.local()
-        write_barrier = threading.Barrier(2, timeout=_RACE_TIMEOUT)
-        original_upsert = Article.objects.update_or_create
+        claim_barrier = threading.Barrier(2, timeout=_RACE_TIMEOUT)
+        original_locked_get = QuerySet.get
 
         def fetch_document(_url: str) -> FetchedFeedDocument:
             return FetchedFeedDocument(
@@ -354,22 +353,25 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
                 ],
             }
 
-        def synchronized_upsert(*args, **kwargs):
-            write_barrier.wait()
-            return original_upsert(*args, **kwargs)
+        def synchronized_locked_get(queryset: QuerySet, *args, **kwargs):
+            if (
+                queryset.model is Feed
+                and queryset.query.select_for_update
+                and not getattr(local, "claim_synchronized", False)
+            ):
+                local.claim_synchronized = True
+                claim_barrier.wait()
+            return original_locked_get(queryset, *args, **kwargs)
 
         def refresh(guid: str):
             local.guid = guid
+            local.claim_synchronized = False
             return refresh_feed(Feed.objects.get(pk=feed.pk))
 
         with (
             patch("feeds.services.fetch_feed_document", side_effect=fetch_document),
             patch("feeds.services.feedparser.parse", side_effect=parse_document),
-            patch.object(
-                Article.objects,
-                "update_or_create",
-                side_effect=synchronized_upsert,
-            ),
+            patch.object(QuerySet, "get", new=synchronized_locked_get),
         ):
             outcomes = run_concurrently(
                 [lambda: refresh("guid-a"), lambda: refresh("guid-b")],
@@ -378,15 +380,11 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
 
         self.assertEqual(_errors(outcomes), [])
         results = [outcome.value for outcome in outcomes]
-        failures = [
-            result for result in results if result is not None and not result.success
-        ]
-        if failures:
-            self.assertEqual(len(failures), 1)
-            self.assertEqual(failures[0].error_code, "integrity_error")
         self.assertTrue(
             all(result is not None and result.success for result in results)
         )
+        self.assertEqual(sum(result.created for result in results if result), 1)
+        self.assertEqual(sum(result.updated for result in results if result), 1)
         self.assertEqual(
             Article.objects.filter(
                 feed=feed,
@@ -395,12 +393,23 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
             1,
         )
 
-    @expectedFailure
     def test_older_refresh_failure_cannot_overwrite_newer_success_status(self) -> None:
         feed = build_feed()
         local = threading.local()
+        failure_claimed = threading.Event()
         failure_started = threading.Event()
         release_failure = threading.Event()
+        from ..services import _claim_refresh_attempt
+
+        def ordered_claim(feed_to_claim: Feed, *, attempted_at):
+            if local.mode == "success" and not failure_claimed.wait(_RACE_TIMEOUT):
+                raise AssertionError("failure attempt was not claimed")
+            generation = _claim_refresh_attempt(
+                feed_to_claim, attempted_at=attempted_at
+            )
+            if local.mode == "failure":
+                failure_claimed.set()
+            return generation
 
         def fetch_document(_url: str) -> FetchedFeedDocument:
             if local.mode == "failure":
@@ -424,6 +433,7 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
                 release_failure.set()
 
         with (
+            patch("feeds.services._claim_refresh_attempt", side_effect=ordered_claim),
             patch("feeds.services.fetch_feed_document", side_effect=fetch_document),
             patch(
                 "feeds.services.feedparser.parse",
@@ -436,9 +446,6 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
 
         self.assertEqual(_errors(outcomes), [])
         feed.refresh_from_db()
-        if feed.last_error_code:
-            self.assertEqual(feed.last_error_code, "timeout")
-            self.assertEqual(feed.consecutive_failures, 1)
         self.assertEqual(feed.last_error_code, "")
         self.assertEqual(feed.consecutive_failures, 0)
         self.assertIsNone(feed.next_retry_at)
@@ -599,20 +606,46 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
         self.assertEqual(len(feed_ids), 1)
         self.assertEqual(Feed.objects.filter(feed_url=NEWSLETTER_FEED_URL).count(), 1)
 
-    def test_refresh_failure_lock_serializes_failure_count_updates(self) -> None:
+    def test_superseded_refresh_failure_has_no_terminal_state_side_effect(self) -> None:
         feed = build_feed()
-        with patch(
-            "feeds.services.fetch_feed_document",
-            side_effect=FeedFetchError(
-                code="timeout", message="Feed request timed out."
-            ),
+        local = threading.local()
+        older_claimed = threading.Event()
+        newer_claimed = threading.Event()
+        from ..services import _claim_refresh_attempt
+
+        def ordered_claim(feed_to_claim: Feed, *, attempted_at):
+            if local.mode == "newer" and not older_claimed.wait(_RACE_TIMEOUT):
+                raise AssertionError("older failure attempt was not claimed")
+            generation = _claim_refresh_attempt(
+                feed_to_claim, attempted_at=attempted_at
+            )
+            if local.mode == "older":
+                older_claimed.set()
+                if not newer_claimed.wait(_RACE_TIMEOUT):
+                    raise AssertionError("newer failure attempt was not claimed")
+            else:
+                newer_claimed.set()
+            return generation
+
+        def fetch_document(_url: str) -> FetchedFeedDocument:
+            code = "timeout" if local.mode == "older" else "connection_error"
+            raise FeedFetchError(code=code, message="Feed request failed.")
+
+        def refresh(mode: str):
+            local.mode = mode
+            return refresh_feed(Feed.objects.get(pk=feed.pk))
+
+        with (
+            patch("feeds.services._claim_refresh_attempt", side_effect=ordered_claim),
+            patch("feeds.services.fetch_feed_document", side_effect=fetch_document),
         ):
             outcomes = run_concurrently(
-                [lambda: refresh_feed(Feed.objects.get(pk=feed.pk)) for _ in range(2)],
+                [lambda: refresh("older"), lambda: refresh("newer")],
                 timeout=_RACE_TIMEOUT,
             )
 
         self.assertEqual(_errors(outcomes), [])
         feed.refresh_from_db()
-        self.assertEqual(feed.consecutive_failures, 2)
-        self.assertEqual(feed.last_error_code, "timeout")
+        self.assertEqual(feed.refresh_generation, 2)
+        self.assertEqual(feed.consecutive_failures, 1)
+        self.assertEqual(feed.last_error_code, "connection_error")

@@ -19,6 +19,7 @@ import feedparser
 import requests
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, connection, transaction
+from django.db.models import Q
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
@@ -38,6 +39,10 @@ OPML_MAX_BYTES = 1024 * 1024
 OPML_MAX_OUTLINES = 1000
 OPML_MAX_DEPTH = 32
 _OPML_UNSAFE_DECLARATION = re.compile(r"<!\s*(?:DOCTYPE|ENTITY)\b", re.IGNORECASE)
+
+
+class _ArticleIdentityConflict(Exception):
+    """Incoming GUID and URL identify two different Articles in one Feed."""
 
 
 class _TextExtractor(HTMLParser):
@@ -236,7 +241,7 @@ def _refresh_failure(exc: Exception) -> tuple[str, str, bool]:
         return "parse_error", "The feed document could not be parsed.", False
     if isinstance(exc, ValidationError):
         return "validation_error", "The feed contained invalid article data.", False
-    if isinstance(exc, IntegrityError):
+    if isinstance(exc, (IntegrityError, _ArticleIdentityConflict)):
         return (
             "integrity_error",
             "The feed conflicted with existing article data.",
@@ -250,35 +255,94 @@ def _retry_delay(consecutive_failures: int) -> timedelta:
     return min(_REFRESH_BACKOFF_BASE * multiplier, _REFRESH_BACKOFF_CAP)
 
 
+def _claim_refresh_attempt(feed: Feed, *, attempted_at: datetime) -> int:
+    """Allocate a monotonically increasing completion fence for one Feed."""
+
+    with transaction.atomic():
+        stored_feed = Feed.objects.select_for_update().get(pk=feed.pk)
+        stored_feed.refresh_generation += 1
+        stored_feed.last_attempt_at = attempted_at
+        stored_feed.save(
+            update_fields=["refresh_generation", "last_attempt_at", "updated_at"]
+        )
+        generation = stored_feed.refresh_generation
+    feed.refresh_from_db()
+    return generation
+
+
 def _record_refresh_failure(
-    feed: Feed, *, code: str, message: str, failed_at: datetime
+    feed: Feed,
+    *,
+    generation: int,
+    code: str,
+    message: str,
+    failed_at: datetime,
 ) -> datetime:
     with transaction.atomic():
         stored_feed = Feed.objects.select_for_update().get(pk=feed.pk)
-        stored_feed.consecutive_failures += 1
-        stored_feed.last_error_code = code
-        stored_feed.last_error_message = message
-        stored_feed.next_retry_at = failed_at + _retry_delay(
-            stored_feed.consecutive_failures
-        )
-        stored_feed.save(
-            update_fields=[
-                "consecutive_failures",
-                "last_error_code",
-                "last_error_message",
-                "next_retry_at",
-                "updated_at",
-            ]
-        )
+        if stored_feed.refresh_generation == generation:
+            stored_feed.consecutive_failures += 1
+            stored_feed.last_error_code = code
+            stored_feed.last_error_message = message
+            stored_feed.next_retry_at = failed_at + _retry_delay(
+                stored_feed.consecutive_failures
+            )
+            stored_feed.save(
+                update_fields=[
+                    "consecutive_failures",
+                    "last_error_code",
+                    "last_error_message",
+                    "next_retry_at",
+                    "updated_at",
+                ]
+            )
+            next_retry_at = cast(datetime, stored_feed.next_retry_at)
+        else:
+            # The caller still needs a complete failed RefreshResult, but it no
+            # longer owns persisted status. Never let an older completion replace
+            # the newer attempt's terminal state. If the newer process dies after
+            # claiming, a watchdog/lease owner must detect it; an older completion
+            # is never allowed to fill the newer generation's status.
+            next_retry_at = failed_at + _retry_delay(1)
     feed.refresh_from_db()
-    return cast(datetime, feed.next_retry_at)
+    return next_retry_at
+
+
+def _reconcile_article(
+    *, feed: Feed, guid: str, url: str, defaults: dict[str, object]
+) -> bool:
+    """Upsert one canonical Article using either stable identifier as evidence.
+
+    A match by GUID or URL retains the original row (and therefore first-seen,
+    read, save, and newsletter associations). If those identifiers resolve to
+    different rows, there is no safe automatic winner and the Feed transaction
+    fails without deleting or merging either Article.
+    """
+
+    matches = list(
+        Article.objects.filter(feed=feed)
+        .filter(Q(guid=guid) | Q(url=url))
+        .order_by("pk")[:2]
+    )
+    if len(matches) > 1:
+        raise _ArticleIdentityConflict
+    if not matches:
+        Article.objects.create(feed=feed, guid=guid, url=url, **defaults)
+        return True
+
+    article = matches[0]
+    article.guid = guid
+    article.url = url
+    for field, value in defaults.items():
+        setattr(article, field, value)
+    article.save(update_fields=["guid", "url", *defaults, "updated_at"])
+    return False
 
 
 def refresh_feed(feed: Feed) -> RefreshResult:
     started = time.monotonic()
     attempted_at = timezone.now()
-    Feed.objects.filter(pk=feed.pk).update(last_attempt_at=attempted_at)
-    feed.last_attempt_at = attempted_at
+    generation = _claim_refresh_attempt(feed, attempted_at=attempted_at)
 
     try:
         document = fetch_feed_document(feed.feed_url)
@@ -298,12 +362,18 @@ def refresh_feed(feed: Feed) -> RefreshResult:
             raise _UnusableFeedError
 
         with transaction.atomic():
-            feed.title = feed_info.get("title") or feed.title or feed.feed_url
-            feed.site_url = feed_info.get("link") or feed.site_url
-            feed.description = (
+            # Serialize writes for one Feed on PostgreSQL. This keeps the two
+            # independent Article unique constraints usable as durable guards
+            # while allowing GUID and URL to be reconciled as identity evidence.
+            stored_feed = Feed.objects.select_for_update().get(pk=feed.pk)
+            stored_feed.title = (
+                feed_info.get("title") or stored_feed.title or stored_feed.feed_url
+            )
+            stored_feed.site_url = feed_info.get("link") or stored_feed.site_url
+            stored_feed.description = (
                 feed_info.get("subtitle")
                 or feed_info.get("description")
-                or feed.description
+                or stored_feed.description
             )
 
             created = 0
@@ -312,10 +382,9 @@ def refresh_feed(feed: Feed) -> RefreshResult:
                 url = _entry_article_url(entry)
                 if not url:
                     continue
-                guid = entry.get("id") or url
-                defaults = {
+                guid = str(entry.get("id") or url)
+                defaults: dict[str, object] = {
                     "title": entry.get("title") or url,
-                    "url": url,
                     "author": entry.get("author", ""),
                     "summary": entry.get("summary", ""),
                     "published_at": _aware_datetime(
@@ -325,40 +394,47 @@ def refresh_feed(feed: Feed) -> RefreshResult:
                         or entry.get("updated")
                     ),
                 }
-                _, was_created = Article.objects.update_or_create(
-                    feed=feed,
-                    guid=guid,
-                    defaults=defaults,
+                was_created = _reconcile_article(
+                    feed=stored_feed, guid=guid, url=url, defaults=defaults
                 )
                 if was_created:
                     created += 1
                 else:
                     updated += 1
 
-            succeeded_at = timezone.now()
-            feed.last_fetched_at = succeeded_at
-            feed.last_error_code = ""
-            feed.last_error_message = ""
-            feed.consecutive_failures = 0
-            feed.next_retry_at = None
-            feed.save(
-                update_fields=[
-                    "title",
-                    "site_url",
-                    "description",
-                    "last_fetched_at",
-                    "last_error_code",
-                    "last_error_message",
-                    "consecutive_failures",
-                    "next_retry_at",
-                    "updated_at",
-                ]
-            )
+            # Only the newest claimed attempt may publish Feed status. Article
+            # content remains safe under the per-Feed lock even when an older
+            # fetch completes later.
+            if stored_feed.refresh_generation == generation:
+                succeeded_at = timezone.now()
+                stored_feed.last_fetched_at = succeeded_at
+                stored_feed.last_error_code = ""
+                stored_feed.last_error_message = ""
+                stored_feed.consecutive_failures = 0
+                stored_feed.next_retry_at = None
+                stored_feed.save(
+                    update_fields=[
+                        "title",
+                        "site_url",
+                        "description",
+                        "last_fetched_at",
+                        "last_error_code",
+                        "last_error_message",
+                        "consecutive_failures",
+                        "next_retry_at",
+                        "updated_at",
+                    ]
+                )
+            feed.refresh_from_db()
     except Exception as exc:
         code, message, unexpected = _refresh_failure(exc)
         failed_at = timezone.now()
         next_retry_at = _record_refresh_failure(
-            feed, code=code, message=message, failed_at=failed_at
+            feed,
+            generation=generation,
+            code=code,
+            message=message,
+            failed_at=failed_at,
         )
         result = RefreshResult(
             feed=feed,

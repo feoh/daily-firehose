@@ -317,8 +317,7 @@ class KnownCorrectnessFailureTests(StaticFilesTestCase):
     # The briefing needs a per-article capability contract, which is specified
     # by the dedicated newsletter-policy task rather than guessed here.
 
-    # Bug: refresh upserts by GUID but separately constrains URL uniqueness.
-    @expectedFailure
+    # Regression: stable URL evidence reconciles publisher GUID changes in place.
     @patch("feeds.services.feedparser.parse")
     @patch(
         "feeds.services.fetch_feed_document",
@@ -331,6 +330,7 @@ class KnownCorrectnessFailureTests(StaticFilesTestCase):
     def test_refresh_reconciles_changed_guid_for_same_url(
         self, mock_fetch, mock_parse
     ) -> None:
+        Article.objects.filter(pk=self.article.pk).delete()
         existing = build_article(
             feed=self.feed,
             title="Original title",

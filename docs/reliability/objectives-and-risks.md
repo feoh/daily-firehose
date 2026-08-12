@@ -418,28 +418,29 @@ a higher product score.
 
 - **Affected IDs/objectives:** ING-005, ING-007–ING-009, API-016; DATA-INV-001–002,
   FEED-INV-001–002; `REL-OBJ-003`.
-- **Present status/evidence:** **open-demonstrated**. The required PostgreSQL lane uses
+- **Present status/evidence:** **mitigated-tested**. The required PostgreSQL lane uses
   separate connections/events to stage an older failed refresh after a newer success;
-  the focused expected failure proves the stale failure overwrites success. The same
-  lane proves the existing failure-count row lock serializes two increments. Neither
-  result fixes missing ownership or fencing.
+  a monotonic per-Feed generation fences that stale completion. The same lane proves
+  only the newest attempt persists terminal status and per-Feed Article writes serialize.
 - **Owner boundary:** refresh orchestration, Feed status persistence and PostgreSQL.
 - **Triggers:** manual/API refresh during worker cycle, worker restart overlap, slow
   origin, multiple web requests, or retry at a boundary.
-- **Current → preferred detection:** deterministic PostgreSQL race characterization →
-  run/lease owner plus contention/lost-lease/stale-write counters and passing fenced
-  concurrency tests.
-- **Mitigation sequence:** retain the required PostgreSQL characterization; add lease/run
-  ownership; fence status commits; only later enqueue durable work.
+- **Current → preferred detection:** deterministic passing PostgreSQL fencing tests →
+  add contention/stale-write counters if operational observability is introduced.
+- **Mitigation sequence:** retain generation fencing and per-Feed locking; only later
+  consider durable queue ownership if remote-fetch deduplication becomes necessary.
 - **Rollback/containment:** **present:** operators avoid browser/API refresh during the
   worker cycle and restart the single worker if overlap is suspected; no claim switch
   exists. **Future rollout:** a tested claim-disable switch is prerequisite, additive
   records remain across rollback, and stale-owner writes stay fenced.
 - **Residual risk:** remote fetch may be duplicated after lease loss even if stale DB
-  commit is fenced.
+  commit is fenced. If the newest process dies after claiming its generation, an older
+  completion cannot fill terminal state; watchdog/run-ownership detection remains
+  separate observability work.
 - **Linked Witan work:** PostgreSQL characterization task
-  `tk-add-required-postgresql-integration-and-concurre-0719fc` is complete; the defect
-  remains in `tk-reconcile-article-identity-and-concurrent-refres-7a1b44`.
+  `tk-add-required-postgresql-integration-and-concurre-0719fc` and reconciliation task
+  `tk-reconcile-article-identity-and-concurrent-refres-7a1b44` are complete; watchdog
+  detection remains in `tk-add-structured-observability-health-readiness-an-16ba73`.
 
 ### REL-RISK-007 — Postmark creation atomicity and race idempotency
 
@@ -605,15 +606,16 @@ a higher product score.
 
 - **Affected IDs/objectives:** ING-005–ING-007; DATA-INV-001, FEED-INV-002;
   `REL-OBJ-001`, `REL-OBJ-003`.
-- **Present status/evidence:** **open-demonstrated** expected failure: upsert by GUID
-  conflicts with independent `(feed,url)` uniqueness and rolls back the Feed.
+- **Present status/evidence:** **mitigated-tested**. GUID and URL are independent
+  identity evidence within a Feed; per-Feed locking reconciles an unambiguous match in
+  place and PostgreSQL races produce one Article. Split evidence fails without merging.
 - **Owner boundary:** Article identity policy, refresh service and schema.
 - **Triggers:** publisher changes GUID while preserving URL, alternate-link shift, or
   concurrent identity observation.
-- **Current → preferred detection:** classified integrity failure/Feed backoff →
-  identity-reconciliation counter and deterministic/concurrent tests.
-- **Mitigation sequence:** record canonical identity decision; characterize collisions;
-  reconcile deterministically under transaction; PostgreSQL concurrency proof.
+- **Current → preferred detection:** deterministic SQLite association/ambiguity tests
+  and PostgreSQL concurrency proof → add reconciliation/conflict counters later.
+- **Mitigation sequence:** retain both unique constraints, per-Feed row locking,
+  in-place reconciliation, and fail-safe ambiguous collision handling.
 - **Rollback/containment:** isolate/back off Feed; operator may deactivate it; do not
   delete Articles ad hoc. Keep repair compatible with old schema.
 - **Residual risk:** publishers can change both GUID and URL, requiring an explicit

@@ -38,6 +38,7 @@ class Feed(models.Model):
     last_error_message = models.TextField(blank=True)
     consecutive_failures = models.PositiveIntegerField(default=0)
     next_retry_at = models.DateTimeField(blank=True, null=True)
+    refresh_generation = models.PositiveBigIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -218,6 +218,14 @@ Run the management command manually or from cron/systemd:
 uv run python manage.py refresh_feeds
 ```
 
+Before deploying Article identity changes, run the read-only audit against the target
+PostgreSQL database. It reports only Feed IDs/counts and exits nonzero if duplicate
+`(feed, guid)` or `(feed, url)` identities exist; it never reconciles or deletes data:
+
+```bash
+uv run python manage.py audit_article_identity
+```
+
 Feed refresh and metadata discovery use the same bounded downloader. It accepts
 only credential-free HTTP(S) URLs on ports 80 and 443, rejects every non-global
 network target (including redirect destinations), requests identity encoding,
@@ -231,10 +239,15 @@ watchdog or explicit minimum-rate enforcement are required to close that gap
 and the DNS-validation/request DNS-rebinding interval completely.
 
 For each active feed, metadata, article, and success-state writes commit in one
-atomic database transaction. A failed article write rolls back that transaction
-without aborting later feeds. Attempt state is recorded before network work, and
-classified failure state is recorded after rollback, so both intentionally
-persist outside the content transaction. Operational state is retained on
+atomic database transaction. Article identity is canonical within its Feed: a stable
+GUID or URL reconciles the existing row in place, preserving first-seen, read, save,
+and newsletter associations. If GUID and URL identify two different rows, refresh
+fails safely without merging or deleting either. PostgreSQL serializes writes per Feed,
+and a monotonic attempt generation prevents stale completion from overwriting newer
+status. A failed article write rolls back that transaction without aborting later
+feeds. Attempt state is recorded before network work, and classified failure state is
+recorded after rollback, so both intentionally persist outside the content transaction.
+Operational state is retained on
 `Feed`: `last_attempt_at`, safe error code/message,
 consecutive failures, and `next_retry_at`. `last_fetched_at` is the authoritative
 last-success timestamp and changes only after all feed metadata and article

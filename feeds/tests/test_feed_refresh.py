@@ -12,7 +12,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from ..feed_fetch import FeedFetchError, FetchedFeedDocument
-from ..models import Article
+from ..models import Article, ArticleReadState, NewsletterIssue, SavedArticle
 from ..services import (
     RefreshResult,
     _retry_delay,
@@ -25,6 +25,23 @@ from .support.builders import (
     build_feed,
     build_user,
 )
+
+
+class ArticleIdentityAuditTests(TestCase):
+    def test_audit_passes_without_modifying_valid_articles(self) -> None:
+        feed = build_feed()
+        article = Article.objects.create(
+            feed=feed,
+            title="Audited",
+            url="https://example.com/audited",
+            guid="audited-guid",
+        )
+        output = StringIO()
+
+        call_command("audit_article_identity", stdout=output)
+
+        self.assertIn("Article identity audit passed.", output.getvalue())
+        self.assertTrue(Article.objects.filter(pk=article.pk).exists())
 
 
 class RefreshLoggingConfigurationTests(SimpleTestCase):
@@ -156,6 +173,109 @@ class FeedRefreshServiceTests(TestCase):
             response_headers={"content-location": "https://example.com/feed.xml"},
         ),
     )
+    def test_changed_guid_reconciliation_preserves_first_seen_and_associations(
+        self, mock_fetch, mock_parse
+    ) -> None:
+        feed = build_feed()
+        user = build_user()
+        article = Article.objects.create(
+            feed=feed,
+            title="Original title",
+            url="https://example.com/stable",
+            guid="old-guid",
+        )
+        first_seen = article.fetched_at
+        read_state = ArticleReadState.objects.create(user=user, article=article)
+        saved = SavedArticle.objects.create(
+            user=user,
+            article=article,
+            url=article.url,
+            title=article.title,
+            feed=feed,
+        )
+        issue = NewsletterIssue.objects.create(
+            article=article,
+            message_id="preserved-newsletter-association",
+            subject="Original title",
+        )
+        mock_parse.return_value = {
+            "feed": {"title": feed.title},
+            "entries": [
+                {
+                    "id": "new-guid",
+                    "link": article.url,
+                    "title": "Updated title",
+                }
+            ],
+        }
+
+        result = refresh_feed(feed)
+
+        article.refresh_from_db()
+        self.assertTrue(result.success)
+        self.assertEqual((result.created, result.updated), (0, 1))
+        self.assertEqual(article.guid, "new-guid")
+        self.assertEqual(article.title, "Updated title")
+        self.assertEqual(article.fetched_at, first_seen)
+        self.assertEqual(read_state.article_id, article.pk)
+        self.assertEqual(saved.article_id, article.pk)
+        self.assertEqual(issue.article_id, article.pk)
+
+    @patch("feeds.services.feedparser.parse")
+    @patch(
+        "feeds.services.fetch_feed_document",
+        return_value=FetchedFeedDocument(
+            content=b"feed",
+            final_url="https://example.com/feed.xml",
+            response_headers={"content-location": "https://example.com/feed.xml"},
+        ),
+    )
+    def test_split_guid_and_url_evidence_fails_without_merging_articles(
+        self, mock_fetch, mock_parse
+    ) -> None:
+        feed = build_feed()
+        by_guid = Article.objects.create(
+            feed=feed,
+            title="GUID match",
+            url="https://example.com/guid-url",
+            guid="stable-guid",
+        )
+        by_url = Article.objects.create(
+            feed=feed,
+            title="URL match",
+            url="https://example.com/stable-url",
+            guid="other-guid",
+        )
+        mock_parse.return_value = {
+            "feed": {"title": feed.title},
+            "entries": [
+                {
+                    "id": by_guid.guid,
+                    "link": by_url.url,
+                    "title": "Ambiguous",
+                }
+            ],
+        }
+
+        result = refresh_feed(feed)
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.error_code, "integrity_error")
+        by_guid.refresh_from_db()
+        by_url.refresh_from_db()
+        self.assertEqual(by_guid.url, "https://example.com/guid-url")
+        self.assertEqual(by_url.guid, "other-guid")
+        self.assertEqual(Article.objects.filter(feed=feed).count(), 2)
+
+    @patch("feeds.services.feedparser.parse")
+    @patch(
+        "feeds.services.fetch_feed_document",
+        return_value=FetchedFeedDocument(
+            content=b"feed",
+            final_url="https://example.com/feed.xml",
+            response_headers={"content-location": "https://example.com/feed.xml"},
+        ),
+    )
     def test_refresh_feed_prefers_alternate_original_url_over_intermediary_link(
         self, mock_fetch, mock_parse
     ) -> None:
@@ -274,9 +394,15 @@ class FeedRefreshServiceTests(TestCase):
         feed = build_feed(title="Original title", last_fetched_at=previous_success)
         Article.objects.create(
             feed=feed,
-            title="Existing",
+            title="URL match",
             url="https://example.com/conflict",
             guid="existing-guid",
+        )
+        Article.objects.create(
+            feed=feed,
+            title="GUID match",
+            url="https://example.com/other",
+            guid="different-guid",
         )
         mock_parse.return_value = {
             "feed": {"title": "Uncommitted title"},
