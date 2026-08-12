@@ -426,20 +426,21 @@ def preferences(request: HttpRequest) -> HttpResponse:
 @login_required
 def refresh_feeds(request: HttpRequest) -> HttpResponse:
     results = refresh_active_feeds()
-    attempted = [result for result in results if not result.skipped]
-    failures = [result for result in attempted if not result.success]
-    skipped = [result for result in results if result.skipped]
+    attempted = [result for result in results if result.status != "skipped"]
+    failures = [result for result in results if result.status == "failed"]
+    skipped = [result for result in results if result.status == "skipped"]
+    superseded = [result for result in results if result.status == "superseded"]
     created = sum(result.created for result in results)
     updated = sum(result.updated for result in results)
-    succeeded = sum(result.success for result in results)
+    succeeded = sum(result.status == "succeeded" for result in results)
     feeds_with_new_articles = sum(
         1 for result in results if result.success and result.created > 0
     )
     summary = (
-        f"Refresh complete: checked {len(attempted)} feeds; succeeded {succeeded}; "
-        f"failed {len(failures)}; skipped {len(skipped)}; "
-        f"{feeds_with_new_articles} feeds had new articles; "
-        f"{created} new articles; {updated} existing articles updated."
+        f"Refresh complete: checked {len(results)} feeds; attempted {len(attempted)}; "
+        f"succeeded {succeeded}; failed {len(failures)}; skipped {len(skipped)}; "
+        f"superseded {len(superseded)}; {feeds_with_new_articles} feeds had new "
+        f"articles; {created} new articles; {updated} existing articles updated."
     )
     if failures:
         failed_titles = ", ".join(result.feed.title for result in failures)
@@ -449,6 +450,9 @@ def refresh_feeds(request: HttpRequest) -> HttpResponse:
         messages.warning(request, f"{summary} Backoff feeds: {skipped_titles}.")
     else:
         messages.success(request, summary)
+    if superseded:
+        superseded_titles = ", ".join(result.feed.title for result in superseded)
+        messages.info(request, f"Superseded feeds: {superseded_titles}.")
     return _redirect_to_posted_next(request, fallback=reverse("today"))
 
 

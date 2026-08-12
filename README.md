@@ -258,9 +258,16 @@ minutes and capped at 24 hours; skipped feeds remain visible in command, browser
 and API summaries. Refresh completion logs include safe bounded feed identity,
 status, duration, write counts or error code, failure count, and retry time. The
 management command logs unexpected exceptions with tracebacks while returning
-only classified safe messages to users. In the refresh API, `checked` remains
-the total number of result rows, including backoff skips, while `attempted`
-counts only feeds for which a refresh was attempted during that request.
+only classified safe messages to users. Refresh adapters use a four-state terminal
+contract: `succeeded`, `failed`, `skipped`, and `superseded`. A superseded result
+means a stale caller completed after a newer attempt took ownership: it was attempted,
+but it is not a failure and does not make the management command exit nonzero. Browser,
+command, and API summaries report superseded results separately from failed feeds. In
+the refresh API, `checked` remains the total number of result rows (including backoff
+skips), while `attempted` excludes only `skipped` rows and therefore includes
+`superseded` rows. The API returns a separate `superseded` aggregate count and retains
+each checked row in `feeds`. The management command exits nonzero only when at least one
+result is actually `failed`.
 
 ## Saved articles
 

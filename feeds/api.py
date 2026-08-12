@@ -945,16 +945,15 @@ def refresh_feeds_api(request: HttpRequest, user) -> JsonResponse:
     _reject_query_fields(request, set())
     _validate_empty_body(request)
     results = refresh_active_feeds()
-    attempted = [result for result in results if not result.skipped]
+    attempted = [result for result in results if result.status != "skipped"]
     return JsonResponse(
         {
             "checked": len(results),
             "attempted": len(attempted),
-            "succeeded": sum(result.success for result in results),
-            "failed": sum(
-                not result.success and not result.skipped for result in results
-            ),
-            "skipped": sum(result.skipped for result in results),
+            "succeeded": sum(result.status == "succeeded" for result in results),
+            "failed": sum(result.status == "failed" for result in results),
+            "skipped": sum(result.status == "skipped" for result in results),
+            "superseded": sum(result.status == "superseded" for result in results),
             "feeds_with_new_articles": sum(
                 1 for result in results if result.success and result.created > 0
             ),

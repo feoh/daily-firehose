@@ -7,6 +7,7 @@ from typing import Any, cast
 from unittest.mock import patch
 
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -749,10 +750,13 @@ class RefreshActiveFeedsTests(TestCase):
 
 class RefreshCommandTests(TestCase):
     @patch("feeds.management.commands.refresh_feeds.refresh_active_feeds")
-    def test_command_reports_partial_failure_and_skips(self, mock_refresh) -> None:
+    def test_command_reports_all_four_states_and_fails_only_for_failure(
+        self, mock_refresh
+    ) -> None:
         successful = build_feed(title="Successful")
         failed = build_feed(title="Failed")
         skipped = build_feed(title="Skipped")
+        superseded = build_feed(title="Superseded")
         mock_refresh.return_value = [
             RefreshResult(feed=successful, created=2),
             RefreshResult(
@@ -770,17 +774,53 @@ class RefreshCommandTests(TestCase):
                 error_message="Feed request timed out.",
                 next_retry_at=timezone.now() + timedelta(hours=1),
             ),
+            RefreshResult(
+                feed=superseded,
+                success=False,
+                superseded=True,
+                error_code="superseded",
+                error_message="A newer refresh owns status.",
+            ),
         ]
         stdout = StringIO()
 
-        call_command("refresh_feeds", stdout=stdout)
+        with self.assertRaisesMessage(CommandError, "1 feed refresh failed"):
+            call_command("refresh_feeds", stdout=stdout)
 
         output = stdout.getvalue()
         self.assertIn("Successful: 2 created, 0 updated", output)
         self.assertIn("Failed: failed [timeout] Feed request timed out.", output)
         self.assertIn("Skipped: skipped until", output)
         self.assertIn(
-            "Refresh complete: checked 2; succeeded 1; failed 1; skipped 1.", output
+            "Superseded: superseded [superseded] A newer refresh owns status.", output
+        )
+        self.assertIn(
+            "Refresh complete: checked 4; attempted 3; succeeded 1; failed 1; "
+            "skipped 1; superseded 1.",
+            output,
+        )
+
+        feeds = [build_feed(title="Older"), build_feed(title="Oldest")]
+        mock_refresh.return_value = [
+            RefreshResult(
+                feed=feed,
+                success=False,
+                superseded=True,
+                error_code="superseded",
+                error_message="A newer refresh owns status.",
+            )
+            for feed in feeds
+        ]
+        stdout = StringIO()
+
+        call_command("refresh_feeds", stdout=stdout)
+
+        output = stdout.getvalue()
+        self.assertNotIn(": failed", output)
+        self.assertIn(
+            "Refresh complete: checked 2; attempted 2; succeeded 0; failed 0; "
+            "skipped 0; superseded 2.",
+            output,
         )
 
     @patch("feeds.management.commands.refresh_feeds.refresh_active_feeds")
@@ -827,7 +867,7 @@ class RefreshFeedsFeedbackTests(StaticFilesTestCase):
 
         self.assertContains(
             response,
-            "Refresh complete: checked 2 feeds; succeeded 2; failed 0; skipped 0; 1 feeds had new articles; 3 new articles; 6 existing articles updated.",
+            "Refresh complete: checked 2 feeds; attempted 2; succeeded 2; failed 0; skipped 0; superseded 0; 1 feeds had new articles; 3 new articles; 6 existing articles updated.",
         )
         mock_refresh_active_feeds.assert_called_once_with()
 
@@ -850,6 +890,69 @@ class RefreshFeedsFeedbackTests(StaticFilesTestCase):
 
         self.assertContains(
             response,
-            "checked 2 feeds; succeeded 1; failed 1; skipped 0",
+            "checked 2 feeds; attempted 2; succeeded 1; failed 1; skipped 0; superseded 0",
         )
         self.assertContains(response, "Failed feeds: Feed without new articles.")
+
+        failed = build_feed(title="Failed browser feed")
+        skipped = build_feed(title="Backoff browser feed")
+        superseded = build_feed(title="Superseded browser feed")
+        retry_at = timezone.now() + timedelta(minutes=5)
+        mock_refresh_active_feeds.return_value = [
+            RefreshResult(feed=self.feed_with_new_articles, created=1),
+            RefreshResult(
+                feed=failed,
+                success=False,
+                error_code="timeout",
+                error_message="Feed request timed out.",
+                next_retry_at=retry_at,
+            ),
+            RefreshResult(
+                feed=skipped,
+                success=False,
+                skipped=True,
+                error_code="timeout",
+                error_message="Feed request timed out.",
+                next_retry_at=retry_at,
+            ),
+            RefreshResult(
+                feed=superseded,
+                success=False,
+                superseded=True,
+                error_code="superseded",
+                error_message="A newer refresh owns status.",
+            ),
+        ]
+
+        response = self.client.post(reverse("refresh-feeds"), follow=True)
+
+        self.assertContains(
+            response,
+            "checked 4 feeds; attempted 3; succeeded 1; failed 1; skipped 1; superseded 1",
+        )
+        self.assertContains(response, "Failed feeds: Failed browser feed.")
+        self.assertContains(response, "Superseded feeds: Superseded browser feed.")
+        self.assertNotContains(response, "Failed feeds: Superseded browser feed")
+
+        mock_refresh_active_feeds.return_value = [
+            RefreshResult(
+                feed=feed,
+                success=False,
+                superseded=True,
+                error_code="superseded",
+                error_message="A newer refresh owns status.",
+            )
+            for feed in (self.feed_with_new_articles, self.feed_without_new_articles)
+        ]
+
+        response = self.client.post(reverse("refresh-feeds"), follow=True)
+
+        self.assertContains(
+            response,
+            "checked 2 feeds; attempted 2; succeeded 0; failed 0; skipped 0; superseded 2",
+        )
+        self.assertContains(
+            response,
+            "Superseded feeds: Feed with new articles, Feed without new articles.",
+        )
+        self.assertNotContains(response, "Failed feeds:")

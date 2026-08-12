@@ -312,11 +312,13 @@ a claim that every normative rule is presently satisfied.
   `next_retry_at` produces a skipped result without attempt changes; equality is
   eligible and each Feed is evaluated when reached.
 - **Scope / precedence:** worker, browser, and bearer refresh adapters share the same
-  service behavior.
+  four terminal states. A superseded result was attempted, remains a checked result row,
+  and is neither failed nor skipped.
 - **Executable evidence:** sequential eligibility remains covered by the existing
   suites. PostgreSQL tests prove only the newest overlapping failure persists terminal
   state; staged events prove both older failure/newer success and older success/newer
   failure orderings retain the newest terminal status and authoritative retry metadata.
+  API, browser, and command adapter tests prove mixed and all-superseded reporting.
 - **Known violation status:** **Conformant** for persisted refresh status: a monotonic
   per-Feed generation fences stale completion, whose result is explicitly
   `superseded`, while retaining per-Feed isolation.
@@ -604,10 +606,12 @@ a claim that every normative rule is presently satisfied.
   failure count, and retry time; unexpected exceptions include a traceback without
   exposing it to user/API payloads.
 - **Scope / precedence:** worker, browser, and bearer summaries derive from the same
-  results; skipped Feeds remain distinguishable from failures.
-- **Executable evidence:** service logging/sanitization, browser/API result tests, and
-  PostgreSQL locking/fencing tests. Strict generation fencing lets only the newest
-  attempt persist terminal state and prevents stale failure replacing newer success.
+  results; skipped and superseded Feeds remain distinguishable from failures.
+  Superseded is attempted but does not increment failed or trigger failure exit status.
+- **Executable evidence:** service logging/sanitization, four-state browser/API/command
+  result tests, and PostgreSQL locking/fencing tests. Strict generation fencing lets
+  only the newest attempt persist terminal state and prevents stale failure replacing
+  newer success.
 - **Known violation status:** **Conformant** for persisted outcome ownership and
   diagnostics. Metrics, correlation, retention, and alerting remain absent, and process
   exit signaling is OPS-INV-005.
@@ -674,15 +678,16 @@ a claim that every normative rule is presently satisfied.
 ### OPS-INV-005 — Failed refresh commands signal failure to supervision
 
 - **Normative current contract:** a management-command refresh cycle with one or more
-  attempted Feed failures should exit nonzero after reporting all per-Feed outcomes,
-  allowing shell/container supervision to distinguish degradation from success.
-- **Scope / precedence:** backoff skips alone are not attempted failures; failure
-  isolation and complete diagnostics must be retained before the nonzero exit.
-- **Executable evidence:** command-output tests in `test_feed_refresh.py` prove the
-  warning/summary, while command source and architecture show no `CommandError` or
-  nonzero status.
-- **Known violation status:** **Known violation** — failed refresh cycles currently
-  print warnings and exit successfully.
+  failed Feed results exits nonzero after reporting all per-Feed outcomes, allowing
+  shell/container supervision to distinguish degradation from success.
+- **Scope / precedence:** backoff skips are not attempted; superseded results are
+  attempted but are not failures. Neither state alone triggers nonzero exit. Failure
+  isolation and complete diagnostics are retained before the nonzero exit.
+- **Executable evidence:** `test_feed_refresh.py::RefreshCommandTests::test_command_reports_all_four_states_and_fails_only_for_failure`
+  proves mixed four-state output, all-superseded success exit, and failure-only
+  `CommandError` behavior.
+- **Known violation status:** **Conformant** — actual failed results produce nonzero
+  status after the complete summary; skipped and superseded-only cycles do not.
 - **Source / feature IDs:** `feeds/management/commands/refresh_feeds.py`; ING-009,
   ING-010, OPS-011.
 

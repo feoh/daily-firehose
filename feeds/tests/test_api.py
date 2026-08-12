@@ -125,6 +125,7 @@ class ApiTests(StaticFilesTestCase):
     ) -> None:
         failed_feed = build_feed(title="Failed API feed")
         skipped_feed = build_feed(title="Backoff API feed")
+        superseded_feed = build_feed(title="Superseded API feed")
         next_retry = timezone.now()
         mock_refresh_active_feeds.return_value = [
             RefreshResult(feed=self.feed, created=2, duration_seconds=0.25),
@@ -144,6 +145,13 @@ class ApiTests(StaticFilesTestCase):
                 error_message="Feed request timed out.",
                 next_retry_at=next_retry,
             ),
+            RefreshResult(
+                feed=superseded_feed,
+                success=False,
+                superseded=True,
+                error_code="superseded",
+                error_message="A newer refresh owns status.",
+            ),
         ]
 
         response = self.client.post(reverse("api-refresh"), headers=self.auth_headers())
@@ -159,25 +167,55 @@ class ApiTests(StaticFilesTestCase):
                     "succeeded",
                     "failed",
                     "skipped",
+                    "superseded",
                 )
             },
             {
-                "checked": 3,
-                "attempted": 2,
+                "checked": 4,
+                "attempted": 3,
                 "succeeded": 1,
                 "failed": 1,
                 "skipped": 1,
+                "superseded": 1,
             },
         )
         self.assertEqual(
             [feed["status"] for feed in payload["feeds"]],
-            ["succeeded", "failed", "skipped"],
+            ["succeeded", "failed", "skipped", "superseded"],
         )
         self.assertEqual(
             payload["feeds"][1]["error"],
             {"code": "timeout", "message": "Feed request timed out."},
         )
         self.assertIsNone(payload["feeds"][0]["error"])
+
+        superseded_feeds = [
+            build_feed(title="Older API attempt"),
+            build_feed(title="Oldest API attempt"),
+        ]
+        mock_refresh_active_feeds.return_value = [
+            RefreshResult(
+                feed=feed,
+                success=False,
+                superseded=True,
+                error_code="superseded",
+                error_message="A newer refresh owns status.",
+            )
+            for feed in superseded_feeds
+        ]
+
+        response = self.client.post(reverse("api-refresh"), headers=self.auth_headers())
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["checked"], 2)
+        self.assertEqual(payload["attempted"], 2)
+        self.assertEqual(payload["failed"], 0)
+        self.assertEqual(payload["superseded"], 2)
+        self.assertEqual(
+            [feed["status"] for feed in payload["feeds"]],
+            ["superseded", "superseded"],
+        )
 
     def test_api_can_update_focus_mode_preference(self) -> None:
         response = self.client.patch(
