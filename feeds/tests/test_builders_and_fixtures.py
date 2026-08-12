@@ -186,15 +186,18 @@ class BuilderTests(TestCase):
         queryset = Mock()
         queryset.iterator.return_value = iter(markers)
         model = Mock()
-        model.objects.order_by.return_value = queryset
+        model.objects.using.return_value.order_by.return_value = queryset
         apps = Mock()
         apps.get_model.return_value = model
+        schema_editor = Mock()
+        schema_editor.connection.alias = "default"
         with self.assertRaisesRegex(
             RuntimeError,
             r"invalid row IDs: 7; duplicate row IDs: 8, 9.*"
             r"no marker rows were modified",
         ):
-            migration.audit_bulk_read_markers(apps, Mock())
+            migration.audit_bulk_read_markers(apps, schema_editor)
+        model.objects.using.assert_called_once_with("default")
         self.assertEqual([vars(marker) for marker in markers], marker_state)
         queryset.delete.assert_not_called()
         queryset.update.assert_not_called()
