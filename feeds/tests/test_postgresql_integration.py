@@ -15,6 +15,7 @@ from django.db.models.query import QuerySet
 from django.test import Client, TransactionTestCase
 from django.urls import reverse
 
+from .. import services
 from ..feed_fetch import FeedFetchError, FetchedFeedDocument
 from ..models import (
     Article,
@@ -287,12 +288,23 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
 
     def test_concurrent_same_guid_refresh_has_one_create_and_one_update(self) -> None:
         feed = build_feed()
-        write_barrier = threading.Barrier(2, timeout=_RACE_TIMEOUT)
-        original_upsert = Article.objects.update_or_create
+        lock_hook_calls = 0
+        claims_completed = threading.Barrier(2, timeout=_RACE_TIMEOUT)
+        original_lock = services._lock_feed_for_reconciliation
+        original_apply = services._apply_article_reconciliation
+        applied_counts: list[tuple[int, int]] = []
 
-        def synchronized_upsert(*args, **kwargs):
-            write_barrier.wait()
-            return original_upsert(*args, **kwargs)
+        def instrumented_lock(feed_id: int) -> Feed:
+            nonlocal lock_hook_calls
+            claims_completed.wait()
+            locked_feed = original_lock(feed_id)
+            lock_hook_calls += 1
+            return locked_feed
+
+        def instrumented_apply(*, feed: Feed, writes):
+            counts = original_apply(feed=feed, writes=writes)
+            applied_counts.append(counts)
+            return counts
 
         parsed = {
             "feed": {"title": feed.title},
@@ -307,10 +319,13 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
         with (
             patch("feeds.services.fetch_feed_document", return_value=_DOCUMENT),
             patch("feeds.services.feedparser.parse", return_value=parsed),
-            patch.object(
-                Article.objects,
-                "update_or_create",
-                side_effect=synchronized_upsert,
+            patch(
+                "feeds.services._lock_feed_for_reconciliation",
+                side_effect=instrumented_lock,
+            ),
+            patch(
+                "feeds.services._apply_article_reconciliation",
+                side_effect=instrumented_apply,
             ),
         ):
             outcomes = run_concurrently(
@@ -320,12 +335,14 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
 
         self.assertEqual(_errors(outcomes), [])
         results = [outcome.value for outcome in outcomes]
-        self.assertTrue(
-            all(result is not None and result.success for result in results)
+        self.assertTrue(all(result is not None for result in results))
+        self.assertEqual(
+            sorted(result.status for result in results if result),
+            ["succeeded", "superseded"],
         )
-        self.assertEqual(sorted(result.created for result in results if result), [0, 1])
-        self.assertEqual(sorted(result.updated for result in results if result), [0, 1])
+        self.assertEqual(sorted(applied_counts), [(0, 1), (1, 0)])
         self.assertEqual(Article.objects.filter(feed=feed, guid="same-guid").count(), 1)
+        self.assertEqual(lock_hook_calls, 2)
 
     def test_concurrent_changed_guids_for_one_url_are_reconciled(self) -> None:
         feed = build_feed()
@@ -380,11 +397,11 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
 
         self.assertEqual(_errors(outcomes), [])
         results = [outcome.value for outcome in outcomes]
-        self.assertTrue(
-            all(result is not None and result.success for result in results)
+        self.assertTrue(all(result is not None for result in results))
+        self.assertEqual(
+            sorted(result.status for result in results if result),
+            ["succeeded", "superseded"],
         )
-        self.assertEqual(sum(result.created for result in results if result), 1)
-        self.assertEqual(sum(result.updated for result in results if result), 1)
         self.assertEqual(
             Article.objects.filter(
                 feed=feed,
@@ -450,6 +467,72 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
         self.assertEqual(feed.consecutive_failures, 0)
         self.assertIsNone(feed.next_retry_at)
         self.assertIsNotNone(feed.last_fetched_at)
+
+    def test_older_success_cannot_overwrite_newer_failure_status(self) -> None:
+        feed = build_feed(title="Original title")
+        local = threading.local()
+        older_claimed = threading.Event()
+        newer_finished = threading.Event()
+        original_claim = services._claim_refresh_attempt
+
+        def ordered_claim(feed_to_claim: Feed, *, attempted_at):
+            if local.mode == "newer" and not older_claimed.wait(_RACE_TIMEOUT):
+                raise AssertionError("older success attempt was not claimed")
+            generation = original_claim(feed_to_claim, attempted_at=attempted_at)
+            if local.mode == "older":
+                older_claimed.set()
+            return generation
+
+        def fetch_document(_url: str) -> FetchedFeedDocument:
+            if local.mode == "newer":
+                raise FeedFetchError(
+                    code="connection_error", message="Feed connection failed."
+                )
+            if not newer_finished.wait(_RACE_TIMEOUT):
+                raise AssertionError("newer failure did not finish")
+            return _DOCUMENT
+
+        def older_success():
+            local.mode = "older"
+            return refresh_feed(Feed.objects.get(pk=feed.pk))
+
+        def newer_failure():
+            local.mode = "newer"
+            try:
+                return refresh_feed(Feed.objects.get(pk=feed.pk))
+            finally:
+                newer_finished.set()
+
+        with (
+            patch("feeds.services._claim_refresh_attempt", side_effect=ordered_claim),
+            patch("feeds.services.fetch_feed_document", side_effect=fetch_document),
+            patch(
+                "feeds.services.feedparser.parse",
+                return_value={"feed": {"title": "Stale success"}, "entries": []},
+            ),
+        ):
+            outcomes = run_concurrently(
+                [older_success, newer_failure], timeout=_RACE_TIMEOUT
+            )
+
+        self.assertEqual(_errors(outcomes), [])
+        older_result = outcomes[0].value
+        newer_result = outcomes[1].value
+        self.assertIsNotNone(older_result)
+        self.assertIsNotNone(newer_result)
+        if older_result is None or newer_result is None:
+            self.fail("both refresh outcomes are required")
+        feed.refresh_from_db()
+        self.assertEqual(older_result.status, "superseded")
+        self.assertEqual(older_result.error_code, "superseded")
+        self.assertEqual(older_result.next_retry_at, feed.next_retry_at)
+        self.assertEqual(newer_result.status, "failed")
+        self.assertEqual(newer_result.error_code, "connection_error")
+        self.assertEqual(feed.title, "Original title")
+        self.assertEqual(feed.last_error_code, "connection_error")
+        self.assertEqual(feed.consecutive_failures, 1)
+        self.assertIsNotNone(feed.next_retry_at)
+        self.assertIsNone(feed.last_fetched_at)
 
     def test_concurrent_preference_get_or_create_returns_one_row(self) -> None:
         user = build_user()
@@ -645,7 +728,18 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
             )
 
         self.assertEqual(_errors(outcomes), [])
+        older_result = outcomes[0].value
+        newer_result = outcomes[1].value
+        self.assertIsNotNone(older_result)
+        self.assertIsNotNone(newer_result)
+        if older_result is None or newer_result is None:
+            self.fail("both refresh outcomes are required")
         feed.refresh_from_db()
+        self.assertEqual(older_result.status, "superseded")
+        self.assertEqual(older_result.error_code, "superseded")
+        self.assertEqual(older_result.next_retry_at, feed.next_retry_at)
+        self.assertEqual(newer_result.status, "failed")
+        self.assertEqual(newer_result.error_code, "connection_error")
         self.assertEqual(feed.refresh_generation, 2)
         self.assertEqual(feed.consecutive_failures, 1)
         self.assertEqual(feed.last_error_code, "connection_error")

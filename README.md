@@ -241,10 +241,12 @@ and the DNS-validation/request DNS-rebinding interval completely.
 For each active feed, metadata, article, and success-state writes commit in one
 atomic database transaction. Article identity is canonical within its Feed: a stable
 GUID or URL reconciles the existing row in place, preserving first-seen, read, save,
-and newsletter associations. If GUID and URL identify two different rows, refresh
-fails safely without merging or deleting either. PostgreSQL serializes writes per Feed,
+and newsletter associations. Under a per-Feed lock, the complete document resolves
+against an immutable pre-write identity snapshot; split or colliding evidence fails
+safely before the deterministic write plan runs. PostgreSQL serializes writes per Feed,
 and a monotonic attempt generation prevents stale completion from overwriting newer
-status. A failed article write rolls back that transaction without aborting later
+status; stale callers report `superseded` with authoritative persisted retry metadata.
+A failed article write rolls back that transaction without aborting later
 feeds. Attempt state is recorded before network work, and classified failure state is
 recorded after rollback, so both intentionally persist outside the content transaction.
 Operational state is retained on

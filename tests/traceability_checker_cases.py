@@ -62,8 +62,8 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
     def test_rejects_stale_primary_support_summary(self) -> None:
         self.mutate(
             "docs/features/test-traceability.md",
-            "Ledger classification: **254 primary**, **9 support/redundant**.",
-            "Ledger classification: **255 primary**, **8 support/redundant**.",
+            "Ledger classification: **244 primary**, **9 support/redundant**.",
+            "Ledger classification: **243 primary**, **8 support/redundant**.",
         )
         self.assert_rejected("stale primary/support")
 
@@ -142,7 +142,7 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
             + "\n\n@unittest.expectedFailure\ndef test_new_qualified_expected_failure():\n"
             + "    raise AssertionError\n"
         )
-        self.assert_rejected("expectedFailures=7")
+        self.assert_rejected("expectedFailures=8")
 
     def test_rejects_stale_intro_feature_count(self) -> None:
         self.mutate(
@@ -150,7 +150,7 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
             "**82 feature IDs**",
             "**81 feature IDs**",
         )
-        self.assert_rejected("stale rendered 82/44/19/263/6 intro")
+        self.assert_rejected("stale rendered 82/44/19/253/7 intro")
 
     def test_rejects_stale_intro_invariant_count(self) -> None:
         self.mutate(
@@ -158,7 +158,7 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
             "**44 invariant IDs**",
             "**43 invariant IDs**",
         )
-        self.assert_rejected("stale rendered 82/44/19/263/6 intro")
+        self.assert_rejected("stale rendered 82/44/19/253/7 intro")
 
     def test_rejects_stale_intro_module_count(self) -> None:
         self.mutate(
@@ -166,29 +166,29 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
             "**19 app test modules**",
             "**18 app test modules**",
         )
-        self.assert_rejected("stale rendered 82/44/19/263/6 intro")
+        self.assert_rejected("stale rendered 82/44/19/253/7 intro")
 
     def test_rejects_stale_intro_method_count(self) -> None:
         self.mutate(
             "docs/features/test-traceability.md",
-            "**263 app test methods**",
-            "**262 app test methods**",
+            "**253 app test methods**",
+            "**250 app test methods**",
         )
-        self.assert_rejected("stale rendered 82/44/19/263/6 intro")
+        self.assert_rejected("stale rendered 82/44/19/253/7 intro")
 
     def test_rejects_stale_intro_expected_failure_count(self) -> None:
         self.mutate(
             "docs/features/test-traceability.md",
+            "**7 `expectedFailure` methods**",
             "**6 `expectedFailure` methods**",
-            "**5 `expectedFailure` methods**",
         )
-        self.assert_rejected("stale rendered 82/44/19/263/6 intro")
+        self.assert_rejected("stale rendered 82/44/19/253/7 intro")
 
     def test_rejects_stale_broad_expected_failure_count(self) -> None:
         self.mutate(
             "docs/features/test-traceability.md",
+            "Exact broad gaps: 7 expected failures;",
             "Exact broad gaps: 6 expected failures;",
-            "Exact broad gaps: 5 expected failures;",
         )
         self.assert_rejected("stale exact broad gap summary")
 
@@ -214,19 +214,19 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
             "current suite: 19 test modules",
             "current suite: 18 test modules",
         )
-        self.assert_rejected("stale contracts current-suite 19/263/6 prose")
+        self.assert_rejected("stale contracts current-suite 19/253/7 prose")
 
     def test_rejects_stale_contracts_method_count(self) -> None:
         self.mutate(
-            "docs/features/contracts.md", "263 test\nmethods", "262 test\nmethods"
+            "docs/features/contracts.md", "253 test\nmethods", "250 test\nmethods"
         )
-        self.assert_rejected("stale contracts current-suite 19/263/6 prose")
+        self.assert_rejected("stale contracts current-suite 19/253/7 prose")
 
     def test_rejects_stale_contracts_expected_failure_count(self) -> None:
         self.mutate(
-            "docs/features/contracts.md", "6 expected failures", "5 expected failures"
+            "docs/features/contracts.md", "7 expected failures", "6 expected failures"
         )
-        self.assert_rejected("stale contracts current-suite 19/263/6 prose")
+        self.assert_rejected("stale contracts current-suite 19/253/7 prose")
 
     def test_rejects_missing_progressive_browser_primary_evidence(self) -> None:
         self.mutate(
@@ -299,8 +299,8 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
     def test_rejects_stale_second_contracts_expected_failure_count(self) -> None:
         self.mutate(
             "docs/features/contracts.md",
+            "The current suite contains **7 expected failures**:",
             "The current suite contains **6 expected failures**:",
-            "The current suite contains **5 expected failures**:",
         )
         self.assert_rejected("stale contracts repeated 10-expected-failures sentence")
 
@@ -317,7 +317,7 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
     def test_rejects_postgresql_race_disguised_as_fault_injection(self) -> None:
         path = self.root / "docs/features/test-traceability.md"
         lines = path.read_text().splitlines()
-        index = next(i for i, line in enumerate(lines) if line.startswith("| T215 |"))
+        index = next(i for i, line in enumerate(lines) if line.startswith("| T204 |"))
         cells = lines[index].split("|")
         cells[4] = " service/PostgreSQL fault injection "
         lines[index] = "|".join(cells)

@@ -79,6 +79,10 @@ class RefreshResultTests(TestCase):
                 "error_code": "timeout",
                 "error_message": "Feed request timed out.",
             },
+            {"superseded": True},
+            {"superseded": True, "success": True},
+            {"superseded": True, "skipped": True},
+            {"superseded": True, "created": 1},
             {"created": -1},
             {"duration_seconds": float("inf")},
         ]
@@ -103,9 +107,17 @@ class RefreshResultTests(TestCase):
             error_message="Feed request timed out.",
             next_retry_at=self.retry_at,
         )
+        superseded = RefreshResult(
+            feed=self.feed,
+            success=False,
+            superseded=True,
+            error_code="superseded",
+            error_message="A newer refresh owns status.",
+        )
 
         self.assertEqual(failed.status, "failed")
         self.assertEqual(skipped.status, "skipped")
+        self.assertEqual(superseded.status, "superseded")
 
 
 class RefreshBackoffTests(TestCase):
@@ -266,6 +278,65 @@ class FeedRefreshServiceTests(TestCase):
         self.assertEqual(by_guid.url, "https://example.com/guid-url")
         self.assertEqual(by_url.guid, "other-guid")
         self.assertEqual(Article.objects.filter(feed=feed).count(), 2)
+
+    @patch("feeds.services.feedparser.parse")
+    @patch(
+        "feeds.services.fetch_feed_document",
+        return_value=FetchedFeedDocument(
+            content=b"feed",
+            final_url="https://example.com/feed.xml",
+            response_headers={"content-location": "https://example.com/feed.xml"},
+        ),
+    )
+    def test_whole_document_identity_plan_rejects_order_dependent_collision(
+        self, mock_fetch, mock_parse
+    ) -> None:
+        feed = build_feed(title="Original feed title")
+        article_a = Article.objects.create(
+            feed=feed,
+            title="Article A",
+            guid="guid-a",
+            url="https://example.com/url-a",
+        )
+        article_b = Article.objects.create(
+            feed=feed,
+            title="Article B",
+            guid="guid-b",
+            url="https://example.com/url-b",
+        )
+        before = list(
+            Article.objects.filter(feed=feed)
+            .order_by("pk")
+            .values_list("pk", "guid", "url", "title", "fetched_at")
+        )
+        mock_parse.return_value = {
+            "feed": {"title": "Must roll back"},
+            "entries": [
+                {
+                    "id": "guid-new",
+                    "link": article_a.url,
+                    "title": "Would update A",
+                },
+                {
+                    "id": article_a.guid,
+                    "link": article_b.url,
+                    "title": "Split snapshot evidence",
+                },
+            ],
+        }
+
+        result = refresh_feed(feed)
+
+        feed.refresh_from_db()
+        after = list(
+            Article.objects.filter(feed=feed)
+            .order_by("pk")
+            .values_list("pk", "guid", "url", "title", "fetched_at")
+        )
+        self.assertFalse(result.success)
+        self.assertEqual(result.error_code, "integrity_error")
+        self.assertEqual(feed.title, "Original feed title")
+        self.assertEqual(after, before)
 
     @patch("feeds.services.feedparser.parse")
     @patch(

@@ -19,7 +19,7 @@ import feedparser
 import requests
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, connection, transaction
-from django.db.models import Q
+
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
@@ -124,6 +124,7 @@ class RefreshResult:
     error_code: str = ""
     error_message: str = ""
     next_retry_at: datetime | None = None
+    superseded: bool = False
 
     def __post_init__(self) -> None:
         for field_name, value in (("created", self.created), ("updated", self.updated)):
@@ -136,7 +137,14 @@ class RefreshResult:
             or self.duration_seconds < 0
         ):
             raise ValueError("duration_seconds must be finite and non-negative")
-        if self.success:
+        if self.superseded:
+            if self.success or self.skipped:
+                raise ValueError("a superseded refresh cannot succeed or be skipped")
+            if self.created or self.updated:
+                raise ValueError("a superseded refresh cannot contain write counts")
+            if not self.error_code or not self.error_message:
+                raise ValueError("a superseded refresh requires safe status metadata")
+        elif self.success:
             if self.skipped:
                 raise ValueError("a successful refresh cannot be skipped")
             if self.error_code or self.error_message or self.next_retry_at is not None:
@@ -154,7 +162,9 @@ class RefreshResult:
                 raise ValueError("a failed or skipped refresh requires next_retry_at")
 
     @property
-    def status(self) -> Literal["succeeded", "failed", "skipped"]:
+    def status(self) -> Literal["succeeded", "failed", "skipped", "superseded"]:
+        if self.superseded:
+            return "superseded"
         if self.skipped:
             return "skipped"
         return "succeeded" if self.success else "failed"
@@ -277,10 +287,13 @@ def _record_refresh_failure(
     code: str,
     message: str,
     failed_at: datetime,
-) -> datetime:
+) -> bool:
+    """Persist failure state only when ``generation`` still owns completion."""
+
     with transaction.atomic():
         stored_feed = Feed.objects.select_for_update().get(pk=feed.pk)
-        if stored_feed.refresh_generation == generation:
+        owns_terminal_state = stored_feed.refresh_generation == generation
+        if owns_terminal_state:
             stored_feed.consecutive_failures += 1
             stored_feed.last_error_code = code
             stored_feed.last_error_message = message
@@ -296,47 +309,127 @@ def _record_refresh_failure(
                     "updated_at",
                 ]
             )
-            next_retry_at = cast(datetime, stored_feed.next_retry_at)
-        else:
-            # The caller still needs a complete failed RefreshResult, but it no
-            # longer owns persisted status. Never let an older completion replace
-            # the newer attempt's terminal state. If the newer process dies after
-            # claiming, a watchdog/lease owner must detect it; an older completion
-            # is never allowed to fill the newer generation's status.
-            next_retry_at = failed_at + _retry_delay(1)
     feed.refresh_from_db()
-    return next_retry_at
+    return owns_terminal_state
 
 
-def _reconcile_article(
-    *, feed: Feed, guid: str, url: str, defaults: dict[str, object]
-) -> bool:
-    """Upsert one canonical Article using either stable identifier as evidence.
+@dataclass(frozen=True)
+class _ArticleWrite:
+    position: int
+    article: Article | None
+    guid: str
+    url: str
+    defaults: dict[str, object]
 
-    A match by GUID or URL retains the original row (and therefore first-seen,
-    read, save, and newsletter associations). If those identifiers resolve to
-    different rows, there is no safe automatic winner and the Feed transaction
-    fails without deleting or merging either Article.
-    """
 
-    matches = list(
-        Article.objects.filter(feed=feed)
-        .filter(Q(guid=guid) | Q(url=url))
-        .order_by("pk")[:2]
+def _lock_feed_for_reconciliation(feed_id: int) -> Feed:
+    """Acquire the serialization lock for one Feed's complete write plan."""
+
+    return Feed.objects.select_for_update().get(pk=feed_id)
+
+
+def _plan_article_reconciliation(
+    *, feed: Feed, entries: list[Any]
+) -> list[_ArticleWrite]:
+    """Resolve the complete document against one immutable identity snapshot."""
+
+    snapshot = list(Article.objects.filter(feed=feed).order_by("pk"))
+    by_guid = {article.guid: article for article in snapshot}
+    by_url = {article.url: article for article in snapshot}
+    reserved_guids: set[str] = set()
+    reserved_urls: set[str] = set()
+    reserved_articles: set[int] = set()
+    writes: list[_ArticleWrite] = []
+
+    for position, entry in enumerate(entries):
+        url = _entry_article_url(entry)
+        if not url:
+            continue
+        guid = str(entry.get("id") or url)
+        guid_match = by_guid.get(guid)
+        url_match = by_url.get(url)
+        if (
+            guid_match is not None
+            and url_match is not None
+            and guid_match.pk != url_match.pk
+        ):
+            raise _ArticleIdentityConflict
+        article = guid_match or url_match
+        if guid in reserved_guids or url in reserved_urls:
+            raise _ArticleIdentityConflict
+        if article is not None:
+            article_id = cast(int, article.pk)
+            if article_id in reserved_articles:
+                raise _ArticleIdentityConflict
+            reserved_articles.add(article_id)
+        reserved_guids.add(guid)
+        reserved_urls.add(url)
+        writes.append(
+            _ArticleWrite(
+                position=position,
+                article=article,
+                guid=guid,
+                url=url,
+                defaults={
+                    "title": entry.get("title") or url,
+                    "author": entry.get("author", ""),
+                    "summary": entry.get("summary", ""),
+                    "published_at": _aware_datetime(
+                        entry.get("published_parsed")
+                        or entry.get("updated_parsed")
+                        or entry.get("published")
+                        or entry.get("updated")
+                    ),
+                },
+            )
+        )
+
+    return sorted(
+        writes,
+        key=lambda write: (
+            write.article is None,
+            write.article.pk if write.article is not None else write.guid,
+            write.url,
+            write.position,
+        ),
     )
-    if len(matches) > 1:
-        raise _ArticleIdentityConflict
-    if not matches:
-        Article.objects.create(feed=feed, guid=guid, url=url, **defaults)
-        return True
 
-    article = matches[0]
-    article.guid = guid
-    article.url = url
-    for field, value in defaults.items():
-        setattr(article, field, value)
-    article.save(update_fields=["guid", "url", *defaults, "updated_at"])
-    return False
+
+def _apply_article_reconciliation(
+    *, feed: Feed, writes: list[_ArticleWrite]
+) -> tuple[int, int]:
+    created = 0
+    updated = 0
+    for write in writes:
+        if write.article is None:
+            Article.objects.create(
+                feed=feed,
+                guid=write.guid,
+                url=write.url,
+                **write.defaults,
+            )
+            created += 1
+            continue
+        article = write.article
+        article.guid = write.guid
+        article.url = write.url
+        for field, value in write.defaults.items():
+            setattr(article, field, value)
+        article.save(update_fields=["guid", "url", *write.defaults, "updated_at"])
+        updated += 1
+    return created, updated
+
+
+def _superseded_result(*, feed: Feed, started: float) -> RefreshResult:
+    return RefreshResult(
+        feed=feed,
+        success=False,
+        superseded=True,
+        duration_seconds=max(0.0, time.monotonic() - started),
+        error_code="superseded",
+        error_message="A newer refresh attempt owns the persisted feed status.",
+        next_retry_at=feed.next_retry_at,
+    )
 
 
 def refresh_feed(feed: Feed) -> RefreshResult:
@@ -362,10 +455,24 @@ def refresh_feed(feed: Feed) -> RefreshResult:
             raise _UnusableFeedError
 
         with transaction.atomic():
-            # Serialize writes for one Feed on PostgreSQL. This keeps the two
-            # independent Article unique constraints usable as durable guards
-            # while allowing GUID and URL to be reconciled as identity evidence.
-            stored_feed = Feed.objects.select_for_update().get(pk=feed.pk)
+            # The per-Feed row lock makes the complete identity snapshot and
+            # write plan immutable relative to every other refresh for this Feed.
+            stored_feed = _lock_feed_for_reconciliation(cast(int, feed.pk))
+            writes = _plan_article_reconciliation(
+                feed=stored_feed, entries=list(entries)
+            )
+            created, updated = _apply_article_reconciliation(
+                feed=stored_feed, writes=writes
+            )
+            if stored_feed.refresh_generation != generation:
+                feed.refresh_from_db()
+                result = _superseded_result(feed=feed, started=started)
+                log_message, log_context = _refresh_log_context(
+                    result, consecutive_failures=feed.consecutive_failures
+                )
+                logger.info(log_message, extra=log_context)
+                return result
+
             stored_feed.title = (
                 feed_info.get("title") or stored_feed.title or stored_feed.feed_url
             )
@@ -375,79 +482,53 @@ def refresh_feed(feed: Feed) -> RefreshResult:
                 or feed_info.get("description")
                 or stored_feed.description
             )
-
-            created = 0
-            updated = 0
-            for entry in entries:
-                url = _entry_article_url(entry)
-                if not url:
-                    continue
-                guid = str(entry.get("id") or url)
-                defaults: dict[str, object] = {
-                    "title": entry.get("title") or url,
-                    "author": entry.get("author", ""),
-                    "summary": entry.get("summary", ""),
-                    "published_at": _aware_datetime(
-                        entry.get("published_parsed")
-                        or entry.get("updated_parsed")
-                        or entry.get("published")
-                        or entry.get("updated")
-                    ),
-                }
-                was_created = _reconcile_article(
-                    feed=stored_feed, guid=guid, url=url, defaults=defaults
-                )
-                if was_created:
-                    created += 1
-                else:
-                    updated += 1
-
-            # Only the newest claimed attempt may publish Feed status. Article
-            # content remains safe under the per-Feed lock even when an older
-            # fetch completes later.
-            if stored_feed.refresh_generation == generation:
-                succeeded_at = timezone.now()
-                stored_feed.last_fetched_at = succeeded_at
-                stored_feed.last_error_code = ""
-                stored_feed.last_error_message = ""
-                stored_feed.consecutive_failures = 0
-                stored_feed.next_retry_at = None
-                stored_feed.save(
-                    update_fields=[
-                        "title",
-                        "site_url",
-                        "description",
-                        "last_fetched_at",
-                        "last_error_code",
-                        "last_error_message",
-                        "consecutive_failures",
-                        "next_retry_at",
-                        "updated_at",
-                    ]
-                )
+            succeeded_at = timezone.now()
+            stored_feed.last_fetched_at = succeeded_at
+            stored_feed.last_error_code = ""
+            stored_feed.last_error_message = ""
+            stored_feed.consecutive_failures = 0
+            stored_feed.next_retry_at = None
+            stored_feed.save(
+                update_fields=[
+                    "title",
+                    "site_url",
+                    "description",
+                    "last_fetched_at",
+                    "last_error_code",
+                    "last_error_message",
+                    "consecutive_failures",
+                    "next_retry_at",
+                    "updated_at",
+                ]
+            )
             feed.refresh_from_db()
     except Exception as exc:
         code, message, unexpected = _refresh_failure(exc)
         failed_at = timezone.now()
-        next_retry_at = _record_refresh_failure(
+        owns_terminal_state = _record_refresh_failure(
             feed,
             generation=generation,
             code=code,
             message=message,
             failed_at=failed_at,
         )
-        result = RefreshResult(
-            feed=feed,
-            success=False,
-            duration_seconds=max(0.0, time.monotonic() - started),
-            error_code=code,
-            error_message=message,
-            next_retry_at=next_retry_at,
-        )
+        if owns_terminal_state:
+            result = RefreshResult(
+                feed=feed,
+                success=False,
+                duration_seconds=max(0.0, time.monotonic() - started),
+                error_code=code,
+                error_message=message,
+                next_retry_at=feed.next_retry_at,
+            )
+        else:
+            result = _superseded_result(feed=feed, started=started)
         log_message, log_context = _refresh_log_context(
             result, consecutive_failures=feed.consecutive_failures
         )
-        if unexpected:
+        if result.superseded:
+            logger.info(log_message, extra=log_context)
+        elif unexpected:
             logger.exception(log_message, extra=log_context)
         else:
             logger.warning(log_message, extra=log_context)

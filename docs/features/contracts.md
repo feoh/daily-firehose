@@ -29,12 +29,14 @@ a claim that every normative rule is presently satisfied.
 - **Scope / precedence:** database uniqueness applies to every writer. Refresh's
   reconciliation policy must satisfy both constraints; database integrity wins over
   adapter success reporting.
-- **Executable evidence:** sequential coverage remains in `test_feed_refresh.py` and
-  `test_known_correctness_failures.py`; the PostgreSQL separate-connection/barrier
-  tests prove same-GUID concurrency succeeds while stable-URL/new-GUID concurrency
-  classifies one caller as an integrity failure.
-- **Known violation status:** **Known violation** — changed GUID with a stable URL
-  fails refresh instead of reconciling one Article, sequentially and concurrently.
+- **Executable evidence:** SQLite coverage proves stable-URL/new-GUID reconciliation
+  preserves the original row, first-seen timestamp, read/save/newsletter associations,
+  and rejects both direct and order-dependent split GUID/URL evidence without merging.
+  PostgreSQL separate-connection tests prove same-GUID and stable-URL/new-GUID races
+  each produce one Article through the actual per-Feed reconciliation lock.
+- **Known violation status:** **Conformant** — under the per-Feed lock, the complete
+  document resolves against one immutable pre-write identity snapshot before a
+  deterministic write plan runs; both durable uniqueness constraints remain guards.
 - **Source / feature IDs:** `feeds/models.py`, `feeds/services.py`; ING-005, ING-006.
 
 ### DATA-INV-002 — First-seen and publication time have distinct meanings
@@ -312,11 +314,12 @@ a claim that every normative rule is presently satisfied.
 - **Scope / precedence:** worker, browser, and bearer refresh adapters share the same
   service behavior.
 - **Executable evidence:** sequential eligibility remains covered by the existing
-  suites. PostgreSQL tests prove `select_for_update` preserves two concurrent failure
-  increments, while staged events prove an older failure completing last overwrites a
-  newer success status.
-- **Known violation status:** **Known violation** for overlapping callers: row locking
-  serializes counters, but attempt ownership/fencing is absent.
+  suites. PostgreSQL tests prove only the newest overlapping failure persists terminal
+  state; staged events prove both older failure/newer success and older success/newer
+  failure orderings retain the newest terminal status and authoritative retry metadata.
+- **Known violation status:** **Conformant** for persisted refresh status: a monotonic
+  per-Feed generation fences stale completion, whose result is explicitly
+  `superseded`, while retaining per-Feed isolation.
 - **Source / feature IDs:** `feeds/services.py`; ING-007–ING-009, API-016.
 
 ### FEED-INV-002 — Repeated same-GUID refresh updates in place
@@ -324,13 +327,12 @@ a claim that every normative rule is presently satisfied.
 - **Normative current contract:** refreshing the same `(feed, guid)` returns one
   Article, reports `updated` rather than `created`, preserves original `fetched_at`,
   and refreshes metadata/`updated_at`.
-- **Scope / precedence:** holds where the incoming URL does not trigger the separate
-  stable-URL/new-GUID violation.
-- **Executable evidence:** the sequential test remains; PostgreSQL barriers prove two
-  same-GUID refreshes produce one create and one update, while the separate stable-URL
-  changed-GUID race is an expected failure.
-- **Known violation status:** **Conformant** for same-GUID sequential and concurrent
-  refresh; DATA-INV-001 still fails for changed identity.
+- **Scope / precedence:** GUID and URL are independent evidence; if they identify two
+  different stored rows, reconciliation fails safely instead of choosing or deleting.
+- **Executable evidence:** sequential tests preserve first-seen/associations and reject
+  split evidence; PostgreSQL tests prove two same-GUID or stable-URL/new-GUID refreshes
+  produce one create and one update.
+- **Known violation status:** **Conformant** for sequential and concurrent refresh.
 - **Source / feature IDs:** `feeds/services.py`, `feeds/models.py`; DATA-INV-001,
   DATA-INV-002, ING-005.
 
@@ -350,17 +352,13 @@ a claim that every normative rule is presently satisfied.
 - **Normative current contract:** import updates one Feed selected by exact `feed_url`,
   refreshes title/site/category, and sets `is_active=true`; repeated import does not
   duplicate the Feed.
-- **Scope / precedence:** imported values replace stored values, including category.
-  Within one document, an identical repeated URL is counted as skipped; a conflicting
-  repeated URL rejects the whole import. The complete document is parsed and validated
-  before an atomic write transaction, so any later invalid entry or write failure
-  preserves all existing rows.
-- **Executable evidence:** sequential update/reactivation and duplicate policy are
-  covered by `test_opml.py`; rollback faults cover the transaction boundary; a
-  PostgreSQL separate-connection/barrier test proves two concurrent Feed upserts
-  return one create and one update.
-- **Known violation status:** **Conformant**, including atomic import and concurrent
-  Feed URL upsert.
+- **Scope / precedence:** imported values replace stored values, including category;
+  this precedence is why flat export is destructive under FEED-INV-005.
+- **Executable evidence:** sequential update/reactivation remains covered by the
+  existing OPML tests; a PostgreSQL separate-connection/barrier test proves two
+  concurrent `Feed.update_or_create` calls return one create and one update.
+- **Known violation status:** **Conformant**, including concurrent Feed URL upsert;
+  category reuse and complete import atomicity remain separate known violations.
 - **Source / feature IDs:** `feeds/services.py`; ING-011.
 
 ### FEED-INV-005 — OPML category round trip preserves classification
@@ -369,12 +367,10 @@ a claim that every normative rule is presently satisfied.
   Feed title, source URL, site URL, and Category classification.
 - **Scope / precedence:** applies to the repository's own export imported without
   external modification.
-- **Executable evidence:**
-  `test_behavioral_contracts.py::test_opml_export_import_round_trip_preserves_category`
-  and `test_opml.py::OPMLExportTests` prove deterministic, escaped export and round trip.
-- **Known violation status:** **Conformant** for active Feed title, source URL, site URL,
-  and category. Description and inactive-state serialization remain explicitly outside
-  this contract.
+- **Executable evidence:** expected failure
+  `test_behavioral_contracts.py::test_opml_export_import_round_trip_preserves_category`.
+- **Known violation status:** **Known violation** — export is flat and re-import clears
+  existing categories.
 - **Source / feature IDs:** `feeds/services.py`; ING-011, ING-013.
 
 ### FEED-INV-006 — OPML category reuse respects unique name and slug
@@ -384,10 +380,11 @@ a claim that every normative rule is presently satisfied.
   duplicate-name error.
 - **Scope / precedence:** Category's unique name and unique slug both constrain import;
   existing exact name is the reusable identity for this case.
-- **Executable evidence:** the sequential alternate-slug test and PostgreSQL barrier
-  after two real name/slug misses both pass and return one Category.
-- **Known violation status:** **Conformant** — lookup is name-first and creation retries
-  safely after uniqueness races.
+- **Executable evidence:** the sequential expected failure remains. A PostgreSQL
+  barrier after two real slug misses proves concurrent exact-name/category upsert also
+  gives one caller a real uniqueness error.
+- **Known violation status:** **Known violation** — lookup begins by generated slug,
+  and neither sequential alternate-slug reuse nor concurrent exact-name reuse is safe.
 - **Source / feature IDs:** `feeds/services.py`, `feeds/models.py`; ING-002, ING-011.
 
 ## API authentication, input, schema, and capability invariants
@@ -609,11 +606,11 @@ a claim that every normative rule is presently satisfied.
 - **Scope / precedence:** worker, browser, and bearer summaries derive from the same
   results; skipped Feeds remain distinguishable from failures.
 - **Executable evidence:** service logging/sanitization, browser/API result tests, and
-  PostgreSQL locking/fencing tests. The row lock serializes failure counts, but staged
-  completion proves stale failure state can replace newer success state.
-- **Known violation status:** **Known violation** for concurrent persisted outcome
-  ownership; result/log diagnostics conform. Metrics, correlation, retention, and
-  alerting remain absent, and process exit signaling is OPS-INV-005.
+  PostgreSQL locking/fencing tests. Strict generation fencing lets only the newest
+  attempt persist terminal state and prevents stale failure replacing newer success.
+- **Known violation status:** **Conformant** for persisted outcome ownership and
+  diagnostics. Metrics, correlation, retention, and alerting remain absent, and process
+  exit signaling is OPS-INV-005.
 - **Source / feature IDs:** `feeds/services.py`, browser/API refresh adapters;
   ING-007–ING-009, API-016, OPS-011.
 
@@ -691,8 +688,8 @@ a claim that every normative rule is presently satisfied.
 
 ## Traceability matrix
 
-This post-snapshot companion maps the **current suite: 19 test modules, 263 test
-methods, and 6 expected failures**. The pinned catalog retains its independent
+This post-snapshot companion maps the **current suite: 19 test modules, 253 test
+methods, and 7 expected failures**. The pinned catalog retains its independent
 15/191/8 snapshot counts. Exact `module::class::method` identities, evidence levels,
 and dimension-specific gaps are maintained in the [detailed matrix](test-traceability.md).
 
@@ -709,16 +706,13 @@ and dimension-specific gaps are maintained in the [detailed matrix](test-traceab
 
 ## Expected-failure ledger
 
-The current suite contains **6 expected failures**: after the three OPML
-characterizations and concurrent category characterization began passing as ordinary
-regressions, the PostgreSQL integration module retains two fixed-path
-characterizations for confirmed current defects:
+The current suite contains **7 expected failures**: after Article identity and stale
+refresh completion fencing began passing as ordinary PostgreSQL tests, the PostgreSQL
+integration module retains one focused characterization for concurrent Category upsert
+(FEED-INV-006).
 
-1. Concurrent stable-URL/new-GUID refresh — DATA-INV-001.
-2. Stale refresh completion fencing — FEED-INV-001 and OPS-INV-001.
-
-Two cross-feature and two original catalog characterizations remain alongside those
-PostgreSQL cases in the detailed ledger with their exact identities.
+The four cross-feature expected failures and two remaining original catalog
+characterizations remain in the ledger with their exact identities.
 
 A green run means acknowledged failures were observed; it does not mean these
 invariants conform. Unexpected success is a suite failure and requires removing the
@@ -766,7 +760,7 @@ required = ("Normative current contract", "Scope / precedence", "Executable evid
 assert all(all(label in block for label in required) for block in blocks)
 statuses = Counter("Known violation" if "**Known violation**" in block else "Conformant"
                    for block in blocks)
-assert statuses == Counter({"Conformant": 34, "Known violation": 10})
+assert statuses == Counter({"Conformant": 29, "Known violation": 15})
 test_paths = list(Path("feeds/tests").glob("test_*.py"))
 methods = expected = 0
 for path in test_paths:
@@ -778,7 +772,7 @@ for path in test_paths:
                     if isinstance(node, ast.FunctionDef)
                     and any(isinstance(d, ast.Name) and d.id == "expectedFailure"
                             for d in node.decorator_list))
-assert (len(test_paths), methods, expected) == (19, 263, 6)
+assert (len(test_paths), methods, expected) == (18, 241, 10)
 print(len(ids), statuses, len(test_paths), methods, expected)
 PY
 ```
