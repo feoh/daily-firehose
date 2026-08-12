@@ -4,6 +4,7 @@ import hmac
 from unittest import expectedFailure
 from unittest.mock import patch
 
+from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, transaction
 from django.test import override_settings
@@ -427,54 +428,58 @@ class KnownCorrectnessFailureTests(StaticFilesTestCase):
         self.assertEqual(Article.objects.exclude(id=model_id(self.article)).count(), 0)
         self.assertFalse(Feed.objects.filter(feed_url=NEWSLETTER_FEED_URL).exists())
 
-    # Bug: no database constraint enforces the feed-marker shape.
-    @expectedFailure
     def test_database_rejects_feed_marker_without_feed(self) -> None:
+        fields = {
+            "user": self.user,
+            "scope": ReadScope.FEED,
+            "feed": None,
+            "period_start": None,
+            "period_end": None,
+        }
+        with self.assertRaises(ValidationError):
+            BulkReadMarker(**fields).full_clean()
         with self.assertRaises(IntegrityError), transaction.atomic():
-            BulkReadMarker.objects.create(
-                user=self.user,
-                scope=ReadScope.FEED,
-                feed=None,
-                period_start=None,
-                period_end=None,
-            )
+            BulkReadMarker.objects.create(**fields)
 
-    # Bug: no database constraint requires period-marker dates.
-    @expectedFailure
     def test_database_rejects_period_marker_without_dates(self) -> None:
+        fields = {
+            "user": self.user,
+            "scope": ReadScope.DAY,
+            "feed": None,
+            "period_start": None,
+            "period_end": None,
+        }
+        with self.assertRaises(ValidationError):
+            BulkReadMarker(**fields).full_clean()
         with self.assertRaises(IntegrityError), transaction.atomic():
-            BulkReadMarker.objects.create(
-                user=self.user,
-                scope=ReadScope.DAY,
-                feed=None,
-                period_start=None,
-                period_end=None,
-            )
+            BulkReadMarker.objects.create(**fields)
 
-    # Bug: no database constraint keeps feeds off period markers.
-    @expectedFailure
     def test_database_rejects_period_marker_with_feed(self) -> None:
+        fields = {
+            "user": self.user,
+            "scope": ReadScope.DAY,
+            "feed": self.feed,
+            "period_start": self.article.fetched_at.date(),
+            "period_end": self.article.fetched_at.date(),
+        }
+        with self.assertRaises(ValidationError):
+            BulkReadMarker(**fields).full_clean()
         with self.assertRaises(IntegrityError), transaction.atomic():
-            BulkReadMarker.objects.create(
-                user=self.user,
-                scope=ReadScope.DAY,
-                feed=self.feed,
-                period_start=self.article.fetched_at.date(),
-                period_end=self.article.fetched_at.date(),
-            )
+            BulkReadMarker.objects.create(**fields)
 
-    # Bug: no database constraint enforces ordered period dates.
-    @expectedFailure
     def test_database_rejects_reversed_period_marker(self) -> None:
         day = self.article.fetched_at.date()
+        fields = {
+            "user": self.user,
+            "scope": ReadScope.WEEK,
+            "feed": None,
+            "period_start": day.replace(day=day.day + 1),
+            "period_end": day,
+        }
+        with self.assertRaises(ValidationError):
+            BulkReadMarker(**fields).full_clean()
         with self.assertRaises(IntegrityError), transaction.atomic():
-            BulkReadMarker.objects.create(
-                user=self.user,
-                scope=ReadScope.WEEK,
-                feed=None,
-                period_start=day.replace(day=day.day + 1),
-                period_end=day,
-            )
+            BulkReadMarker.objects.create(**fields)
 
     # Canonical newsletter-origin behavior is specified by the production-
     # configuration task after the setting and proxy contract are selected.

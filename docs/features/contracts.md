@@ -163,14 +163,15 @@ a claim that every normative rule is presently satisfied.
   materialization and marker upsert should commit or roll back together.
 - **Scope / precedence:** database shape applies to all writers. Bearer and signed
   commands are atomic; session bulk commands currently are not.
-- **Executable evidence:** four SQLite direct-write expected failures plus PostgreSQL
-  coverage that tries all invalid shapes and races duplicate period and Feed markers
-  from separate connections. PostgreSQL accepts both duplicates because the broad
-  nullable unique key treats NULLs as distinct. API fault injection covers only the
-  adapter rollback envelope and is not labeled concurrency.
-- **Known violation status:** **Known violation** — database checks and conditional
-  nullable uniqueness are absent, real duplicate races commit two rows, and session
-  bulk paths lack an encompassing transaction.
+- **Executable evidence:** four SQLite model/direct-write tests require validation and
+  database rejection; PostgreSQL coverage tries all invalid shapes, introspects the
+  named constraints, and races duplicate period and Feed markers from separate
+  connections. Migration-audit coverage proves invalid or duplicate preexisting rows
+  stop the migration without modifying user state. API fault injection covers only
+  the adapter rollback envelope and is not labeled concurrency.
+- **Known violation status:** **Known violation** only for session bulk command
+  atomicity. Marker shape and logical uniqueness are conformant at model/database
+  boundaries on SQLite and PostgreSQL 17, including concurrent duplicate inserts.
 - **Source / feature IDs:** `feeds/models.py`, `feeds/views.py`, `feeds/api.py`;
   WEB-009, WEB-010, WEB-019, API-010, API-013.
 
@@ -677,7 +678,7 @@ a claim that every normative rule is presently satisfied.
 ## Traceability matrix
 
 This post-snapshot companion maps the **current suite: 18 test modules, 241 test
-methods, and 17 expected failures**. The pinned catalog retains its independent
+methods, and 10 expected failures**. The pinned catalog retains its independent
 15/191/8 snapshot counts. Exact `module::class::method` identities, evidence levels,
 and dimension-specific gaps are maintained in the [detailed matrix](test-traceability.md).
 
@@ -694,18 +695,16 @@ and dimension-specific gaps are maintained in the [detailed matrix](test-traceab
 
 ## Expected-failure ledger
 
-The current suite contains **17 expected failures**: the prior 11 remain, and the
-PostgreSQL integration module retains six fixed-path characterizations for confirmed
-current defects:
+The current suite contains **10 expected failures**: four SQLite BulkReadMarker
+shape characterizations, three PostgreSQL shape/uniqueness characterizations, and
+three Postmark atomicity/race characterizations now pass. The PostgreSQL integration
+module retains three fixed-path characterizations for confirmed current defects:
 
-1. Bulk marker database shapes — READ-INV-006.
-2. Duplicate period-marker PostgreSQL race — READ-INV-006.
-3. Duplicate Feed-marker PostgreSQL race — READ-INV-006.
-4. Concurrent stable-URL/new-GUID refresh — DATA-INV-001.
-5. Stale refresh completion fencing — FEED-INV-001 and OPS-INV-001.
-6. Concurrent category upsert — FEED-INV-006.
+1. Concurrent stable-URL/new-GUID refresh — DATA-INV-001.
+2. Stale refresh completion fencing — FEED-INV-001 and OPS-INV-001.
+3. Concurrent category upsert — FEED-INV-006.
 
-The four cross-feature expected failures and seven remaining original catalog
+The four cross-feature expected failures and three remaining original catalog
 characterizations remain in the ledger with their exact identities.
 
 A green run means acknowledged failures were observed; it does not mean these
@@ -766,7 +765,7 @@ for path in test_paths:
                     if isinstance(node, ast.FunctionDef)
                     and any(isinstance(d, ast.Name) and d.id == "expectedFailure"
                             for d in node.decorator_list))
-assert (len(test_paths), methods, expected) == (18, 241, 20)
+assert (len(test_paths), methods, expected) == (18, 241, 10)
 print(len(ids), statuses, len(test_paths), methods, expected)
 PY
 ```

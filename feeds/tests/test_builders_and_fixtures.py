@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
+from importlib import import_module
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import Mock
 
@@ -141,6 +143,63 @@ class BuilderTests(TestCase):
             )
         with self.assertRaisesRegex(ValueError, "unsupported"):
             build_bulk_marker(user=user, scope="invalid")
+
+        migration = import_module(
+            "feeds.migrations.0008_enforce_bulk_marker_invariants"
+        )
+        day = date(2026, 1, 5)
+        markers = [
+            SimpleNamespace(
+                pk=7,
+                user_id=1,
+                scope="day",
+                feed_id=None,
+                period_start=None,
+                period_end=None,
+            ),
+            SimpleNamespace(
+                pk=8,
+                user_id=1,
+                scope="feed",
+                feed_id=3,
+                period_start=None,
+                period_end=None,
+            ),
+            SimpleNamespace(
+                pk=9,
+                user_id=1,
+                scope="feed",
+                feed_id=3,
+                period_start=None,
+                period_end=None,
+            ),
+            SimpleNamespace(
+                pk=10,
+                user_id=2,
+                scope="week",
+                feed_id=None,
+                period_start=day,
+                period_end=day,
+            ),
+        ]
+        marker_state = [vars(marker).copy() for marker in markers]
+        queryset = Mock()
+        queryset.iterator.return_value = iter(markers)
+        model = Mock()
+        model.objects.order_by.return_value = queryset
+        apps = Mock()
+        apps.get_model.return_value = model
+        with self.assertRaisesRegex(
+            RuntimeError,
+            r"invalid row IDs: 7; duplicate row IDs: 8, 9.*"
+            r"no marker rows were modified",
+        ):
+            migration.audit_bulk_read_markers(apps, Mock())
+        self.assertEqual([vars(marker) for marker in markers], marker_state)
+        queryset.delete.assert_not_called()
+        queryset.update.assert_not_called()
+        model.objects.delete.assert_not_called()
+        model.objects.update.assert_not_called()
 
     def test_local_feed_and_opml_fixtures_are_parseable(self) -> None:
         rss = cast(Any, feedparser.parse(fixture_bytes("rss.xml")))

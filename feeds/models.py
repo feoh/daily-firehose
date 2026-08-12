@@ -5,6 +5,7 @@ import secrets
 import uuid
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
@@ -166,11 +167,67 @@ class BulkReadMarker(models.Model):
     class Meta:
         ordering = ["-marked_read_at"]
         constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        scope=ReadScope.FEED,
+                        feed__isnull=False,
+                        period_start__isnull=True,
+                        period_end__isnull=True,
+                    )
+                    | models.Q(
+                        scope__in=(
+                            ReadScope.DAY,
+                            ReadScope.WEEK,
+                            ReadScope.MONTH,
+                        ),
+                        feed__isnull=True,
+                        period_start__isnull=False,
+                        period_end__isnull=False,
+                        period_start__lte=models.F("period_end"),
+                    )
+                ),
+                name="bulk_marker_valid_scope_shape",
+            ),
             models.UniqueConstraint(
-                fields=["user", "scope", "feed", "period_start", "period_end"],
-                name="unique_bulk_read_marker",
-            )
+                fields=["user", "scope", "feed"],
+                condition=models.Q(scope=ReadScope.FEED),
+                name="unique_bulk_feed_marker",
+            ),
+            models.UniqueConstraint(
+                fields=["user", "scope", "period_start", "period_end"],
+                condition=models.Q(
+                    scope__in=(ReadScope.DAY, ReadScope.WEEK, ReadScope.MONTH)
+                ),
+                name="unique_bulk_period_marker",
+            ),
         ]
+
+    def clean(self) -> None:
+        super().clean()
+        errors: dict[str, str] = {}
+        if self.scope == ReadScope.FEED:
+            if self.feed_id is None:
+                errors["feed"] = "Feed markers require a feed."
+            if self.period_start is not None:
+                errors["period_start"] = "Feed markers cannot have period dates."
+            if self.period_end is not None:
+                errors["period_end"] = "Feed markers cannot have period dates."
+        elif self.scope in {ReadScope.DAY, ReadScope.WEEK, ReadScope.MONTH}:
+            if self.feed_id is not None:
+                errors["feed"] = "Period markers cannot have a feed."
+            if self.period_start is None:
+                errors["period_start"] = "Period markers require both dates."
+            if self.period_end is None:
+                errors["period_end"] = "Period markers require both dates."
+            if (
+                self.period_start is not None
+                and self.period_end is not None
+                and self.period_start > self.period_end
+            ):
+                errors["period_end"] = "Period end must not precede period start."
+        if errors:
+            raise ValidationError(errors)
 
     def __str__(self) -> str:
         if self.scope == ReadScope.FEED and self.feed:

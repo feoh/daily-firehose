@@ -9,7 +9,7 @@ from pathlib import Path
 
 EXPECTED_MODULES = 18
 EXPECTED_TESTS = 241
-EXPECTED_XFAILS = 17
+EXPECTED_XFAILS = 10
 DIMENSIONS = (
     "positive",
     "negative",
@@ -123,11 +123,11 @@ REQUIRED_HEADINGS = {
 INTRO_BASELINE = (
     "Current AST baseline: **82 feature IDs**, **44 invariant IDs**, "
     "**18 app test modules**, **241 app test methods**, and "
-    "**17 `expectedFailure` methods**."
+    "**10 `expectedFailure` methods**."
 )
 BROAD_GAP_BASELINE = (
-    "Exact broad gaps: 17 expected failures; 16 PostgreSQL 17 integration tests "
-    "(6 focused XFs) execute real PostgreSQL race and transaction-boundary evidence; "
+    "Exact broad gaps: 10 expected failures; 16 PostgreSQL 17 integration tests "
+    "(3 focused XFs) execute real PostgreSQL race and transaction-boundary evidence; "
     "zero automated canonical launched-Compose tests; one real receipt-backed "
     "production backup and isolated restore but no scheduled/alerted RPO or incident "
     "cutover drill and no independent off-site confirmation; zero automated "
@@ -137,11 +137,11 @@ BROAD_GAP_BASELINE = (
     "Django page; zero axe/screen-reader tests."
 )
 CONTRACTS_EXPECTED_FAILURE_SENTENCE = (
-    "The current suite contains **17 expected failures**:"
+    "The current suite contains **10 expected failures**:"
 )
 CONTRACTS_CURRENT_SUITE = (
     "This post-snapshot companion maps the **current suite: 18 test modules, "
-    "241 test methods, and 17 expected failures**."
+    "241 test methods, and 10 expected failures**."
 )
 CONTRACTS_PROGRESSIVE_EVIDENCE = (
     "| Progressive/a11y/mobile | UI-INV-001–005 | `test_article_actions.py`, "
@@ -644,14 +644,14 @@ AUDITED_MATRIX = {
     ),
     "WEB-019": (
         {
-            "validation": "XF",
-            "concurrency": "XF",
+            "validation": "C",
+            "concurrency": "C",
             "mobile": "NA",
             "theme": "NA",
             "accessibility": "NA",
-            "migration": "XF",
+            "migration": "C",
         },
-        {"tk-enforce-bulkreadmarker-scope-and-uniqueness-inva-db62c6"},
+        {"tk-complete-browser-view-form-command-and-api-contr-55d622"},
     ),
     "AUTH-005": (
         {"positive": "M", "negative": "C", "validation": "C"},
@@ -1107,15 +1107,15 @@ def validate(root: Path) -> str:
     trace_path = root / "docs/features/test-traceability.md"
     trace = trace_path.read_text()
     if trace.count(INTRO_BASELINE) != 1:
-        raise AssertionError("stale rendered 82/44/18/241/17 intro baseline")
+        raise AssertionError("stale rendered 82/44/18/241/10 intro baseline")
     if trace.count(BROAD_GAP_BASELINE) != 1:
         raise AssertionError("stale exact broad gap summary")
     contracts_text = (root / "docs/features/contracts.md").read_text()
     contracts_flat = " ".join(contracts_text.split())
     if CONTRACTS_CURRENT_SUITE not in contracts_flat:
-        raise AssertionError("stale contracts current-suite 18/241/17 prose")
+        raise AssertionError("stale contracts current-suite 18/241/10 prose")
     if contracts_flat.count(CONTRACTS_EXPECTED_FAILURE_SENTENCE) != 1:
-        raise AssertionError("stale contracts repeated 17-expected-failures sentence")
+        raise AssertionError("stale contracts repeated 10-expected-failures sentence")
     if contracts_text.count(CONTRACTS_PROGRESSIVE_EVIDENCE) != 1:
         raise AssertionError("stale contracts progressive/a11y/mobile primary evidence")
     rendered_tasks = set(TASK_PATTERN.findall(trace))

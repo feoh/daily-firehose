@@ -80,18 +80,29 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
         applied = MigrationRecorder(connection).applied_migrations()
         self.assertTrue(set(loader.graph.leaf_nodes("feeds")).issubset(applied))
 
-        expected_named_constraints = {
+        expected_unique_constraints = {
             "feeds_article": {
                 "unique_article_guid_per_feed",
                 "unique_article_url_per_feed",
             },
+            "feeds_bulkreadmarker": {
+                "unique_bulk_feed_marker",
+                "unique_bulk_period_marker",
+            },
             "feeds_savedarticle": {"unique_saved_article"},
         }
         with connection.cursor() as cursor:
-            for table, expected in expected_named_constraints.items():
+            for table, expected in expected_unique_constraints.items():
                 constraints = connection.introspection.get_constraints(cursor, table)
                 self.assertTrue(expected.issubset(constraints))
                 self.assertTrue(all(constraints[name]["unique"] for name in expected))
+
+            marker_constraints = connection.introspection.get_constraints(
+                cursor, "feeds_bulkreadmarker"
+            )
+            self.assertTrue(
+                marker_constraints["bulk_marker_valid_scope_shape"]["check"]
+            )
 
             for table, columns in (
                 ("feeds_category", {"name", "slug"}),
@@ -111,7 +122,6 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
                 }
                 self.assertTrue(columns.issubset(unique_columns))
 
-    @expectedFailure
     def test_bulk_marker_shapes_are_rejected_by_database_constraints(self) -> None:
         user = build_user()
         feed = build_feed()
@@ -150,11 +160,8 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
                 continue
             accepted.add(name)
 
-        if accepted:
-            self.assertEqual(accepted, set(shapes))
         self.assertEqual(accepted, set())
 
-    @expectedFailure
     def test_nullable_period_marker_duplicate_race_commits_one_row(self) -> None:
         user = build_user()
         fields = {
@@ -172,14 +179,10 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
         errors = _errors(outcomes)
         count = BulkReadMarker.objects.filter(**fields).count()
 
-        if count != 1:
-            self.assertEqual(errors, [])
-            self.assertEqual(count, 2)
         self.assertEqual(count, 1)
         self.assertEqual(len(errors), 1)
         self.assertIsInstance(errors[0], IntegrityError)
 
-    @expectedFailure
     def test_nullable_feed_marker_duplicate_race_commits_one_row(self) -> None:
         user = build_user()
         feed = build_feed()
@@ -198,9 +201,6 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
         errors = _errors(outcomes)
         count = BulkReadMarker.objects.filter(**fields).count()
 
-        if count != 1:
-            self.assertEqual(errors, [])
-            self.assertEqual(count, 2)
         self.assertEqual(count, 1)
         self.assertEqual(len(errors), 1)
         self.assertIsInstance(errors[0], IntegrityError)
