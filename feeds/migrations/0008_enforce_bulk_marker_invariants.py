@@ -8,7 +8,10 @@ def audit_bulk_read_markers(apps, schema_editor):
     logical_keys: dict[tuple[object, ...], int] = {}
     duplicate_ids: list[int] = []
 
-    for marker in BulkReadMarker.objects.order_by("pk").iterator():
+    database_alias = schema_editor.connection.alias
+    for marker in (
+        BulkReadMarker.objects.using(database_alias).order_by("pk").iterator()
+    ):
         if marker.scope == "feed":
             valid = (
                 marker.feed_id is not None

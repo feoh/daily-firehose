@@ -695,10 +695,10 @@ and dimension-specific gaps are maintained in the [detailed matrix](test-traceab
 
 ## Expected-failure ledger
 
-The current suite contains **10 expected failures**: four SQLite BulkReadMarker
-shape characterizations, three PostgreSQL shape/uniqueness characterizations, and
-three Postmark atomicity/race characterizations now pass. The PostgreSQL integration
-module retains three fixed-path characterizations for confirmed current defects:
+The current suite contains **10 expected failures**: after seven BulkReadMarker and
+three Postmark characterizations began passing as ordinary tests, the PostgreSQL
+integration module retains three fixed-path characterizations for confirmed current
+defects:
 
 1. Concurrent stable-URL/new-GUID refresh — DATA-INV-001.
 2. Stale refresh completion fencing — FEED-INV-001 and OPS-INV-001.
