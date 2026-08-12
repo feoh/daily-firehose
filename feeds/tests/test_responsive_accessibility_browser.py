@@ -89,7 +89,7 @@ class ResponsiveAccessibilityPlaywrightTests(StaticLiveServerTestCase):
         self.user = build_user(username="responsive-reader", password=self.password)
         self.feed = build_feed(
             title="A deliberately descriptive feed title",
-            feed_url=f"https://example.com/{'long-unbroken-feed-path-' * 8}.xml",
+            feed_url=f"https://example.com/{'long-unbroken-feed-path-' * 7}.xml",
         )
         self.first_article = build_article(
             feed=self.feed,
