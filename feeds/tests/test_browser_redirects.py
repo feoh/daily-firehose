@@ -43,14 +43,34 @@ class BrowserRedirectRequestTests(StaticFilesTestCase):
             fetch_redirect_response=False,
         )
 
+        for target in (
+            "/search/?q=100%25",
+            "/search/?q=encoded%20space",
+        ):
+            with self.subTest(target=target):
+                self.client.logout()
+                response = self.client.post(
+                    login_url,
+                    {
+                        "username": self.user.username,
+                        "password": self.password,
+                        "next": target,
+                    },
+                )
+                self.assertRedirects(response, target, fetch_redirect_response=False)
+
         unsafe_targets = (
             "https://attacker.example/phish",
             "//attacker.example/phish",
+            "//testserver/phish",
             "https://reader@testserver/phish",
             "\\\\attacker.example\\phish",
             "/%2f%2fattacker.example/phish",
             "/%255c%255cattacker.example/phish",
+            "/%252f%252fattacker.example/phish",
             "/safe%0d%0aLocation:%20https://attacker.example",
+            "/search/?q=malformed%",
+            "/search/?q=malformed%2",
             "\x00//attacker.example/phish",
         )
         for target in unsafe_targets:
@@ -150,6 +170,7 @@ class BrowserRedirectRequestTests(StaticFilesTestCase):
 
         for target in (
             "http://firehose.example/week/",
+            "//firehose.example/week/",
             "https://attacker.example/week/",
         ):
             with self.subTest(target=target):
@@ -181,10 +202,22 @@ class BrowserRedirectRequestTests(StaticFilesTestCase):
         self.assertEqual(valid.status_code, 302)
         self.assertEqual(valid.headers["Location"], self.article.url)
 
+        encoded_article_url = "https://example.com/search/?q=100%25%20coverage"
+        Article.objects.filter(pk=article_id).update(url=encoded_article_url)
+        encoded_response = self.client.get(
+            reverse("api-article-save-and-go", args=[article_id]),
+            {"sig": signature},
+        )
+        self.assertRedirects(
+            encoded_response, encoded_article_url, fetch_redirect_response=False
+        )
+
         unsafe_urls = (
             "javascript:alert(1)",
             "https://reader@example.com/private",
             "https://example.com/%0d%0aLocation:%20https://attacker.example",
+            "https://example.com/%255c%255cattacker.example/phish",
+            "https://example.com/search/?q=malformed%",
             "https://example.com\\@attacker.example/phish",
         )
         for target in unsafe_urls:
@@ -219,4 +252,16 @@ class BrowserRedirectLiveTests(StaticLiveServerTestCase):
 
             page.get_by_role("button", name="Sign out").click()
             expect(page).to_have_url(f"{self.live_server_url}{reverse('login')}")
+            browser.close()
+
+    def test_live_login_rejects_same_host_scheme_relative_http_target(self) -> None:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            page = browser.new_page(java_script_enabled=False)
+            same_host_http = f"//{self.live_server_url.removeprefix('http://')}{reverse('week')}"
+            page.goto(f"{self.live_server_url}{reverse('login')}?next={same_host_http}")
+            page.get_by_label("Username").fill(self.user.username)
+            page.get_by_label("Password").fill(self.password)
+            page.get_by_role("button", name="Sign in").click()
+            expect(page).to_have_url(f"{self.live_server_url}{reverse('today')}")
             browser.close()

@@ -694,7 +694,7 @@ a claim that every normative rule is presently satisfied.
 
 ## Traceability matrix
 
-This post-snapshot companion maps the **current suite: 20 test modules, 255 test
+This post-snapshot companion maps the **current suite: 20 test modules, 256 test
 methods, and 9 expected failures**. The pinned catalog retains its independent
 15/191/8 snapshot counts. Exact `module::class::method` identities, evidence levels,
 and dimension-specific gaps are maintained in the [detailed matrix](test-traceability.md).
@@ -783,7 +783,7 @@ for path in test_paths:
                     if isinstance(node, ast.FunctionDef)
                     and any(isinstance(d, ast.Name) and d.id == "expectedFailure"
                             for d in node.decorator_list))
-assert (len(test_paths), methods, expected) == (20, 255, 9)
+assert (len(test_paths), methods, expected) == (20, 256, 9)
 print(len(ids), statuses, len(test_paths), methods, expected)
 PY
 ```

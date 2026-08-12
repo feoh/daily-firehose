@@ -25,12 +25,18 @@ def _decoded_url_variants(value: str):
         current = decoded
 
 
-def _has_ambiguous_browser_syntax(value: str) -> bool:
-    return (
-        bool(_INVALID_PERCENT_ESCAPE.search(value))
-        or "\\" in value
-        or any(unicodedata.category(character).startswith("C") for character in value)
+def _has_invalid_original_syntax(value: str) -> bool:
+    return bool(_INVALID_PERCENT_ESCAPE.search(value)) or _has_dangerous_syntax(value)
+
+
+def _has_dangerous_syntax(value: str) -> bool:
+    return "\\" in value or any(
+        unicodedata.category(character).startswith("C") for character in value
     )
+
+
+def _is_scheme_relative(value: str) -> bool:
+    return value.startswith("//")
 
 
 def safe_redirect_target(
@@ -43,11 +49,15 @@ def safe_redirect_target(
     backslashes, and control characters.
     """
 
-    if not target or target != target.strip():
+    if (
+        not target
+        or target != target.strip()
+        or _has_invalid_original_syntax(target)
+    ):
         return fallback
     allowed_hosts = {request.get_host()}
     for variant in _decoded_url_variants(target):
-        if _has_ambiguous_browser_syntax(variant):
+        if _has_dangerous_syntax(variant) or _is_scheme_relative(variant):
             return fallback
         if not url_has_allowed_host_and_scheme(
             variant,
@@ -72,16 +82,23 @@ def safe_redirect_target(
 def safe_article_navigation_url(target: str | None, *, fallback: str) -> str:
     """Validate the intentional outbound destination of a signed save-and-go link."""
 
-    if not target or target != target.strip():
+    if (
+        not target
+        or target != target.strip()
+        or _has_invalid_original_syntax(target)
+    ):
+        return fallback
+    try:
+        _ABSOLUTE_HTTP_URL(target)
+    except ValidationError:
         return fallback
     for variant in _decoded_url_variants(target):
-        if _has_ambiguous_browser_syntax(variant):
+        if _has_dangerous_syntax(variant) or _is_scheme_relative(variant):
             return fallback
         try:
             parsed = urlsplit(variant)
             port = parsed.port
-            _ABSOLUTE_HTTP_URL(variant)
-        except (ValidationError, ValueError):
+        except ValueError:
             return fallback
         if (
             parsed.scheme not in {"http", "https"}
