@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 EXPECTED_MODULES = 19
-EXPECTED_TESTS = 247
+EXPECTED_TESTS = 248
 EXPECTED_XFAILS = 10
 DIMENSIONS = (
     "positive",
@@ -122,7 +122,7 @@ REQUIRED_HEADINGS = {
 }
 INTRO_BASELINE = (
     "Current AST baseline: **82 feature IDs**, **44 invariant IDs**, "
-    "**19 app test modules**, **247 app test methods**, and "
+    "**19 app test modules**, **248 app test methods**, and "
     "**10 `expectedFailure` methods**."
 )
 BROAD_GAP_BASELINE = (
@@ -132,16 +132,17 @@ BROAD_GAP_BASELINE = (
     "production backup and isolated restore but no scheduled/alerted RPO or incident "
     "cutover drill and no independent off-site confirmation; zero automated "
     "current-HEAD production observations; real Chromium covers 375/768/1280 "
-    "responsive shared/auth pages, theme/mode persistence, clipboard, live-page "
-    "keyboard/help behavior, and an in-repo semantic audit; non-Chromium engines, "
-    "automated contrast computation, screen-reader and other manual AT tests remain."
+    "responsive Login/Today/Week/Feeds/Preferences/OPML pages, a tested-theme/mode "
+    "cross-product, clipboard, live-page keyboard/help behavior, and selected DOM "
+    "semantic checks; comprehensive scanning, non-Chromium engines, automated "
+    "contrast, screen-reader and other manual AT tests remain."
 )
 CONTRACTS_EXPECTED_FAILURE_SENTENCE = (
     "The current suite contains **10 expected failures**:"
 )
 CONTRACTS_CURRENT_SUITE = (
     "This post-snapshot companion maps the **current suite: 19 test modules, "
-    "247 test methods, and 10 expected failures**."
+    "248 test methods, and 10 expected failures**."
 )
 CONTRACTS_PROGRESSIVE_EVIDENCE = (
     "| Progressive/a11y/mobile | UI-INV-001–005 | `test_article_actions.py`, "
@@ -161,7 +162,7 @@ PINNED_TEXT = {
         "**8/8** snapshot expected failures mapped",
     ),
     "docs/features/contracts.md": (
-        "**current suite: 19 test modules, 247 test",
+        "**current suite: 19 test modules, 248 test",
         "15/191/8 snapshot counts",
     ),
 }
@@ -1104,13 +1105,13 @@ def validate(root: Path) -> str:
     trace_path = root / "docs/features/test-traceability.md"
     trace = trace_path.read_text()
     if trace.count(INTRO_BASELINE) != 1:
-        raise AssertionError("stale rendered 82/44/19/247/10 intro baseline")
+        raise AssertionError("stale rendered 82/44/19/248/10 intro baseline")
     if trace.count(BROAD_GAP_BASELINE) != 1:
         raise AssertionError("stale exact broad gap summary")
     contracts_text = (root / "docs/features/contracts.md").read_text()
     contracts_flat = " ".join(contracts_text.split())
     if CONTRACTS_CURRENT_SUITE not in contracts_flat:
-        raise AssertionError("stale contracts current-suite 19/247/10 prose")
+        raise AssertionError("stale contracts current-suite 19/248/10 prose")
     if contracts_flat.count(CONTRACTS_EXPECTED_FAILURE_SENTENCE) != 1:
         raise AssertionError("stale contracts repeated 10-expected-failures sentence")
     if contracts_text.count(CONTRACTS_PROGRESSIVE_EVIDENCE) != 1:

@@ -32,25 +32,39 @@ VIEWPORTS: dict[str, ViewportSize] = {
     "tablet-768": {"width": 768, "height": 1024},
     "desktop-1280": {"width": 1280, "height": 900},
 }
-THEME_COLORS = {
-    "light": ("light", "rgb(248, 247, 244)"),
-    "dark": ("dark", "rgb(17, 24, 39)"),
-    "dracula": ("dark", "rgb(40, 42, 54)"),
+THEME_VARIANTS: dict[str, tuple[str, Literal["light", "dark"], str]] = {
+    "light": ("light", "light", "rgb(248, 247, 244)"),
+    "dark": ("dark", "dark", "rgb(17, 24, 39)"),
+    "dracula": ("dracula", "dark", "rgb(40, 42, 54)"),
+    "system-light": ("system", "light", "rgb(248, 247, 244)"),
+    "system-dark": ("system", "dark", "rgb(17, 24, 39)"),
 }
+DISPLAY_MODES = (
+    (False, False),
+    (True, False),
+    (False, True),
+    (True, True),
+)
+AUTHENTICATED_RESPONSIVE_ROUTES = (
+    ("today", "Today"),
+    ("week", "Week"),
+    ("feeds", "Feeds"),
+    ("preferences", "Preferences"),
+    ("opml-import", "OPML"),
+)
 
 
 def _launch_required_chromium(playwright: Playwright) -> Browser:
     install_hint = "Run `uv run playwright install chromium` and retry."
     executable = playwright.chromium.executable_path
     if not executable or not Path(executable).exists():
-        playwright.stop()
         raise AssertionError(
-            f"Required Playwright Chromium is unavailable. {install_hint}"
+            "Required Playwright Chromium executable is unavailable at "
+            f"{executable!r}. {install_hint}"
         )
     try:
         return playwright.chromium.launch(headless=True)
     except Exception as exc:
-        playwright.stop()
         raise AssertionError(
             f"Required Playwright Chromium failed to launch. {install_hint}"
         ) from exc
@@ -99,8 +113,8 @@ class ResponsiveAccessibilityPlaywrightTests(StaticLiveServerTestCase):
 
         # Start Playwright after ORM setup and clean it up before Django teardown.
         self.playwright = sync_playwright().start()
-        self.browser = _launch_required_chromium(self.playwright)
         self.addCleanup(self.playwright.stop)
+        self.browser = _launch_required_chromium(self.playwright)
         self.addCleanup(self.browser.close)
         self.context = self.browser.new_context(viewport=VIEWPORTS["desktop-1280"])
         self.addCleanup(self.context.close)
@@ -136,17 +150,27 @@ class ResponsiveAccessibilityPlaywrightTests(StaticLiveServerTestCase):
                     return style.display !== 'none' && style.visibility !== 'hidden' &&
                         rect.width > 0 && rect.height > 0;
                 };
-                const name = element =>
-                    element.getAttribute('aria-label') ||
+                const referencedName = element =>
                     (element.getAttribute('aria-labelledby') || '').split(/\\s+/)
-                        .map(id => document.getElementById(id)?.textContent || '').join(' ') ||
-                    element.textContent || element.getAttribute('alt') ||
-                    element.getAttribute('title') || element.value || '';
+                        .filter(Boolean)
+                        .map(id => document.getElementById(id)?.textContent || '')
+                        .join(' ');
+                const explicitName = (element, includeAssociatedLabels = false) => {
+                    const labels = includeAssociatedLabels && element.labels
+                        ? [...element.labels].map(label => label.textContent || '').join(' ')
+                        : '';
+                    return element.getAttribute('aria-label') || referencedName(element) ||
+                        labels || element.getAttribute('title') || '';
+                };
+                const contentName = element => explicitName(element) ||
+                    element.textContent || element.getAttribute('alt') || '';
 
                 if (!document.documentElement.lang) issues.push('html has no lang');
                 const mains = [...document.querySelectorAll('main')].filter(visible);
                 if (mains.length !== 1) issues.push(`expected one visible main, found ${mains.length}`);
-                if (mains[0]?.tabIndex < 0 === false) issues.push('main is not programmatically focusable');
+                if (mains.length === 1 && mains[0].getAttribute('tabindex') !== '-1') {
+                    issues.push('main must explicitly declare tabindex="-1"');
+                }
                 const h1s = [...document.querySelectorAll('h1')].filter(visible);
                 if (h1s.length !== 1) issues.push(`expected one visible h1, found ${h1s.length}`);
 
@@ -155,20 +179,21 @@ class ResponsiveAccessibilityPlaywrightTests(StaticLiveServerTestCase):
                 if (duplicates.length) issues.push(`duplicate ids: ${duplicates.join(', ')}`);
 
                 for (const nav of [...document.querySelectorAll('nav')].filter(visible)) {
-                    if (!name(nav).trim()) issues.push('navigation has no accessible name');
+                    if (!explicitName(nav).trim()) issues.push('navigation has no accessible name');
                 }
                 for (const image of [...document.querySelectorAll('img')].filter(visible)) {
                     if (!image.hasAttribute('alt')) issues.push(`image lacks alt: ${image.src}`);
                 }
                 for (const control of [...document.querySelectorAll('button, a[href]')].filter(visible)) {
-                    if (!name(control).trim()) issues.push(`${control.tagName.toLowerCase()} has no accessible name`);
+                    if (!contentName(control).trim()) issues.push(`${control.tagName.toLowerCase()} has no accessible name`);
                 }
                 for (const input of [...document.querySelectorAll('input:not([type=hidden]), select, textarea')].filter(visible)) {
-                    const labels = input.labels ? [...input.labels].map(label => label.textContent).join(' ') : '';
-                    if (!(labels || name(input)).trim()) issues.push(`form control #${input.id || '(no id)'} has no label`);
+                    if (!explicitName(input, true).trim()) {
+                        issues.push(`form control #${input.id || '(no id)'} has no label`);
+                    }
                 }
                 for (const dialog of [...document.querySelectorAll('[role=dialog]')]) {
-                    if (!name(dialog).trim()) issues.push('dialog has no accessible name');
+                    if (!explicitName(dialog).trim()) issues.push('dialog has no accessible name');
                 }
                 const headings = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].filter(visible);
                 let previous = 0;
@@ -236,14 +261,13 @@ class ResponsiveAccessibilityPlaywrightTests(StaticLiveServerTestCase):
         )
 
     def test_shared_and_auth_pages_cover_responsive_matrix(self) -> None:
-        authenticated_routes = ("today", "week", "feeds", "preferences", "opml-import")
         for viewport_name, viewport in VIEWPORTS.items():
             self.page.set_viewport_size(viewport)
-            for route in authenticated_routes:
-                with self.subTest(viewport=viewport_name, route=route):
+            for route, page_name in AUTHENTICATED_RESPONSIVE_ROUTES:
+                with self.subTest(viewport=viewport_name, route=page_name):
                     self.page.goto(self._url(route))
                     self._assert_reflow_targets_and_semantics(
-                        f"{viewport_name}/{route}"
+                        f"{viewport_name}/{page_name}"
                     )
 
             self.context.clear_cookies()
@@ -253,12 +277,7 @@ class ResponsiveAccessibilityPlaywrightTests(StaticLiveServerTestCase):
             self._sign_in()
 
     def test_compact_and_focus_modes_cover_responsive_matrix(self) -> None:
-        for compact, focus in (
-            (False, False),
-            (True, False),
-            (False, True),
-            (True, True),
-        ):
+        for compact, focus in DISPLAY_MODES:
             self._set_preferences(theme="light", compact=compact, focus=focus)
             for viewport_name, viewport in VIEWPORTS.items():
                 with self.subTest(viewport=viewport_name, compact=compact, focus=focus):
@@ -283,37 +302,72 @@ class ResponsiveAccessibilityPlaywrightTests(StaticLiveServerTestCase):
                         "the initial viewport must expose a discoverable article target",
                     )
 
-    def test_light_dark_dracula_and_system_themes_persist_and_render(self) -> None:
-        for theme, (color_scheme, background) in THEME_COLORS.items():
-            with self.subTest(theme=theme):
-                self._set_preferences(theme=theme, compact=False, focus=False)
-                self.page.goto(self._url("feeds"))
-                self.page.reload()
-                expect(self.page.locator("body")).to_have_class(f"theme-{theme}")
-                rendered = self.page.locator("body").evaluate(
-                    "element => ({background: getComputedStyle(element).backgroundColor, colorScheme: getComputedStyle(element).colorScheme})"
-                )
-                self.assertEqual(
-                    rendered, {"background": background, "colorScheme": color_scheme}
-                )
-
-        self._set_preferences(theme="system", compact=False, focus=False)
-        system_schemes: tuple[tuple[Literal["light", "dark"], str], ...] = (
-            ("light", "rgb(248, 247, 244)"),
-            ("dark", "rgb(17, 24, 39)"),
-        )
-        for preferred_scheme, expected_background in system_schemes:
-            with self.subTest(theme="system", preferred_scheme=preferred_scheme):
-                self.page.emulate_media(color_scheme=preferred_scheme)
-                self.page.goto(self._url("today"))
-                expect(self.page.locator("body")).to_have_class("theme-system")
-                self.assertEqual(
-                    self.page.locator("body").evaluate(
-                        "element => getComputedStyle(element).backgroundColor"
-                    ),
-                    expected_background,
-                )
+    def test_tested_themes_cross_compact_and_focus_modes(self) -> None:
+        self.page.set_viewport_size(VIEWPORTS["desktop-1280"])
+        for variant, (theme, preferred_scheme, background) in THEME_VARIANTS.items():
+            for compact, focus in DISPLAY_MODES:
+                with self.subTest(theme=variant, compact=compact, focus=focus):
+                    self.page.emulate_media(color_scheme=preferred_scheme)
+                    self._set_preferences(theme=theme, compact=compact, focus=focus)
+                    self.page.goto(self._url("today"))
+                    self.page.reload()
+                    body = self.page.locator("body")
+                    body_classes = set((body.get_attribute("class") or "").split())
+                    self.assertIn(f"theme-{theme}", body_classes)
+                    self.assertEqual("compact" in body_classes, compact)
+                    self.assertEqual("focus-mode" in body_classes, focus)
+                    self.assertEqual(
+                        body.evaluate(
+                            "element => ({background: getComputedStyle(element).backgroundColor, colorScheme: getComputedStyle(element).colorScheme})"
+                        ),
+                        {
+                            "background": background,
+                            "colorScheme": preferred_scheme,
+                        },
+                    )
+                    self._assert_reflow_targets_and_semantics(
+                        f"desktop-1280/{variant}/compact={compact}/focus={focus}"
+                    )
         self.page.emulate_media(color_scheme="no-preference")
+
+    def test_semantic_audit_rejects_false_names_and_implicit_main_tabindex(
+        self,
+    ) -> None:
+        cases = (
+            (
+                "select option text is not a label",
+                '<select id="synthetic-select"><option>Descendant option text</option></select>',
+                'tabindex="-1"',
+                ["form control #synthetic-select has no label"],
+            ),
+            (
+                "navigation descendant text is not a name",
+                '<nav><a href="#">Named descendant</a></nav>',
+                'tabindex="-1"',
+                ["navigation has no accessible name"],
+            ),
+            (
+                "dialog descendant text is not a name",
+                '<div role="dialog"><h2>Descendant heading</h2></div>',
+                'tabindex="-1"',
+                ["dialog has no accessible name"],
+            ),
+            (
+                "main needs an explicit tabindex attribute",
+                "<p>Main content</p>",
+                "",
+                ['main must explicitly declare tabindex="-1"'],
+            ),
+        )
+        for label, fragment, main_attributes, expected_issues in cases:
+            with self.subTest(case=label):
+                self.page.set_content(
+                    f"""<!doctype html>
+                    <html lang="en"><body>
+                    <main {main_attributes}><h1>Synthetic audit</h1>{fragment}</main>
+                    </body></html>"""
+                )
+                self.assertEqual(self._semantic_issues(), expected_issues)
 
     def test_live_page_keyboard_shortcuts_help_and_editable_suppression(self) -> None:
         self.page.goto(self._url("today"))
@@ -392,6 +446,10 @@ class ResponsiveAccessibilityPlaywrightTests(StaticLiveServerTestCase):
             "window.__copyStates.includes('Copied!') && navigator.clipboard"
         )
         self.assertIn("Copied!", self.page.evaluate("window.__copyStates"))
+        feedback = self.page.locator("[data-copy-feedback]")
+        expect(feedback).to_have_attribute("role", "status")
+        expect(feedback).to_have_attribute("aria-live", "polite")
+        expect(feedback).to_have_text("Copied email address.")
         self.assertEqual(
             self.page.evaluate("navigator.clipboard.readText()"),
             "browser-copy@example.test",

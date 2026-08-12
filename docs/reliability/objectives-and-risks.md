@@ -155,7 +155,7 @@ security, or hard freshness gates.
 | `REL-OBJ-009` Linkding outcome and ambiguity | Local save survives **100%** of remote failures. **≥99%** of remote attempts reach definitive confirmed/failed state within **20s**; ambiguous/lost-response outcomes are **<0.1%**, never blindly retried and reconciled within 24h. | Rolling 30d; 1% definitive-outcome and 0.1% ambiguity budgets; local preservation zero budget. Low volume uses first-ambiguity notification and 24h deadline, not percentages. | Current SavedArticle boolean/error collapses definite failure and timeout-after-success; tests cover exact URL and ordinary failures. | Durable attempt/idempotency/reconciliation state and provider-aware counters, without token/header values. |
 | `REL-OBJ-010` Backup and restore | Unencrypted custom-format backups push over restricted SSH to TrueNAS at **00:00 and 12:00 UTC**, complete/verify by `+2h`, and provide **RPO ≤24h**. Missing the `+2h` completion is actionable; page when latest verified backup age reaches **20h**, and at/before **24h** stop destructive changes and contain writes until recovery. Quarterly isolated restore demonstrates **RTO ≤4h**, integrity, migration compatibility and semantic reads. | Continuous age; 90d drill. Zero budget for crossing 24h, failed integrity or missed drill. Twice-daily schedule provides ≥10h operational margin before the RPO boundary. | The restricted TrueNAS account, exact datasets/quotas, receiver/key, local maintenance and hourly monitor are installed. Two receipt-backed backups exist; `20260811T200522Z-077caa88` was independently verified and restored into isolated PostgreSQL 17/application resources. Administrator rekey/read/restore, fresh application-key/post-rekey backup, owner-confirmed Fastmail missed/critical/containment/recovery notifications, and timer activation are complete. Continuing scheduled RPO/RTO attainment is not yet established. | Observe scheduled deadline/result/age controls; independently confirm and restore the configured remote copy; retain quota/SMTP tests; collect recurring timed retrieval/cutover records. |
 | `REL-OBJ-011` Deployment verification and rollback readiness | **100%** of deploys pass deploy check, DB connection, migration/backup review, Compose state/logs, direct 301, proxy/public 302, and authenticated semantic smoke within 15m; every schema change has tested stop/rollback. | Per deploy/rolling 90d; zero skipped-gate budget. | Manual procedure and dated observation only; no durable release record or automatic rollback. | Revision-tagged gate results/durations, backup reference, smoke and explicit rollback decision. |
-| `REL-OBJ-012` 320/390/desktop parity and accessibility | Every release has identical Today Article IDs/state at desktop, 390×844 and 320×844; zero overflow; first content discoverable; target-only save/read survives reload. Shared pages have no critical automated accessibility violations and native keyboard paths work. | Every change/release; zero correctness budget, 100% matrix pass. | Chrome Today geometry/state and native no-JavaScript fallback run against live Django/SQLite; controlled-DOM Chromium executes card actions, selection, shortcuts and help behavior. Other pages/browsers/AT/zoom and live-page keyboard behavior remain unmeasured. | Release browser matrix, live-page keyboard/focus tests, accessibility scan and periodic manual AT check. |
+| `REL-OBJ-012` 320/390/desktop parity and accessibility | Every release has identical Today Article IDs/state at desktop, 390×844 and 320×844; zero overflow; first content discoverable; target-only save/read survives reload. The exact selected DOM semantic checks documented in traceability pass on Login, Today, Week, Feeds, Preferences and OPML; native keyboard paths work. This is not a claim of zero critical accessibility violations. | Every change/release; zero correctness budget, 100% matrix pass. | Live Chromium covers Today state plus responsive geometry and selected semantics at 375/768/1280 on Login, Today, Week, Feeds, Preferences and OPML, a true tested-theme × mode matrix, exact clipboard status feedback, and live keyboard/help behavior. | Maintained comprehensive accessibility scanner, non-Chromium engines, contrast, screen reader and other manual AT/browser zoom checks. |
 
 ### Alert policy and burn rates
 
@@ -737,21 +737,24 @@ a higher product score.
 
 - **Affected IDs/objectives:** WEB-012–WEB-014, WEB-017, WEB-021; UI-INV-001–002;
   `REL-OBJ-012`.
-- **Present status/evidence:** **automated semantic baseline controlled**. Live Chromium
-  audits landmarks, names, labels, heading order, duplicate IDs, alternatives, target
-  size, overflow and live feedback; it executes editable suppression, help focus
-  restoration, clipboard announcement, navigation and mutations on Django pages. Native
-  forms still work without JavaScript. Screen-reader/contrast and help focus-trap/inert
-  proof remain open.
+- **Present status/evidence:** **selected automated checks controlled**. Live Chromium
+  checks the enumerated landmark, explicit/associated name, label, heading-order,
+  duplicate-ID, image-alt, target-size, overflow and exact clipboard-status rules; it
+  executes editable suppression, help focus restoration, navigation and mutations on
+  Django pages. Synthetic false-negative cases pin the audit's narrow name and explicit
+  main-tabindex behavior. Native forms still work without JavaScript. Comprehensive
+  automated rule scanning, screen-reader/contrast and help focus-trap/inert proof remain
+  open.
 - **Owner boundary:** accessible templates/CSS/JavaScript and accessibility release
   testing. Responsive layout parity is `REL-RISK-019`; image privacy is `REL-RISK-024`.
 - **Triggers:** keyboard dialog/removal flow, contrast/theme change, dynamic live-region
   behavior, zoom, screen-reader/browser variation or inaccessible error state.
-- **Current → preferred detection:** dependency-free semantic audit and live-page
-  keyboard/focus/reflow execution → retain as a release gate and add periodic manual AT
-  plus contrast review.
-- **Mitigation sequence:** retain the automated baseline and native fallback; fix any
-  critical findings; add periodic screen-reader and browser-zoom review.
+- **Current → preferred detection:** dependency-free selected semantic checks and
+  live-page keyboard/focus/reflow execution → retain as a release gate, add a maintained
+  comprehensive scanner, and add periodic manual AT plus contrast review.
+- **Mitigation sequence:** retain the selected automated checks and native fallback;
+  add comprehensive scanning; fix critical findings; add periodic screen-reader and
+  browser-zoom review.
 - **Rollback/containment:** **present:** revert inaccessible UI while retaining native
   controls and block release on a known critical regression. Any future enhancement
   kill switch must be tested before it is listed as containment.

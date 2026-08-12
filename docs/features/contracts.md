@@ -529,11 +529,15 @@ a claim that every normative rule is presently satisfied.
   specialized surface may add labels but must not remove the baseline.
 - **Executable evidence:** template assertions, Today Playwright geometry/action
   tests, executed Chromium DOM tests, and live-Django Chromium matrices at 375, 768,
-  1280 and 400%-equivalent reflow. The dependency-free semantic audit checks shared
-  landmarks, names, labels, headings, duplicate IDs, image alternatives, target size,
-  overflow, live feedback, editable suppression, and help focus restoration.
-- **Known violation status:** **Conformant automated baseline**; manual screen-reader,
-  automated contrast, help focus-trap/inert, and removal-focus proof remain open.
+  1280 and 400%-equivalent reflow. Enumerated dependency-free checks cover shared
+  landmarks, explicit and associated names/labels, headings, duplicate IDs, image
+  alternatives, target size, overflow, exact polite clipboard feedback, editable
+  suppression, and help focus restoration. Synthetic regressions prove select option
+  text and nav/dialog descendants cannot stand in for accessible names, and main must
+  explicitly declare `tabindex="-1"`.
+- **Known violation status:** **Conformant for the enumerated automated checks**;
+  comprehensive automated rule scanning, manual screen-reader, automated contrast,
+  help focus-trap/inert, and removal-focus proof remain open.
 - **Source / feature IDs:** `templates/base.html`, `static/css/site.css`,
   `static/js/article-actions.js`; WEB-001, WEB-007, WEB-012–WEB-014, WEB-021.
 
@@ -682,8 +686,8 @@ a claim that every normative rule is presently satisfied.
 
 ## Traceability matrix
 
-This post-snapshot companion maps the **current suite: 19 test modules, 247 test
-methods, and 20 expected failures**. The pinned catalog retains its independent
+This post-snapshot companion maps the **current suite: 19 test modules, 248 test
+methods, and 10 expected failures**. The pinned catalog retains its independent
 15/191/8 snapshot counts. Exact `module::class::method` identities, evidence levels,
 and dimension-specific gaps are maintained in the [detailed matrix](test-traceability.md).
 
