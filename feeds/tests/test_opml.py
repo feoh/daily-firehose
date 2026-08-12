@@ -11,6 +11,8 @@ from django.urls import reverse
 from ..models import Category, Feed
 from ..services import (
     OPML_MAX_BYTES,
+    OPML_MAX_DEPTH,
+    OPML_MAX_OUTLINES,
     OPMLImportError,
     export_opml,
     import_opml,
@@ -174,6 +176,41 @@ class OPMLImportCategoryTests(TestCase):
             with self.subTest(content=content), self.assertRaises(OPMLImportError):
                 import_opml(content)
 
+    def test_accepts_exact_outline_limit_and_rejects_one_more(self) -> None:
+        def document(count: int) -> bytes:
+            outlines = "".join(
+                f"<outline title='Feed {index}' xmlUrl='https://example.com/{index}.xml'/>"
+                for index in range(count)
+            )
+            return f"<opml><body>{outlines}</body></opml>".encode()
+
+        result = import_opml(document(OPML_MAX_OUTLINES))
+        self.assertEqual(result.created, OPML_MAX_OUTLINES)
+
+        with self.assertRaises(OPMLImportError):
+            import_opml(document(OPML_MAX_OUTLINES + 1))
+        self.assertEqual(Feed.objects.count(), OPML_MAX_OUTLINES)
+
+    def test_accepts_exact_nesting_limit_and_rejects_one_more(self) -> None:
+        def document(depth: int, url: str) -> bytes:
+            feed = f"<outline title='Feed' xmlUrl='{url}'/>"
+            # The service starts body children at depth 1, so depth - 1 category
+            # wrappers place the feed outline at the requested depth.
+            for index in range(depth - 1):
+                feed = f"<outline title='Category {index}'>{feed}</outline>"
+            return f"<opml><body>{feed}</body></opml>".encode()
+
+        result = import_opml(
+            document(OPML_MAX_DEPTH, "https://example.com/depth-32.xml")
+        )
+        self.assertEqual(result.created, 1)
+
+        with self.assertRaises(OPMLImportError):
+            import_opml(
+                document(OPML_MAX_DEPTH + 1, "https://example.com/depth-33.xml")
+            )
+        self.assertEqual(Feed.objects.count(), 1)
+
 
 class OPMLExportTests(TestCase):
     def test_export_is_deterministic_escaped_and_round_trips_supported_fields(
@@ -215,6 +252,35 @@ class OPMLExportTests(TestCase):
         for feed_url, fields in original.items():
             feed = Feed.objects.get(feed_url=feed_url)
             self.assertEqual((feed.title, feed.site_url, feed.category_id), fields)
+
+    def test_import_and_round_trip_preserve_exact_active_field_whitespace(self) -> None:
+        content = b"""<opml version="2.0"><body>
+          <outline title="  Category  &#9;">
+            <outline title="  Feed title  &#9;" text="ignored"
+                     xmlUrl="  https://example.com/spaced.xml  "
+                     htmlUrl="  https://example.com/site  " />
+          </outline>
+        </body></opml>"""
+
+        result = import_opml(content)
+
+        self.assertEqual((result.created, result.updated, result.skipped), (1, 0, 0))
+        feed = Feed.objects.select_related("category").get()
+        self.assertEqual(feed.title, "  Feed title  \t")
+        self.assertEqual(feed.feed_url, "https://example.com/spaced.xml")
+        self.assertEqual(feed.site_url, "https://example.com/site")
+        assert feed.category is not None
+        self.assertEqual(feed.category.name, "  Category  \t")
+
+        result = import_opml(export_opml().encode())
+
+        self.assertEqual((result.created, result.updated, result.skipped), (0, 1, 0))
+        feed.refresh_from_db()
+        self.assertEqual(feed.title, "  Feed title  \t")
+        self.assertEqual(feed.feed_url, "https://example.com/spaced.xml")
+        self.assertEqual(feed.site_url, "https://example.com/site")
+        assert feed.category is not None
+        self.assertEqual(feed.category.name, "  Category  \t")
 
 
 class OPMLRequestTests(StaticFilesTestCase):

@@ -7,11 +7,13 @@ from typing import Any
 from unittest import expectedFailure, skipUnless
 from unittest.mock import patch
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, connection, transaction
 from django.db.migrations.loader import MigrationLoader
 from django.db.migrations.recorder import MigrationRecorder
 from django.db.models.query import QuerySet
-from django.test import TransactionTestCase
+from django.test import Client, TransactionTestCase
+from django.urls import reverse
 
 from ..feed_fetch import FeedFetchError, FetchedFeedDocument
 from ..models import (
@@ -480,6 +482,75 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
         }
         self.assertEqual(len(category_ids), 1)
         self.assertEqual(Category.objects.filter(name="Concurrent Category").count(), 1)
+
+    def test_opposite_category_order_opml_requests_complete_without_deadlock(
+        self,
+    ) -> None:
+        user_a = build_user(username="opml-race-a")
+        user_b = build_user(username="opml-race-b")
+        client_a = Client()
+        client_b = Client()
+        client_a.force_login(user_a)
+        client_b.force_login(user_b)
+        document_a = b"""<opml version="2.0"><body>
+          <outline title="Category A">
+            <outline title="Feed A1" xmlUrl="https://example.com/a1.xml" />
+          </outline>
+          <outline title="Category B">
+            <outline title="Feed B1" xmlUrl="https://example.com/b1.xml" />
+          </outline>
+        </body></opml>"""
+        document_b = b"""<opml version="2.0"><body>
+          <outline title="Category B">
+            <outline title="Feed B2" xmlUrl="https://example.com/b2.xml" />
+          </outline>
+          <outline title="Category A">
+            <outline title="Feed A2" xmlUrl="https://example.com/a2.xml" />
+          </outline>
+        </body></opml>"""
+
+        def upload(client: Client, name: str, content: bytes):
+            return client.post(
+                reverse("opml-import"),
+                {"opml_file": SimpleUploadedFile(name, content)},
+            )
+
+        outcomes = run_concurrently(
+            [
+                lambda: upload(client_a, "a-b.opml", document_a),
+                lambda: upload(client_b, "b-a.opml", document_b),
+            ],
+            timeout=_RACE_TIMEOUT,
+        )
+
+        self.assertEqual(_errors(outcomes), [])
+        responses = [outcome.value for outcome in outcomes]
+        self.assertTrue(
+            all(
+                response is not None and response.status_code == 302
+                for response in responses
+            )
+        )
+        self.assertTrue(
+            all(
+                response is not None and response.url == reverse("feeds")
+                for response in responses
+            )
+        )
+        self.assertEqual(
+            set(Category.objects.values_list("name", flat=True)),
+            {"Category A", "Category B"},
+        )
+        self.assertEqual(Feed.objects.count(), 4)
+        self.assertEqual(
+            set(Feed.objects.values_list("feed_url", "category__name")),
+            {
+                ("https://example.com/a1.xml", "Category A"),
+                ("https://example.com/a2.xml", "Category A"),
+                ("https://example.com/b1.xml", "Category B"),
+                ("https://example.com/b2.xml", "Category B"),
+            },
+        )
 
     def test_concurrent_opml_feed_upsert_returns_one_row(self) -> None:
         content = b"""<?xml version="1.0"?>

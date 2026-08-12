@@ -607,21 +607,24 @@ def _xml_local_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1].lower()
 
 
-def _opml_attribute(element: ElementTree.Element, name: str) -> str:
+def _opml_attribute(
+    element: ElementTree.Element, name: str, *, strip: bool = False
+) -> str:
     name = name.lower()
-    return next(
+    value = next(
         (value for key, value in element.attrib.items() if key.lower() == name), ""
-    ).strip()
+    )
+    return value.strip() if strip else value
 
 
 def _validated_opml_feed(outline: ElementTree.Element, category_name: str) -> _OPMLFeed:
-    feed_url = _opml_attribute(outline, "xmlurl")
+    feed_url = _opml_attribute(outline, "xmlurl", strip=True)
     title = (
         _opml_attribute(outline, "title")
         or _opml_attribute(outline, "text")
         or feed_url
     )
-    site_url = _opml_attribute(outline, "htmlurl")
+    site_url = _opml_attribute(outline, "htmlurl", strip=True)
     if urlsplit(feed_url).scheme.lower() not in {"http", "https"}:
         raise OPMLImportError("Feed URLs must use HTTP or HTTPS.")
     if site_url and urlsplit(site_url).scheme.lower() not in {"http", "https"}:
@@ -679,7 +682,7 @@ def _parse_opml(content: bytes) -> tuple[list[_OPMLFeed], int]:
             outline_count += 1
             if outline_count > OPML_MAX_OUTLINES:
                 raise OPMLImportError("The OPML document contains too many outlines.")
-            feed_url = _opml_attribute(child, "xmlurl")
+            feed_url = _opml_attribute(child, "xmlurl", strip=True)
             if feed_url:
                 if len(child):
                     raise OPMLImportError(
@@ -700,7 +703,7 @@ def _parse_opml(content: bytes) -> tuple[list[_OPMLFeed], int]:
             child_category = _opml_attribute(child, "title") or _opml_attribute(
                 child, "text"
             )
-            if not child_category or not len(child):
+            if not child_category.strip() or not len(child):
                 raise OPMLImportError(
                     "Category outlines need a name and at least one child outline."
                 )
@@ -719,17 +722,34 @@ def _parse_opml(content: bytes) -> tuple[list[_OPMLFeed], int]:
     return feeds, duplicate_count
 
 
+def _lock_category_names(names: list[str]) -> None:
+    if connection.vendor != "postgresql" or not names:
+        return
+    # Category rows may not exist yet, so row locks cannot serialize creation. Resolve
+    # every distinct name to its advisory-lock key first, then acquire those keys in
+    # numeric order. Importers with opposite outline order therefore cannot deadlock.
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT DISTINCT hashtextextended(category_name, 0) AS lock_key
+            FROM unnest(%s::text[]) AS categories(category_name)
+            ORDER BY lock_key
+            """,
+            [names],
+        )
+        lock_keys = [row[0] for row in cursor.fetchall()]
+        for lock_key in lock_keys:
+            cursor.execute("SELECT pg_advisory_xact_lock(%s)", [lock_key])
+
+
 @transaction.atomic
-def _category_from_name(name: str) -> Category | None:
+def _category_from_name(
+    name: str, *, acquire_advisory_lock: bool = True
+) -> Category | None:
     if not name:
         return None
-    if connection.vendor == "postgresql":
-        # There may be no row to lock yet. A transaction-scoped advisory lock gives
-        # every importer of the same category name one stable creation boundary.
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", [name]
-            )
+    if acquire_advisory_lock:
+        _lock_category_names([name])
     existing = Category.objects.filter(name=name).first()
     if existing is not None:
         return existing
@@ -759,9 +779,26 @@ def _category_from_name(name: str) -> Category | None:
 def import_opml(content: bytes) -> ImportResult:
     planned_feeds, skipped = _parse_opml(content)
     created = updated = 0
+    category_names = sorted(
+        {planned.category_name for planned in planned_feeds if planned.category_name}
+    )
+    ordered_feeds = sorted(
+        planned_feeds,
+        key=lambda planned: (
+            planned.category_name,
+            planned.feed_url,
+            planned.title,
+            planned.site_url,
+        ),
+    )
     with transaction.atomic():
-        for planned in planned_feeds:
-            category = _category_from_name(planned.category_name)
+        _lock_category_names(category_names)
+        categories = {
+            name: _category_from_name(name, acquire_advisory_lock=False)
+            for name in category_names
+        }
+        for planned in ordered_feeds:
+            category = categories.get(planned.category_name)
             _, was_created = Feed.objects.update_or_create(
                 feed_url=planned.feed_url,
                 defaults={

@@ -62,8 +62,8 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
     def test_rejects_stale_primary_support_summary(self) -> None:
         self.mutate(
             "docs/features/test-traceability.md",
-            "Ledger classification: **250 primary**, **9 support/redundant**.",
-            "Ledger classification: **251 primary**, **8 support/redundant**.",
+            "Ledger classification: **254 primary**, **9 support/redundant**.",
+            "Ledger classification: **255 primary**, **8 support/redundant**.",
         )
         self.assert_rejected("stale primary/support")
 
@@ -150,7 +150,7 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
             "**82 feature IDs**",
             "**81 feature IDs**",
         )
-        self.assert_rejected("stale rendered 82/44/19/259/6 intro")
+        self.assert_rejected("stale rendered 82/44/19/263/6 intro")
 
     def test_rejects_stale_intro_invariant_count(self) -> None:
         self.mutate(
@@ -158,7 +158,7 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
             "**44 invariant IDs**",
             "**43 invariant IDs**",
         )
-        self.assert_rejected("stale rendered 82/44/19/259/6 intro")
+        self.assert_rejected("stale rendered 82/44/19/263/6 intro")
 
     def test_rejects_stale_intro_module_count(self) -> None:
         self.mutate(
@@ -166,15 +166,15 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
             "**19 app test modules**",
             "**18 app test modules**",
         )
-        self.assert_rejected("stale rendered 82/44/19/259/6 intro")
+        self.assert_rejected("stale rendered 82/44/19/263/6 intro")
 
     def test_rejects_stale_intro_method_count(self) -> None:
         self.mutate(
             "docs/features/test-traceability.md",
-            "**259 app test methods**",
-            "**258 app test methods**",
+            "**263 app test methods**",
+            "**262 app test methods**",
         )
-        self.assert_rejected("stale rendered 82/44/19/259/6 intro")
+        self.assert_rejected("stale rendered 82/44/19/263/6 intro")
 
     def test_rejects_stale_intro_expected_failure_count(self) -> None:
         self.mutate(
@@ -182,7 +182,7 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
             "**6 `expectedFailure` methods**",
             "**5 `expectedFailure` methods**",
         )
-        self.assert_rejected("stale rendered 82/44/19/259/6 intro")
+        self.assert_rejected("stale rendered 82/44/19/263/6 intro")
 
     def test_rejects_stale_broad_expected_failure_count(self) -> None:
         self.mutate(
@@ -214,19 +214,19 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
             "current suite: 19 test modules",
             "current suite: 18 test modules",
         )
-        self.assert_rejected("stale contracts current-suite 19/259/6 prose")
+        self.assert_rejected("stale contracts current-suite 19/263/6 prose")
 
     def test_rejects_stale_contracts_method_count(self) -> None:
         self.mutate(
-            "docs/features/contracts.md", "259 test\nmethods", "258 test\nmethods"
+            "docs/features/contracts.md", "263 test\nmethods", "262 test\nmethods"
         )
-        self.assert_rejected("stale contracts current-suite 19/259/6 prose")
+        self.assert_rejected("stale contracts current-suite 19/263/6 prose")
 
     def test_rejects_stale_contracts_expected_failure_count(self) -> None:
         self.mutate(
             "docs/features/contracts.md", "6 expected failures", "5 expected failures"
         )
-        self.assert_rejected("stale contracts current-suite 19/259/6 prose")
+        self.assert_rejected("stale contracts current-suite 19/263/6 prose")
 
     def test_rejects_missing_progressive_browser_primary_evidence(self) -> None:
         self.mutate(

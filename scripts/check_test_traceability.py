@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 EXPECTED_MODULES = 19
-EXPECTED_TESTS = 259
+EXPECTED_TESTS = 263
 EXPECTED_XFAILS = 6
 DIMENSIONS = (
     "positive",
@@ -61,6 +61,7 @@ MECHANISMS = {
     "request/SQLite",
     "request/markup assertion",
     "request/SQLite with mocked outbound I/O",
+    "request/PostgreSQL separate connections",
     "API/SQLite",
     "API/SQLite with mocked outbound I/O",
     "API/SQLite with simulated inbound webhook",
@@ -122,11 +123,11 @@ REQUIRED_HEADINGS = {
 }
 INTRO_BASELINE = (
     "Current AST baseline: **82 feature IDs**, **44 invariant IDs**, "
-    "**19 app test modules**, **259 app test methods**, and "
+    "**19 app test modules**, **263 app test methods**, and "
     "**6 `expectedFailure` methods**."
 )
 BROAD_GAP_BASELINE = (
-    "Exact broad gaps: 6 expected failures; 16 PostgreSQL 17 integration tests "
+    "Exact broad gaps: 6 expected failures; 17 PostgreSQL 17 integration tests "
     "(2 focused XFs) execute real PostgreSQL race and transaction-boundary evidence; "
     "zero automated canonical launched-Compose tests; one real receipt-backed "
     "production backup and isolated restore but no scheduled/alerted RPO or incident "
@@ -142,7 +143,7 @@ CONTRACTS_EXPECTED_FAILURE_SENTENCE = (
 )
 CONTRACTS_CURRENT_SUITE = (
     "This post-snapshot companion maps the **current suite: 19 test modules, "
-    "259 test methods, and 6 expected failures**."
+    "263 test methods, and 6 expected failures**."
 )
 CONTRACTS_PROGRESSIVE_EVIDENCE = (
     "| Progressive/a11y/mobile | UI-INV-001–005 | `test_article_actions.py`, "
@@ -1095,13 +1096,13 @@ def validate(root: Path) -> str:
     trace_path = root / "docs/features/test-traceability.md"
     trace = trace_path.read_text()
     if trace.count(INTRO_BASELINE) != 1:
-        raise AssertionError("stale rendered 82/44/19/259/6 intro baseline")
+        raise AssertionError("stale rendered 82/44/19/263/6 intro baseline")
     if trace.count(BROAD_GAP_BASELINE) != 1:
         raise AssertionError("stale exact broad gap summary")
     contracts_text = (root / "docs/features/contracts.md").read_text()
     contracts_flat = " ".join(contracts_text.split())
     if CONTRACTS_CURRENT_SUITE not in contracts_flat:
-        raise AssertionError("stale contracts current-suite 19/259/6 prose")
+        raise AssertionError("stale contracts current-suite 19/263/6 prose")
     if contracts_flat.count(CONTRACTS_EXPECTED_FAILURE_SENTENCE) != 1:
         raise AssertionError("stale contracts repeated 10-expected-failures sentence")
     if contracts_text.count(CONTRACTS_PROGRESSIVE_EVIDENCE) != 1:
