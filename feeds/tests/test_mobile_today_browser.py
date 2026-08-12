@@ -87,13 +87,17 @@ class MobileTodayPlaywrightTests(StaticLiveServerTestCase):
         self.playwright = sync_playwright().start()
         self.addCleanup(self.playwright.stop)
         executable = Path(self.playwright.chromium.executable_path)
+        install_hint = "Run `uv run playwright install chromium` and retry."
         if not executable.exists():
-            # A later CI quality-gate task will police unexpected browser skips.
-            self.skipTest(
-                "Playwright Chromium is unavailable; run "
-                "`uv run playwright install chromium`."
+            raise AssertionError(
+                f"Required Playwright Chromium is unavailable. {install_hint}"
             )
-        self.browser = self.playwright.chromium.launch(headless=True)
+        try:
+            self.browser = self.playwright.chromium.launch(headless=True)
+        except Exception as exc:
+            raise AssertionError(
+                f"Required Playwright Chromium failed to launch. {install_hint}"
+            ) from exc
         self.addCleanup(self.browser.close)
         self.context = self.browser.new_context(
             viewport=MOBILE_VIEWPORT,

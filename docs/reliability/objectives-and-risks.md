@@ -709,21 +709,21 @@ a higher product score.
 
 - **Affected IDs/objectives:** WEB-001–WEB-002, WEB-007–WEB-008, WEB-012,
   WEB-016, WEB-020; UI-INV-001, UI-INV-003; `REL-OBJ-012`.
-- **Present status/evidence:** **partially controlled**. Today Chrome tests cover
-  320/390/desktop identity, geometry and target persistence after the incident.
-  Controlled-DOM Chromium executes production card actions/selection/shortcuts/help,
-  and live Django/SQLite proves native no-JavaScript read/save fallback. Other surfaces,
-  browsers, landscape, long content and live-page keyboard behavior remain open.
+- **Present status/evidence:** **controlled for the Chromium release matrix**. Today
+  tests retain 320/390/desktop identity and target persistence; live Django/SQLite now
+  covers shared/auth pages at 375/768/dedicated 1280, all compact/focus combinations,
+  long unbroken content, 400%-equivalent reflow, and live keyboard/help behavior.
+  Non-Chromium engines, landscape, physical devices and unusual content remain open.
 - **Owner boundary:** responsive templates/CSS/JS, viewport browser matrix and release
   parity gate. Accessibility consequences are excluded and owned by `REL-RISK-020`.
 - **Triggers:** header/nav growth, long content, CSS/theme change, JS card-selection
   drift, browser engine differences, focus/compact mode or localization.
-- **Current → preferred detection:** Today Playwright plus controlled-DOM production-JS
-  execution and native live-server fallback → release matrix across key pages/modes,
-  live-page JS/keyboard flows and failure artifacts.
-- **Mitigation sequence:** retain current Today, executed-JS and native-fallback tests;
-  add shared 320/390/desktop smoke for other pages and live-page keyboard flows; expand
-  browsers/modes from observed risk.
+- **Current → preferred detection:** the required live Chromium release matrix now
+  covers key pages/modes, target size, discoverability, overflow/reflow and live-page
+  JavaScript/keyboard flows; expand engines and device modes from observed risk.
+- **Mitigation sequence:** retain Today, controlled-DOM, native-fallback and responsive
+  live-page matrices; add non-Chromium/landscape coverage when risk or CI capacity
+  justifies it.
 - **Rollback/containment:** **present:** revert the frontend asset/template revision and
   preserve native form behavior; there is no general JS kill switch. A tested
   enhancement-disable mechanism is a future rollout prerequisite if introduced.
@@ -737,21 +737,21 @@ a higher product score.
 
 - **Affected IDs/objectives:** WEB-012–WEB-014, WEB-017, WEB-021; UI-INV-001–002;
   `REL-OBJ-012`.
-- **Present status/evidence:** **partially controlled**. Semantic markup and visible
-  focus exist; controlled-DOM Chromium executes editable-target shortcut suppression,
-  help open/close and focus restoration, and native forms work without JavaScript.
-  There is no axe/screen-reader/contrast proof, help-dialog focus trap or live-page
-  end-to-end keyboard suite.
+- **Present status/evidence:** **automated semantic baseline controlled**. Live Chromium
+  audits landmarks, names, labels, heading order, duplicate IDs, alternatives, target
+  size, overflow and live feedback; it executes editable suppression, help focus
+  restoration, clipboard announcement, navigation and mutations on Django pages. Native
+  forms still work without JavaScript. Screen-reader/contrast and help focus-trap/inert
+  proof remain open.
 - **Owner boundary:** accessible templates/CSS/JavaScript and accessibility release
   testing. Responsive layout parity is `REL-RISK-019`; image privacy is `REL-RISK-024`.
 - **Triggers:** keyboard dialog/removal flow, contrast/theme change, dynamic live-region
   behavior, zoom, screen-reader/browser variation or inaccessible error state.
-- **Current → preferred detection:** markup, geometry and controlled-DOM keyboard/focus
-  execution → automated accessibility scan, live-page keyboard/focus tests and periodic
-  manual AT checklist.
-- **Mitigation sequence:** retain executed keyboard/focus characterizations; establish
-  automated accessibility baseline and live-page flows; fix critical findings; add
-  periodic manual screen-reader/zoom review.
+- **Current → preferred detection:** dependency-free semantic audit and live-page
+  keyboard/focus/reflow execution → retain as a release gate and add periodic manual AT
+  plus contrast review.
+- **Mitigation sequence:** retain the automated baseline and native fallback; fix any
+  critical findings; add periodic screen-reader and browser-zoom review.
 - **Rollback/containment:** **present:** revert inaccessible UI while retaining native
   controls and block release on a known critical regression. Any future enhancement
   kill switch must be tested before it is listed as containment.

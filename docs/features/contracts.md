@@ -528,24 +528,29 @@ a claim that every normative rule is presently satisfied.
 - **Scope / precedence:** shared template semantics apply across desktop/mobile; each
   specialized surface may add labels but must not remove the baseline.
 - **Executable evidence:** template assertions, Today Playwright geometry/action
-  tests, and executed Chromium DOM tests for editable suppression and help-dialog
-  focus restoration.
-- **Known violation status:** **Conformant baseline**; no assistive-technology/axe
-  proof, help focus trap, or removal-focus contract exists.
+  tests, executed Chromium DOM tests, and live-Django Chromium matrices at 375, 768,
+  1280 and 400%-equivalent reflow. The dependency-free semantic audit checks shared
+  landmarks, names, labels, headings, duplicate IDs, image alternatives, target size,
+  overflow, live feedback, editable suppression, and help focus restoration.
+- **Known violation status:** **Conformant automated baseline**; manual screen-reader,
+  automated contrast, help focus-trap/inert, and removal-focus proof remain open.
 - **Source / feature IDs:** `templates/base.html`, `static/css/site.css`,
   `static/js/article-actions.js`; WEB-001, WEB-007, WEB-012–WEB-014, WEB-021.
 
 ### UI-INV-003 — Mobile and desktop share Article identity and state
 
 - **Normative current contract:** server data does not fork by User-Agent; Today card
-  IDs match desktop, 390×844, 320×844, legacy JSON, and reload. A mobile mutation
+  IDs match desktop, 390×844, 320×844, legacy JSON, and reload. Shared/auth pages
+  reflow without horizontal overflow at 375, 768, dedicated 1280 and 400%-equivalent
+  320 CSS pixels; compact/focus modes preserve discoverable controls. A mobile mutation
   removes only its target and persistence survives reload.
 - **Scope / precedence:** responsive CSS changes presentation only, never query/state
   semantics.
-- **Executable evidence:** `test_mobile_today_browser.py` and Today User-Agent parity
-  in `test_digest_views.py`.
-- **Known violation status:** **Conformant** for Chrome Today; other surfaces/browsers
-  remain uncharacterized.
+- **Executable evidence:** `test_mobile_today_browser.py`,
+  `test_responsive_accessibility_browser.py`, and Today User-Agent parity in
+  `test_digest_views.py`.
+- **Known violation status:** **Conformant** for covered Chromium pages/modes; physical
+  devices, landscape, non-Chromium engines and unusual content remain manual.
 - **Source / feature IDs:** `feeds/views.py`, `static/css/site.css`; WEB-002, WEB-020,
   API-001.
 
@@ -677,8 +682,8 @@ a claim that every normative rule is presently satisfied.
 
 ## Traceability matrix
 
-This post-snapshot companion maps the **current suite: 18 test modules, 241 test
-methods, and 10 expected failures**. The pinned catalog retains its independent
+This post-snapshot companion maps the **current suite: 19 test modules, 247 test
+methods, and 20 expected failures**. The pinned catalog retains its independent
 15/191/8 snapshot counts. Exact `module::class::method` identities, evidence levels,
 and dimension-specific gaps are maintained in the [detailed matrix](test-traceability.md).
 
@@ -690,7 +695,7 @@ and dimension-specific gaps are maintained in the [detailed matrix](test-traceab
 | Newsletter | NEWS-INV-001–005 | `test_newsletters.py`, `test_newsletter_save_policy.py`, `test_api_validation.py`, `test_known_correctness_failures.py`, `test_behavioral_contracts.py`, `test_postgresql_integration.py` | NEWS-001–005, API-004, API-017 |
 | Feed/OPML | FEED-INV-001–006 | `test_feed_refresh.py`, `test_opml.py`, `test_behavioral_contracts.py`, `test_postgresql_integration.py` | ING-002, ING-005, ING-007–013, API-012, API-016 |
 | API auth/input/schema/capability | API-AUTH-INV-001–002, API-INPUT-INV-001, API-SCHEMA-INV-001–002, API-CAP-INV-001–002, API-COMPAT-INV-001–002 | `test_api.py`, `test_api_validation.py`, `test_newsletter_save_policy.py`, `test_behavioral_contracts.py` | AUTH-003, API-001–019 |
-| Progressive/a11y/mobile | UI-INV-001–005 | `test_article_actions.py`, `test_article_actions_browser.py`, `test_digest_views.py`, `test_mobile_today_browser.py`, `test_known_correctness_failures.py`, `test_behavioral_contracts.py` | WEB-001–002, WEB-007–010, WEB-012–014, WEB-018, WEB-020–021, ING-008, SAVE-003, API-001 |
+| Progressive/a11y/mobile | UI-INV-001–005 | `test_article_actions.py`, `test_article_actions_browser.py`, `test_digest_views.py`, `test_mobile_today_browser.py`, `test_responsive_accessibility_browser.py`, `test_known_correctness_failures.py`, `test_behavioral_contracts.py` | WEB-001–002, WEB-007–010, WEB-012–014, WEB-018, WEB-020–021, ING-008, SAVE-003, API-001 |
 | Observability/recovery | OPS-INV-001–005 | `test_feed_refresh.py`, `test_api.py`, `test_production_settings.py`, `test_postgresql_integration.py`; documented manual evidence where automation is absent | ING-007–010, API-016, OPS-002, OPS-008–014 |
 
 ## Expected-failure ledger
