@@ -394,8 +394,8 @@ class KnownCorrectnessFailureTests(StaticFilesTestCase):
             },
         )
 
-    # Bug: browser mutation handlers redirect directly to an untrusted next value.
-    @expectedFailure
+    # Regression: browser mutation handlers fall back instead of redirecting to an
+    # attacker-controlled destination.
     def test_mark_article_rejects_external_next_redirect(self) -> None:
         self.client.force_login(self.user)
 
@@ -404,12 +404,7 @@ class KnownCorrectnessFailureTests(StaticFilesTestCase):
             {"state": "read", "next": "https://attacker.example/phish"},
         )
 
-        if 300 <= response.status_code < 400:
-            self.assertFalse(
-                response.headers["Location"].startswith("https://attacker.example")
-            )
-        else:
-            self.assertIn(response.status_code, {400, 403})
+        self.assertRedirects(response, reverse("today"))
 
     # Regression: an issue write failure rolls back the newsletter Article.
     def test_postmark_issue_failure_rolls_back_article(self) -> None:

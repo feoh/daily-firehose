@@ -577,21 +577,29 @@ a claim that every normative rule is presently satisfied.
 - **Source / feature IDs:** `feeds/views.py`, `feeds/api.py`; WEB-002–WEB-006,
   WEB-016, ING-013, API-001, API-003, API-006–API-007.
 
-### UI-INV-005 — Browser mutation redirects remain same-origin
+### UI-INV-005 — Browser redirect inputs are validated for their trust boundary
 
-- **Normative current contract:** posted `next` destinations on refresh, individual
-  mark, save, period mark, and Feed mark handlers must be validated as same-origin or
-  replaced by a safe local fallback before redirecting.
-- **Scope / precedence:** applies to all five session mutation handlers; successful
-  state mutation does not authorize navigation to an attacker-controlled origin.
-- **Executable evidence:** unchanged expected failure
+- **Normative current contract:** login/logout and all five session mutation handlers
+  accept only unambiguous same-origin `next` destinations or replace them with their
+  documented local fallback. External/scheme-relative hosts, credentials, backslashes,
+  controls, malformed escapes, and recursively encoded bypasses are rejected. The
+  signed save-and-go route separately permits its intentional stored Article URL only
+  when it is a credential-free absolute HTTP(S) destination; unsafe stored values fall
+  back to Today.
+- **Scope / precedence:** request host and trusted proxy scheme define same-origin.
+  Successful authentication, logout, or mutation never authorizes caller-controlled
+  outbound navigation. API-018's validated Article URL is domain data, not a caller
+  return target; JSON API response contracts are outside this redirect policy.
+- **Executable evidence:** `test_browser_redirects.py` covers login, logout, all five
+  mutation handlers, relative success, bypass matrices, signed outbound navigation,
+  proxy host/scheme context, and live Chromium auth/session behavior. The former
+  expected failure
   `test_known_correctness_failures.py::test_mark_article_rejects_external_next_redirect`
-  characterizes one handler; the same direct `request.POST.get("next")` pattern is
-  source-evidenced in the other four handlers.
-- **Known violation status:** **Known violation** — all five handlers directly redirect
-  untrusted `next` values.
-- **Source / feature IDs:** `feeds/views.py`; WEB-018, WEB-008–WEB-010, SAVE-003,
-  ING-008.
+  now passes through the shared resolver.
+- **Known violation status:** **Conformant** for inventoried first-party redirect inputs.
+- **Source / feature IDs:** `daily_firehose/redirects.py`,
+  `daily_firehose/auth_views.py`, `feeds/views.py`, `feeds/api.py`; AUTH-001–AUTH-002,
+  WEB-018, WEB-008–WEB-010, SAVE-003, ING-008, API-018.
 
 ## Observability and recovery invariants
 
@@ -686,8 +694,8 @@ a claim that every normative rule is presently satisfied.
 
 ## Traceability matrix
 
-This post-snapshot companion maps the **current suite: 19 test modules, 248 test
-methods, and 10 expected failures**. The pinned catalog retains its independent
+This post-snapshot companion maps the **current suite: 20 test modules, 255 test
+methods, and 9 expected failures**. The pinned catalog retains its independent
 15/191/8 snapshot counts. Exact `module::class::method` identities, evidence levels,
 and dimension-specific gaps are maintained in the [detailed matrix](test-traceability.md).
 
@@ -699,12 +707,12 @@ and dimension-specific gaps are maintained in the [detailed matrix](test-traceab
 | Newsletter | NEWS-INV-001–005 | `test_newsletters.py`, `test_newsletter_save_policy.py`, `test_api_validation.py`, `test_known_correctness_failures.py`, `test_behavioral_contracts.py`, `test_postgresql_integration.py` | NEWS-001–005, API-004, API-017 |
 | Feed/OPML | FEED-INV-001–006 | `test_feed_refresh.py`, `test_opml.py`, `test_behavioral_contracts.py`, `test_postgresql_integration.py` | ING-002, ING-005, ING-007–013, API-012, API-016 |
 | API auth/input/schema/capability | API-AUTH-INV-001–002, API-INPUT-INV-001, API-SCHEMA-INV-001–002, API-CAP-INV-001–002, API-COMPAT-INV-001–002 | `test_api.py`, `test_api_validation.py`, `test_newsletter_save_policy.py`, `test_behavioral_contracts.py` | AUTH-003, API-001–019 |
-| Progressive/a11y/mobile | UI-INV-001–005 | `test_article_actions.py`, `test_article_actions_browser.py`, `test_digest_views.py`, `test_mobile_today_browser.py`, `test_responsive_accessibility_browser.py`, `test_known_correctness_failures.py`, `test_behavioral_contracts.py` | WEB-001–002, WEB-007–010, WEB-012–014, WEB-018, WEB-020–021, ING-008, SAVE-003, API-001 |
+| Progressive/a11y/mobile | UI-INV-001–005 | `test_article_actions.py`, `test_article_actions_browser.py`, `test_browser_redirects.py`, `test_digest_views.py`, `test_mobile_today_browser.py`, `test_responsive_accessibility_browser.py`, `test_known_correctness_failures.py`, `test_behavioral_contracts.py` | WEB-001–002, WEB-007–010, WEB-012–014, WEB-018, WEB-020–021, ING-008, SAVE-003, API-001 |
 | Observability/recovery | OPS-INV-001–005 | `test_feed_refresh.py`, `test_api.py`, `test_production_settings.py`, `test_postgresql_integration.py`; documented manual evidence where automation is absent | ING-007–010, API-016, OPS-002, OPS-008–014 |
 
 ## Expected-failure ledger
 
-The current suite contains **10 expected failures**: after seven BulkReadMarker and
+The current suite contains **9 expected failures**: after seven BulkReadMarker and
 three Postmark characterizations began passing as ordinary tests, the PostgreSQL
 integration module retains three fixed-path characterizations for confirmed current
 defects:
@@ -713,8 +721,9 @@ defects:
 2. Stale refresh completion fencing — FEED-INV-001 and OPS-INV-001.
 3. Concurrent category upsert — FEED-INV-006.
 
-The four cross-feature expected failures and three remaining original catalog
-characterizations remain in the ledger with their exact identities.
+The redirect repair removes one original catalog expected failure. Three cross-feature
+expected failures and three remaining original catalog characterizations remain in the
+ledger with their exact identities.
 
 A green run means acknowledged failures were observed; it does not mean these
 invariants conform. Unexpected success is a suite failure and requires removing the
@@ -762,7 +771,7 @@ required = ("Normative current contract", "Scope / precedence", "Executable evid
 assert all(all(label in block for label in required) for block in blocks)
 statuses = Counter("Known violation" if "**Known violation**" in block else "Conformant"
                    for block in blocks)
-assert statuses == Counter({"Conformant": 29, "Known violation": 15})
+assert statuses == Counter({"Conformant": 33, "Known violation": 11})
 test_paths = list(Path("feeds/tests").glob("test_*.py"))
 methods = expected = 0
 for path in test_paths:
@@ -774,7 +783,7 @@ for path in test_paths:
                     if isinstance(node, ast.FunctionDef)
                     and any(isinstance(d, ast.Name) and d.id == "expectedFailure"
                             for d in node.decorator_list))
-assert (len(test_paths), methods, expected) == (18, 241, 10)
+assert (len(test_paths), methods, expected) == (20, 255, 9)
 print(len(ids), statuses, len(test_paths), methods, expected)
 PY
 ```

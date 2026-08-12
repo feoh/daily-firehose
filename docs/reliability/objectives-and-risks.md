@@ -690,19 +690,23 @@ a higher product score.
 
 - **Affected IDs/objectives:** WEB-008–WEB-010, WEB-018, ING-008, SAVE-003;
   UI-INV-005; `REL-OBJ-004`–`005`.
-- **Present status/evidence:** **open-demonstrated**. One expected failure and the same
-  direct `next` pattern across five mutation handlers show open redirects.
+- **Present status/evidence:** **controlled-automated**. One shared resolver protects
+  login/logout and all five mutation handlers; request matrices and live Chromium cover
+  external, scheme-relative, credential, backslash, control, encoded, host, and proxy
+  scheme cases. Signed save-and-go validates its intentional outbound Article URL.
 - **Owner boundary:** browser redirect-resolution policy and mutation adapters.
-- **Triggers:** attacker-supplied posted `next`, malicious link/form, or copied external
-  redirect value after a successful mutation.
-- **Current → preferred detection:** expected-failure test → shared resolver, rejection
-  counter and all-handler contract tests.
-- **Mitigation sequence:** central same-origin fallback; apply to all five handlers;
-  convert expected failure and add adapter matrix.
-- **Rollback/containment:** remove malicious links; session logout if phishing follows;
-  code rollback must not restore an unsafe redirect once clients rely on local fallback.
+- **Triggers:** attacker-supplied posted `next`, malicious link/form, copied external
+  redirect values, proxy-context drift, or unsafe stored Article URLs.
+- **Current → preferred detection:** passing shared-resolver, all-handler, auth/session,
+  signed-route, proxy-context, and live-browser contracts. Rejection counters remain a
+  future observability enhancement.
+- **Mitigation sequence:** completed central validation and adapter coverage; preserve
+  the policy while redirect inputs or proxy topology change.
+- **Rollback/containment:** do not roll back to unvalidated redirect inputs; replace an
+  affected input with its local fallback if a future compatibility issue is found.
 - **Residual risk:** safe same-origin destinations can still be confusing; mutation
-  confirmation remains important.
+  confirmation remains important, and stored outbound Article URLs can lead to any
+  validated HTTP(S) origin by intentional API-018 design.
 - **Linked Witan work:** `tk-validate-all-browser-redirect-targets-99209e`.
 
 ### REL-RISK-019 — Responsive mobile/desktop parity evidence is narrow

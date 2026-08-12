@@ -14,6 +14,8 @@ from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
+from daily_firehose.redirects import safe_redirect_target
+
 from .feed_fetch import FeedFetchError
 from .forms import FeedForm, OPMLImportForm, ThemeForm
 from .models import (
@@ -205,6 +207,12 @@ def _preferences(user) -> UserPreference:
 
 def _wants_json(request: HttpRequest) -> bool:
     return request.headers.get("x-requested-with") == "XMLHttpRequest"
+
+
+def _redirect_to_posted_next(request: HttpRequest, *, fallback: str) -> HttpResponse:
+    return redirect(
+        safe_redirect_target(request, request.POST.get("next"), fallback=fallback)
+    )
 
 
 def newsletter_detail(request: HttpRequest, public_id) -> HttpResponse:
@@ -436,7 +444,7 @@ def refresh_feeds(request: HttpRequest) -> HttpResponse:
         messages.warning(request, f"{summary} Backoff feeds: {skipped_titles}.")
     else:
         messages.success(request, summary)
-    return redirect(request.POST.get("next") or reverse("today"))
+    return _redirect_to_posted_next(request, fallback=reverse("today"))
 
 
 @require_POST
@@ -453,7 +461,7 @@ def mark_article(request: HttpRequest, article_id: int) -> HttpResponse:
         remove = is_read or request.POST.get("remove_on_success") == "true"
         return JsonResponse({"message": message, "level": "success", "remove": remove})
     messages.success(request, message)
-    return redirect(request.POST.get("next") or reverse("today"))
+    return _redirect_to_posted_next(request, fallback=reverse("today"))
 
 
 @require_POST
@@ -477,7 +485,7 @@ def mark_period_read(request: HttpRequest) -> HttpResponse:
         defaults={"marked_read_at": marked_read_at},
     )
     messages.success(request, "Marked this period read.")
-    return redirect(request.POST.get("next") or reverse("today"))
+    return _redirect_to_posted_next(request, fallback=reverse("today"))
 
 
 @require_POST
@@ -499,8 +507,8 @@ def mark_feed_read(request: HttpRequest, feed_id: int) -> HttpResponse:
         defaults={"marked_read_at": marked_read_at},
     )
     messages.success(request, f"Marked {feed.title} read.")
-    return redirect(
-        request.POST.get("next") or reverse("feed-detail", args=[_pk(feed)])
+    return _redirect_to_posted_next(
+        request, fallback=reverse("feed-detail", args=[_pk(feed)])
     )
 
 
@@ -541,7 +549,7 @@ def save_article_view(request: HttpRequest, article_id: int) -> HttpResponse:
                 }
             )
         messages.error(request, exc.message)
-        return redirect(request.POST.get("next") or reverse("today"))
+        return _redirect_to_posted_next(request, fallback=reverse("today"))
     if saved.linkding_saved:
         message = f"Saved “{saved.title}” to Linkding and Daily Firehose."
         level = "success"
@@ -565,7 +573,7 @@ def save_article_view(request: HttpRequest, article_id: int) -> HttpResponse:
         messages.success(request, message)
     else:
         messages.warning(request, message)
-    return redirect(request.POST.get("next") or reverse("today"))
+    return _redirect_to_posted_next(request, fallback=reverse("today"))
 
 
 @login_required

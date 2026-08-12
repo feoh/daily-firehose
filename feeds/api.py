@@ -18,8 +18,11 @@ from django.core.exceptions import (
 from django.db import IntegrityError, transaction
 from django.http import Http404, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+
+from daily_firehose.redirects import safe_article_navigation_url
 
 from .api_validation import (
     ApiProblem,
@@ -509,7 +512,7 @@ def article_save_and_go(request: HttpRequest, article_id: int) -> HttpResponse:
         return validation_problem(exc).response()
     except IntegrityError:
         return conflict("The requested write conflicts with existing data.").response()
-    return redirect(article.url)
+    return redirect(safe_article_navigation_url(article.url, fallback=reverse("today")))
 
 
 def mark_period_read_and_go(request: HttpRequest) -> HttpResponse:
