@@ -16,11 +16,12 @@ size/SHA-256 metadata. The administrator recovery-key health/read/restore drill 
 in **11.345 seconds** with exact temporary container, volume, and network cleanup. A
 fresh application key was then installed, and the post-rekey oneshot produced valid
 backup `20260812T011026Z-4c03472d`. These durations measure script execution, not full
-incident RTO or application cutover. The owner has verified SMTP delivery through
-Fastmail. Remaining gates are monitor installation and transition tests, timer
-activation, continuing production RPO observation, and an independently attested remote
-copy. The repository monitor and exact hourly cron are defined but not installed or
-activated on TrueNAS, and the application backup timer remains disabled.
+incident RTO or application cutover. The owner verified Fastmail SMTP delivery and all
+four monitor transitions (missed, critical, containment, and recovery). The root-owned
+hourly TrueNAS monitor cron is installed and healthy, and the application-host timer is
+enabled for 00:00/12:00 UTC. Remaining evidence is continuing scheduled RPO observation,
+quarterly drills/full incident cutover timing, and independent attestation of the
+configured remote replicated copy.
 
 The application host creates an unencrypted PostgreSQL custom-format, compression-9
 dump with an exact local Docker Compose command, validates it with the exact local
@@ -442,12 +443,12 @@ Before timer activation, configure and test all three independent supervision ga
    and recover before normal writes resume.
 
 The exact ZFS mount check, manual backups, quota/SMTP checks, administrator recovery-key
-health/read/restore drill, fresh application-key installation, and successful post-rekey
-oneshot are complete. Only monitor installation and transition tests remain before the
-timer may be activated; independent remote-copy attestation and continuing production
-RPO observation remain after activation. Full incident RTO and
-application cutover remain unmeasured. A successful SSH upload or timer is not off-site
-or restore evidence.
+health/read/restore drill, fresh application-key installation, successful post-rekey
+oneshot, real monitor transition delivery tests, and timer activation are complete. The
+hourly monitor is healthy and the 00:00/12:00 UTC timer is enabled. Independent
+remote-copy attestation, continuing production RPO observation, quarterly drills, full
+incident RTO, and application cutover remain unmeasured. A successful SSH upload or
+timer is not by itself off-site or restore evidence.
 
 ## Repository validation
 

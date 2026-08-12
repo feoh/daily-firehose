@@ -651,9 +651,10 @@ a claim that every normative rule is presently satisfied.
   `45c97cc`, the restricted TrueNAS account/datasets/receiver/key and local maintenance
   were installed; one 15,173,740-byte receipt-backed production pair was independently
   confirmed; and an isolated PostgreSQL 17/application restore passed in 15.384 seconds
-  with exact cleanup. The timer remains disabled pending scheduled-failure/20h-age/24h
-  containment alerts, administrator rekey/post-rekey-oneshot evidence, and independent
-  off-site confirmation. Full incident RPO/RTO remain unknown.
+  with exact cleanup. Administrator rekey/read/restore and post-rekey backup evidence,
+  owner-verified Fastmail monitor transitions, an hourly TrueNAS age monitor, and the
+  enabled 00:00/12:00 UTC timer now exist. Continuing scheduled RPO evidence,
+  independent off-site confirmation, and full incident RPO/RTO remain open.
 - **Source / feature IDs:** `docker-compose.yml`, `README.md`,
   `docs/operations/postgresql-backups.md`, `scripts/postgres_backup.py`,
   `scripts/postgres_backup_receiver.py`, `scripts/postgres_restore_verify.py`,

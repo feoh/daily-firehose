@@ -153,7 +153,7 @@ security, or hard freshness gates.
 | `REL-OBJ-007` Authenticated cache correctness | **100%** of authenticated session, legacy JSON, bearer GET and authenticated OPML/newsletter responses emit at least `Cache-Control: private, no-store`. The public newsletter URL varies by auth: authenticated and anonymous responses both emit `Vary: Cookie`; anonymous may be cacheable only under an explicit public policy, otherwise it also uses `no-store`. Zero authenticated-to-anonymous or cross-user reuse. | Every release/continuous sample; zero budget. Probe the same newsletter UUID anonymously and authenticated and compare headers/body predicates without retaining private body data. | Today has `never_cache`; `UI-INV-004` proves other authenticated surfaces are not conformant. Public newsletter anonymous GET is display-only, but auth/cache variation is not established. | Passing all-route header matrix, same-URL anonymous/auth synthetic and cache-isolation canary. |
 | `REL-OBJ-008` Postmark acceptance and idempotency | Eligible valid webhooks are good within **10s**, availability **≥99.5%**, p95 **≤5s**; **100%** of accepted MessageIDs resolve to one complete Article/Issue. Lost response after commit resolves by replay, with no accepted ID ambiguous >24h. | Rolling 30d, 0.5% availability; zero atomicity/idempotency budget. Use p95 only at ≥100 eligible events/30d; below it, every provider-correlated event uses the 10s maximum and exact failure thresholds. | Sequential dedupe passes. The required PostgreSQL lane now forces concurrent MessageID lookups to miss and characterizes the resulting real integrity failure as an expected failure; this demonstrates the defect rather than satisfying the objective. No provider series, ambiguity state or orphan detector exists. | Provider/app correlation by non-secret event ID, outcome/ambiguity/orphan/replay/race counters and passing PostgreSQL atomic/race tests. |
 | `REL-OBJ-009` Linkding outcome and ambiguity | Local save survives **100%** of remote failures. **≥99%** of remote attempts reach definitive confirmed/failed state within **20s**; ambiguous/lost-response outcomes are **<0.1%**, never blindly retried and reconciled within 24h. | Rolling 30d; 1% definitive-outcome and 0.1% ambiguity budgets; local preservation zero budget. Low volume uses first-ambiguity notification and 24h deadline, not percentages. | Current SavedArticle boolean/error collapses definite failure and timeout-after-success; tests cover exact URL and ordinary failures. | Durable attempt/idempotency/reconciliation state and provider-aware counters, without token/header values. |
-| `REL-OBJ-010` Backup and restore | Unencrypted custom-format backups push over restricted SSH to TrueNAS at **00:00 and 12:00 UTC**, complete/verify by `+2h`, and provide **RPO ≤24h**. Missing the `+2h` completion is actionable; page when latest verified backup age reaches **20h**, and at/before **24h** stop destructive changes and contain writes until recovery. Quarterly isolated restore demonstrates **RTO ≤4h**, integrity, migration compatibility and semantic reads. | Continuous age; 90d drill. Zero budget for crossing 24h, failed integrity or missed drill. Twice-daily schedule provides ≥10h operational margin before the RPO boundary. | The restricted TrueNAS account, exact data/control datasets, receiver/key and local maintenance are installed for the approved direct application-host SSH push with no delete operation. Receipt-backed production pair `20260811T200522Z-077caa88` was independently verified at 15,173,740 bytes with 165 manifest entries and matching hashes, then restored into isolated PostgreSQL 17/application resources in 15.384 seconds with cleanup confirmed. The timer remains disabled, so recurring RPO/RTO attainment is not established. | Activate and observe schedule/deadline/result/age controls; test quota/off-site alerts; complete administrator rekey/read/restore recovery and post-rekey application oneshot; independently confirm an off-site copy; add scheduled-failure plus 20h/24h alerts and recurring timed retrieval/cutover records. |
+| `REL-OBJ-010` Backup and restore | Unencrypted custom-format backups push over restricted SSH to TrueNAS at **00:00 and 12:00 UTC**, complete/verify by `+2h`, and provide **RPO ≤24h**. Missing the `+2h` completion is actionable; page when latest verified backup age reaches **20h**, and at/before **24h** stop destructive changes and contain writes until recovery. Quarterly isolated restore demonstrates **RTO ≤4h**, integrity, migration compatibility and semantic reads. | Continuous age; 90d drill. Zero budget for crossing 24h, failed integrity or missed drill. Twice-daily schedule provides ≥10h operational margin before the RPO boundary. | The restricted TrueNAS account, exact datasets/quotas, receiver/key, local maintenance and hourly monitor are installed. Two receipt-backed backups exist; `20260811T200522Z-077caa88` was independently verified and restored into isolated PostgreSQL 17/application resources. Administrator rekey/read/restore, fresh application-key/post-rekey backup, owner-confirmed Fastmail missed/critical/containment/recovery notifications, and timer activation are complete. Continuing scheduled RPO/RTO attainment is not yet established. | Observe scheduled deadline/result/age controls; independently confirm and restore the configured remote copy; retain quota/SMTP tests; collect recurring timed retrieval/cutover records. |
 | `REL-OBJ-011` Deployment verification and rollback readiness | **100%** of deploys pass deploy check, DB connection, migration/backup review, Compose state/logs, direct 301, proxy/public 302, and authenticated semantic smoke within 15m; every schema change has tested stop/rollback. | Per deploy/rolling 90d; zero skipped-gate budget. | Manual procedure and dated observation only; no durable release record or automatic rollback. | Revision-tagged gate results/durations, backup reference, smoke and explicit rollback decision. |
 | `REL-OBJ-012` 320/390/desktop parity and accessibility | Every release has identical Today Article IDs/state at desktop, 390×844 and 320×844; zero overflow; first content discoverable; target-only save/read survives reload. Shared pages have no critical automated accessibility violations and native keyboard paths work. | Every change/release; zero correctness budget, 100% matrix pass. | Chrome Today geometry/state and native no-JavaScript fallback run against live Django/SQLite; controlled-DOM Chromium executes card actions, selection, shortcuts and help behavior. Other pages/browsers/AT/zoom and live-page keyboard behavior remain unmeasured. | Release browser matrix, live-page keyboard/focus tests, accessibility scan and periodic manual AT check. |
 
@@ -284,7 +284,7 @@ a higher product score.
 - **Linked Witan work:** `tk-add-structured-observability-health-readiness-an-16ba73`,
   `tk-harden-ingestion-external-i-o-and-data-integrity-1adf3c`.
 
-### REL-RISK-002 — PostgreSQL backup exists but scheduling and alert gates remain open
+### REL-RISK-002 — PostgreSQL backup is active; continuing/off-site evidence remains open
 
 - **Affected IDs/objectives:** OPS-002, OPS-013–OPS-014; DATA-INV-004,
   OPS-INV-003–OPS-INV-004; `REL-OBJ-010`–`011`.
@@ -301,10 +301,11 @@ a higher product score.
   maintenance, and dormant application-host units were installed. Production backup
   `20260811T200522Z-077caa88` was independently confirmed at 15,173,740 bytes with 165
   manifest entries and matching metadata/receipt hashes. Its isolated PostgreSQL
-  17/application restore passed in 15.384 seconds with exact cleanup. The timer remains
-  disabled; scheduled-failure/20h-age/24h-containment alerts, administrator rekey drill,
-  post-rekey application oneshot, and independent off-site confirmation remain open.
-  Full incident RPO/RTO remain unknown.
+  17/application restore passed with exact cleanup. Administrator rekey/read/restore,
+  fresh application-key/post-rekey backup, owner-confirmed Fastmail monitor transitions,
+  hourly age monitoring, and the enabled 00:00/12:00 UTC timer are complete. Continuing
+  scheduled RPO evidence, independent remote-copy confirmation/restore, quarterly drills,
+  and full incident RPO/RTO remain open.
 - **Owner boundary:** production database/infrastructure operator; application supplies
   migrations and semantic restore verification.
 - **Triggers:** host/disk/volume loss, operator deletion, corruption, destructive
@@ -313,14 +314,12 @@ a higher product score.
   isolated restore → twice-daily scheduled result by `+2h`, verified-backup age,
   checksum/integrity, independent off-site confirmation, 20h page, 24h containment,
   quarterly timed restore and application read smoke.
-- **Mitigation sequence:** retain the installed middleware-created datasets/account,
-  root-owned receiver/control files, restricted key, local maintenance, pinned NAS host
-  key and staged client credential; configure and test scheduled-failure, quota,
-  20h-age, and 24h-containment alerts; independently confirm an off-site copy; pass an
-  administrator rekey/read/restore drill and post-rekey application oneshot; only then
-  activate the supplied 00:00/12:00 UTC application-host timer and alerts. Permit
-  destructive migrations only after observed age and recurring drill evidence. Final
-  all-feature rehearsal stays later and does not block this baseline.
+- **Mitigation sequence:** retain the installed datasets/account, root-owned
+  receiver/monitor/control files, restricted key, local maintenance, pinned host key,
+  tested alert channel and enabled timer; observe scheduled completion/age; independently
+  confirm and restore the configured remote replicated copy; collect quarterly drills
+  and incident cutover timing. Permit destructive migrations only while age is healthy
+  and recurring drill evidence remains current.
 - **Rollback/containment:** **present:** stop application writes on suspected corruption,
   preserve volume/forensic copy, never `down -v`, and restore only to a new location
   before cutover. There is no current backup kill switch to rely on.
