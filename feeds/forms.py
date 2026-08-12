@@ -1,6 +1,7 @@
 from django import forms
 
 from .models import Feed, UserPreference
+from .services import OPML_MAX_BYTES
 
 
 class FeedForm(forms.ModelForm):
@@ -23,6 +24,12 @@ class FeedForm(forms.ModelForm):
 
 class OPMLImportForm(forms.Form):
     opml_file = forms.FileField(label="OPML file")
+
+    def clean_opml_file(self):
+        uploaded = self.cleaned_data["opml_file"]
+        if uploaded.size > OPML_MAX_BYTES:
+            raise forms.ValidationError("Upload a valid OPML file (maximum 1 MiB).")
+        return uploaded
 
 
 class ThemeForm(forms.ModelForm):

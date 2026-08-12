@@ -459,22 +459,16 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
         self.assertEqual(len(preference_ids), 1)
         self.assertEqual(UserPreference.objects.filter(user=user).count(), 1)
 
-    @expectedFailure
     def test_concurrent_category_upsert_returns_one_row_without_errors(self) -> None:
-        lookup_barrier = threading.Barrier(2, timeout=_RACE_TIMEOUT)
-        original_first = QuerySet.first
+        start_barrier = threading.Barrier(2, timeout=_RACE_TIMEOUT)
 
-        def synchronized_first(queryset: QuerySet):
-            result = original_first(queryset)
-            if queryset.model is Category:
-                lookup_barrier.wait()
-            return result
+        def create_category():
+            start_barrier.wait()
+            return _category_from_name("Concurrent Category")
 
-        with patch.object(QuerySet, "first", new=synchronized_first):
-            outcomes = run_concurrently(
-                [lambda: _category_from_name("Concurrent Category") for _ in range(2)],
-                timeout=_RACE_TIMEOUT,
-            )
+        outcomes = run_concurrently(
+            [create_category for _ in range(2)], timeout=_RACE_TIMEOUT
+        )
 
         errors = _errors(outcomes)
         if errors:

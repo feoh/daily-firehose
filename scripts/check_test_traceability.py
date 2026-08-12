@@ -7,9 +7,9 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-EXPECTED_MODULES = 20
-EXPECTED_TESTS = 256
-EXPECTED_XFAILS = 9
+EXPECTED_MODULES = 19
+EXPECTED_TESTS = 259
+EXPECTED_XFAILS = 6
 DIMENSIONS = (
     "positive",
     "negative",
@@ -122,12 +122,12 @@ REQUIRED_HEADINGS = {
 }
 INTRO_BASELINE = (
     "Current AST baseline: **82 feature IDs**, **44 invariant IDs**, "
-    "**20 app test modules**, **256 app test methods**, and "
-    "**9 `expectedFailure` methods**."
+    "**19 app test modules**, **259 app test methods**, and "
+    "**6 `expectedFailure` methods**."
 )
 BROAD_GAP_BASELINE = (
-    "Exact broad gaps: 9 expected failures; 16 PostgreSQL 17 integration tests "
-    "(3 focused XFs) execute real PostgreSQL race and transaction-boundary evidence; "
+    "Exact broad gaps: 6 expected failures; 16 PostgreSQL 17 integration tests "
+    "(2 focused XFs) execute real PostgreSQL race and transaction-boundary evidence; "
     "zero automated canonical launched-Compose tests; one real receipt-backed "
     "production backup and isolated restore but no scheduled/alerted RPO or incident "
     "cutover drill and no independent off-site confirmation; zero automated "
@@ -138,15 +138,15 @@ BROAD_GAP_BASELINE = (
     "contrast, screen-reader and other manual AT tests remain."
 )
 CONTRACTS_EXPECTED_FAILURE_SENTENCE = (
-    "The current suite contains **9 expected failures**:"
+    "The current suite contains **6 expected failures**:"
 )
 CONTRACTS_CURRENT_SUITE = (
-    "This post-snapshot companion maps the **current suite: 20 test modules, "
-    "256 test methods, and 9 expected failures**."
+    "This post-snapshot companion maps the **current suite: 19 test modules, "
+    "259 test methods, and 6 expected failures**."
 )
 CONTRACTS_PROGRESSIVE_EVIDENCE = (
     "| Progressive/a11y/mobile | UI-INV-001–005 | `test_article_actions.py`, "
-    "`test_article_actions_browser.py`, `test_browser_redirects.py`, `test_digest_views.py`, "
+    "`test_article_actions_browser.py`, `test_digest_views.py`, "
     "`test_mobile_today_browser.py`, `test_responsive_accessibility_browser.py`, "
     "`test_known_correctness_failures.py`, `test_behavioral_contracts.py` |"
 )
@@ -161,10 +161,7 @@ PINNED_TEXT = {
         "**15/15** snapshot executable test modules mapped; **191** `def test_...` methods",
         "**8/8** snapshot expected failures mapped",
     ),
-    "docs/features/contracts.md": (
-        "**current suite: 20 test modules, 256 test",
-        "15/191/8 snapshot counts",
-    ),
+    "docs/features/contracts.md": ("15/191/8 snapshot counts",),
 }
 
 # These selected records are independently audited semantic sentinels. The general
@@ -327,247 +324,247 @@ AUDITED_LEDGER = {
         "form/model SQLite",
         ("AUTH-005", "SAVE-INV-004"),
     ),
-    201: (
+    212: (
         "test_lane_runs_against_postgresql_17",
         "primary",
         "PostgreSQL 17 configuration",
         ("OPS-002",),
     ),
-    202: (
+    213: (
         "test_disk_migrations_and_durable_unique_constraints_are_applied",
         "primary",
         "migration introspection/PostgreSQL 17",
         ("OPS-002", "OPS-INV-003"),
     ),
-    203: (
+    214: (
         "test_bulk_marker_shapes_are_rejected_by_database_constraints",
         "primary",
         "model/PostgreSQL transaction.atomic",
         ("WEB-019", "READ-INV-006"),
     ),
-    204: (
+    215: (
         "test_nullable_period_marker_duplicate_race_commits_one_row",
         "primary",
         "model/PostgreSQL separate connections/barrier",
         ("WEB-019", "API-010", "READ-INV-006"),
     ),
-    205: (
+    216: (
         "test_nullable_feed_marker_duplicate_race_commits_one_row",
         "primary",
         "model/PostgreSQL separate connections/barrier",
         ("WEB-019", "API-013", "READ-INV-006"),
     ),
-    206: (
+    217: (
         "test_saved_article_duplicate_race_is_stopped_by_unique_constraint",
         "primary",
         "model/PostgreSQL separate connections/barrier",
         ("SAVE-001", "API-009", "SAVE-INV-001"),
     ),
-    207: (
+    218: (
         "test_concurrent_postmark_replay_returns_one_issue_without_errors",
         "primary",
         "service/PostgreSQL separate connections/barrier",
         ("NEWS-001", "API-017", "NEWS-INV-001"),
     ),
-    208: (
+    219: (
         "test_postmark_issue_failure_rolls_back_feed_and_article",
         "primary",
         "service/PostgreSQL fault injection",
         ("NEWS-002", "NEWS-INV-002"),
     ),
-    209: (
+    220: (
         "test_concurrent_same_guid_refresh_has_one_create_and_one_update",
         "primary",
         "service/PostgreSQL separate connections/barrier",
         ("ING-005", "FEED-INV-002"),
     ),
-    210: (
+    221: (
         "test_concurrent_changed_guids_for_one_url_are_reconciled",
         "primary",
         "service/PostgreSQL separate connections/barrier",
         ("ING-005", "ING-006", "DATA-INV-001", "FEED-INV-002"),
     ),
-    211: (
+    222: (
         "test_older_refresh_failure_cannot_overwrite_newer_success_status",
         "primary",
         "service/PostgreSQL separate connections/events",
         ("ING-007", "FEED-INV-001", "OPS-INV-001"),
     ),
-    212: (
+    223: (
         "test_concurrent_preference_get_or_create_returns_one_row",
         "primary",
         "service/PostgreSQL separate connections/barrier",
         ("API-015",),
     ),
-    213: (
+    224: (
         "test_concurrent_category_upsert_returns_one_row_without_errors",
         "primary",
         "service/PostgreSQL separate connections/barrier",
         ("ING-011", "API-014", "FEED-INV-006"),
     ),
-    214: (
+    225: (
         "test_concurrent_opml_feed_upsert_returns_one_row",
         "primary",
         "service/PostgreSQL separate connections/barrier",
         ("ING-011", "FEED-INV-004"),
     ),
-    215: (
+    226: (
         "test_concurrent_newsletter_feed_get_or_create_returns_one_row",
         "primary",
         "service/PostgreSQL separate connections/barrier",
         ("NEWS-001", "NEWS-INV-003"),
     ),
-    216: (
+    227: (
         "test_refresh_failure_lock_serializes_failure_count_updates",
         "primary",
         "service/PostgreSQL separate connections/row lock",
         ("ING-007", "FEED-INV-001", "OPS-INV-001"),
     ),
-    217: (
+    228: (
         "test_bad_production_configuration_fails_closed_without_secret_values",
         "primary",
         "settings subprocess",
         ("OPS-001", "OPS-002", "OPS-003"),
     ),
-    218: (
+    229: (
         "test_valid_production_settings_preserve_discrete_reserved_characters",
         "primary",
         "settings subprocess",
         ("AUTH-003", "OPS-001", "OPS-002", "OPS-003", "OPS-004"),
     ),
-    219: (
+    230: (
         "test_valid_production_database_url_remains_supported",
         "primary",
         "settings subprocess",
         ("OPS-002",),
     ),
-    220: (
+    231: (
         "test_development_defaults_remain_zero_configuration",
         "primary",
         "settings subprocess",
         ("OPS-001", "OPS-002", "OPS-003"),
     ),
-    221: (
+    232: (
         "test_development_discrete_postgres_preserves_reserved_characters",
         "primary",
         "settings subprocess",
         ("OPS-002",),
     ),
-    222: (
+    233: (
         "test_production_deploy_check_has_no_unsilenced_warnings",
         "primary",
         "settings subprocess",
         ("OPS-004", "OPS-009", "OPS-INV-003"),
     ),
-    223: (
+    234: (
         "test_canonical_compose_is_fail_closed_and_orders_the_worker",
         "primary",
         "source assertion",
         ("OPS-008",),
     ),
-    224: (
+    235: (
         "test_missing_env_defaults_application_services_to_production",
         "primary",
         "Compose render",
         ("OPS-001", "OPS-002", "OPS-008"),
     ),
-    225: (
+    236: (
         "test_development_env_and_reserved_password_survive_compose",
         "primary",
         "Compose render",
         ("OPS-002", "OPS-008"),
     ),
-    226: (
+    237: (
         "test_direct_http_redirects_to_https",
         "primary",
         "request/no-DB",
         ("OPS-003",),
     ),
-    227: (
+    238: (
         "test_forwarded_https_is_trusted_without_a_redirect_loop",
         "primary",
         "request/no-DB",
         ("AUTH-002", "OPS-003"),
     ),
-    228: (
+    239: (
         "test_csrf_cookie_is_secure_on_forwarded_https",
         "primary",
         "request/no-DB",
         ("AUTH-003", "OPS-003"),
     ),
-    229: (
+    240: (
         "test_form_id_mismatch_keeps_both_cards_without_fetching",
         "primary",
         "executed DOM/Chromium",
         ("WEB-012", "SAVE-003"),
     ),
-    230: (
+    241: (
         "test_pending_actions_disable_and_suppress_duplicate_and_repeated_submits",
         "primary",
         "executed DOM/Chromium",
         ("WEB-012",),
     ),
-    231: (
+    242: (
         "test_success_removes_only_the_submitted_card_and_selects_the_survivor",
         "primary",
         "executed DOM/Chromium",
         ("WEB-008", "WEB-012"),
     ),
-    232: (
+    243: (
         "test_inline_success_and_error_states_keep_forms_retryable",
         "primary",
         "executed DOM/Chromium",
         ("WEB-012", "WEB-017"),
     ),
-    233: (
+    244: (
         "test_j_and_k_select_and_focus_articles_and_feeds",
         "primary",
         "executed DOM/Chromium",
         ("WEB-013",),
     ),
-    234: (
+    245: (
         "test_s_and_m_submit_the_selected_cards_matching_forms",
         "primary",
         "executed DOM/Chromium",
         ("WEB-013",),
     ),
-    235: (
+    246: (
         "test_o_opens_the_selected_article",
         "primary",
         "executed DOM/Chromium",
         ("WEB-013",),
     ),
-    236: (
+    247: (
         "test_shortcuts_are_suppressed_for_every_editable_element",
         "primary",
         "executed DOM/Chromium",
         ("WEB-013", "WEB-021", "UI-INV-002"),
     ),
-    237: (
+    248: (
         "test_help_opens_and_closes_by_button_and_escape_with_focus_restored",
         "primary",
         "executed DOM/Chromium",
         ("WEB-001", "WEB-014", "WEB-021", "UI-INV-002"),
     ),
-    238: (
+    249: (
         "test_read_and_save_native_forms_submit_without_javascript",
         "primary",
         "real Playwright browser/SQLite",
         ("WEB-008", "WEB-012", "SAVE-003", "UI-INV-001"),
     ),
-    239: (
+    250: (
         "test_form_url_mismatch_keeps_both_cards_without_fetching",
         "primary",
         "executed DOM/Chromium",
         ("WEB-012", "SAVE-003"),
     ),
-    240: (
+    251: (
         "test_response_id_mismatch_keeps_both_cards",
         "primary",
         "executed DOM/Chromium",
         ("WEB-012", "SAVE-003"),
     ),
-    241: (
+    252: (
         "test_response_url_mismatch_keeps_both_cards",
         "primary",
         "executed DOM/Chromium",
@@ -637,17 +634,8 @@ AUDITED_MATRIX = {
         {"tk-complete-browser-view-form-command-and-api-contr-55d622"},
     ),
     "WEB-018": (
-        {
-            "positive": "C",
-            "negative": "C",
-            "authorization": "C",
-            "validation": "C",
-            "mobile": "NA",
-            "theme": "NA",
-            "accessibility": "NA",
-            "configuration": "C",
-        },
-        set(),
+        {"mobile": "NA", "theme": "NA", "accessibility": "NA"},
+        {"tk-validate-all-browser-redirect-targets-99209e"},
     ),
     "WEB-019": (
         {
@@ -705,24 +693,17 @@ AUDITED_MATRIX = {
             "production": "NA",
         },
         {
-            "tk-make-opml-import-export-atomic-validated-and-rou-df59b7",
             "tk-add-real-browser-responsive-theme-keyboard-and-a-147e09",
             "tk-complete-browser-view-form-command-and-api-contr-55d622",
         },
     ),
     "ING-012": (
         {"authorization": "M"},
-        {
-            "tk-make-opml-import-export-atomic-validated-and-rou-df59b7",
-            "tk-complete-browser-view-form-command-and-api-contr-55d622",
-        },
+        {"tk-complete-browser-view-form-command-and-api-contr-55d622"},
     ),
     "ING-013": (
         {"authorization": "M"},
-        {
-            "tk-make-opml-import-export-atomic-validated-and-rou-df59b7",
-            "tk-complete-browser-view-form-command-and-api-contr-55d622",
-        },
+        {"tk-complete-browser-view-form-command-and-api-contr-55d622"},
     ),
     "NEWS-001": (
         {"concurrency": "C", "external-I/O": "C"},
@@ -783,17 +764,8 @@ AUDITED_MATRIX = {
         {"tk-harden-api-operations-security-and-release-verif-5f790a"},
     ),
     "UI-INV-005": (
-        {
-            "positive": "C",
-            "negative": "C",
-            "authorization": "C",
-            "validation": "C",
-            "mobile": "NA",
-            "theme": "NA",
-            "accessibility": "NA",
-            "configuration": "C",
-        },
-        set(),
+        {"mobile": "NA", "theme": "NA", "accessibility": "NA"},
+        {"tk-validate-all-browser-redirect-targets-99209e"},
     ),
     "API-008": (
         {"concurrency": "M", "production": "NA"},
@@ -1123,15 +1095,15 @@ def validate(root: Path) -> str:
     trace_path = root / "docs/features/test-traceability.md"
     trace = trace_path.read_text()
     if trace.count(INTRO_BASELINE) != 1:
-        raise AssertionError("stale rendered 82/44/20/256/9 intro baseline")
+        raise AssertionError("stale rendered 82/44/19/259/6 intro baseline")
     if trace.count(BROAD_GAP_BASELINE) != 1:
         raise AssertionError("stale exact broad gap summary")
     contracts_text = (root / "docs/features/contracts.md").read_text()
     contracts_flat = " ".join(contracts_text.split())
     if CONTRACTS_CURRENT_SUITE not in contracts_flat:
-        raise AssertionError("stale contracts current-suite 20/256/9 prose")
+        raise AssertionError("stale contracts current-suite 19/259/6 prose")
     if contracts_flat.count(CONTRACTS_EXPECTED_FAILURE_SENTENCE) != 1:
-        raise AssertionError("stale contracts repeated 9-expected-failures sentence")
+        raise AssertionError("stale contracts repeated 10-expected-failures sentence")
     if contracts_text.count(CONTRACTS_PROGRESSIVE_EVIDENCE) != 1:
         raise AssertionError("stale contracts progressive/a11y/mobile primary evidence")
     rendered_tasks = set(TASK_PATTERN.findall(trace))

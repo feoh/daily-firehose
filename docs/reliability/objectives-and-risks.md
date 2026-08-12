@@ -243,7 +243,7 @@ is explicitly `insufficient volume`.
 | 19 | `REL-RISK-017` | authorization/security | 4 | 2 | 4 | 32 | medium | low | conditional-unknown |
 | 20 | `REL-RISK-025` | operability/configuration | 3 | 3 | 3 | 27 | medium | high | open-known |
 | 21 | `REL-RISK-014` | correctness/ingestion | 3 | 4 | 2 | 24 | medium | high | open-demonstrated |
-| 22 | `REL-RISK-015` | correctness/data integrity | 3 | 3 | 2 | 18 | medium | high | open-demonstrated |
+| 22 | `REL-RISK-015` | correctness/data integrity | 3 | 3 | 2 | 18 | medium | high | controlled |
 | 23 | `REL-RISK-018` | security | 3 | 3 | 2 | 18 | medium | high | open-demonstrated |
 | 24 | `REL-RISK-022` | security/integration | 4 | 2 | 2 | 16 | low | medium | open-known |
 | 25 | `REL-RISK-021` | transport security | 3 | 2 | 2 | 12 | low | high | accepted-deferred |
@@ -624,20 +624,24 @@ a higher product score.
 
 - **Affected IDs/objectives:** ING-011–ING-013; FEED-INV-004–006;
   `REL-OBJ-005`, `REL-OBJ-011`.
-- **Present status/evidence:** **open-demonstrated**. Malformed XML expected failure,
-  non-atomic valid processing, same-name/different-slug failure and flat lossy export
-  are characterized.
+- **Present status/evidence:** **controlled**. A 1 MiB/1,000-outline/32-level parse
+  plan rejects malformed structure, invalid model fields, DTD/entity declarations,
+  conflicting duplicates and unsafe URL schemes before writes; the write phase is
+  atomic, category/feed races are covered on PostgreSQL, and active subscription
+  title/source/site/category state round-trips deterministically.
 - **Owner boundary:** OPML parser/service/form and Category/Feed persistence.
 - **Triggers:** malformed/large file, later outline conflict, category slug drift,
   export-reimport, or exception after prior writes.
-- **Current → preferred detection:** 500/messages and partial DB inspection → bounded
-  validation summary, atomic rollback tests and round-trip contract.
-- **Mitigation sequence:** size/input validation; parse to validated plan; transaction;
-  name/slug reuse policy; hierarchical round-trip; preserve compatibility fixtures.
+- **Current → preferred detection:** inline invalid-upload feedback plus bounded
+  validation, rollback, duplicate, security, round-trip, request and PostgreSQL race
+  tests.
+- **Mitigation sequence:** implemented size/input validation; parse-to-plan;
+  transaction; name/slug reuse; hierarchical round trip; compatibility fixtures.
 - **Rollback/containment:** stop import, export/current DB audit before repair; restore
   backup only for broad corruption; code rollback safe if schema unchanged.
-- **Residual risk:** third-party OPML dialects remain best-effort and should report
-  skipped entries explicitly.
+- **Residual risk:** strict UTF-8 OPML rejects some permissive third-party dialects;
+  export intentionally covers active Feed title/source/site/category only, not
+  description or inactive-state serialization.
 - **Linked Witan work:** `tk-make-opml-import-export-atomic-validated-and-rou-df59b7`.
 
 ### REL-RISK-016 — Feed destination validation retains SSRF seams

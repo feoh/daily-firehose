@@ -522,7 +522,6 @@ class KnownCrossFeatureContractFailures(StaticFilesTestCase):
         self.article = build_article(feed=self.feed)
         self.client.force_login(self.user)
 
-    @expectedFailure
     def test_opml_export_import_round_trip_preserves_category(self) -> None:
         original = (
             self.feed.title,
@@ -544,7 +543,6 @@ class KnownCrossFeatureContractFailures(StaticFilesTestCase):
             original,
         )
 
-    @expectedFailure
     def test_opml_reuses_same_name_category_with_different_slug(self) -> None:
         category = Category.objects.create(name="Python", slug="editorial-python")
         content = b"""

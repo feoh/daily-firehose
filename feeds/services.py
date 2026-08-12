@@ -11,14 +11,14 @@ from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
 from typing import Any, Literal, cast
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 from xml.etree import ElementTree
 
 import bleach
 import feedparser
 import requests
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
@@ -34,6 +34,10 @@ logger = logging.getLogger(__name__)
 _REFRESH_BACKOFF_BASE = timedelta(minutes=5)
 _REFRESH_BACKOFF_CAP = timedelta(hours=24)
 _SAFE_FEED_TITLE_MAX_LENGTH = 160
+OPML_MAX_BYTES = 1024 * 1024
+OPML_MAX_OUTLINES = 1000
+OPML_MAX_DEPTH = 32
+_OPML_UNSAFE_DECLARATION = re.compile(r"<!\s*(?:DOCTYPE|ENTITY)\b", re.IGNORECASE)
 
 
 class _TextExtractor(HTMLParser):
@@ -53,6 +57,18 @@ class ImportResult:
     created: int = 0
     updated: int = 0
     skipped: int = 0
+
+
+class OPMLImportError(ValueError):
+    """The uploaded OPML document cannot be imported safely."""
+
+
+@dataclass(frozen=True)
+class _OPMLFeed:
+    title: str
+    feed_url: str
+    site_url: str
+    category_name: str
 
 
 @dataclass(frozen=True)
@@ -587,65 +603,178 @@ def discover_feed_metadata(feed_url: str) -> dict[str, str]:
     }
 
 
-def _opml_outlines(
-    element: ElementTree.Element, category_name: str = ""
-) -> list[tuple[ElementTree.Element, str]]:
-    outlines = []
-    for child in element:
-        if not child.tag.lower().endswith("outline"):
-            outlines.extend(_opml_outlines(child, category_name))
-            continue
-        feed_url = child.attrib.get("xmlUrl") or child.attrib.get("xmlurl")
-        if feed_url:
-            outlines.append((child, category_name))
-        else:
-            child_category = (
-                child.attrib.get("title") or child.attrib.get("text") or category_name
+def _xml_local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1].lower()
+
+
+def _opml_attribute(element: ElementTree.Element, name: str) -> str:
+    name = name.lower()
+    return next(
+        (value for key, value in element.attrib.items() if key.lower() == name), ""
+    ).strip()
+
+
+def _validated_opml_feed(outline: ElementTree.Element, category_name: str) -> _OPMLFeed:
+    feed_url = _opml_attribute(outline, "xmlurl")
+    title = (
+        _opml_attribute(outline, "title")
+        or _opml_attribute(outline, "text")
+        or feed_url
+    )
+    site_url = _opml_attribute(outline, "htmlurl")
+    if urlsplit(feed_url).scheme.lower() not in {"http", "https"}:
+        raise OPMLImportError("Feed URLs must use HTTP or HTTPS.")
+    if site_url and urlsplit(site_url).scheme.lower() not in {"http", "https"}:
+        raise OPMLImportError("Site URLs must use HTTP or HTTPS.")
+    candidate = Feed(
+        title=title,
+        feed_url=feed_url,
+        site_url=site_url,
+        category=None,
+        is_active=True,
+    )
+    try:
+        candidate.full_clean(validate_unique=False, validate_constraints=False)
+    except ValidationError as exc:
+        raise OPMLImportError("An outline contains invalid feed fields.") from exc
+    return _OPMLFeed(
+        title=title,
+        feed_url=feed_url,
+        site_url=site_url,
+        category_name=category_name,
+    )
+
+
+def _parse_opml(content: bytes) -> tuple[list[_OPMLFeed], int]:
+    if not content or len(content) > OPML_MAX_BYTES:
+        raise OPMLImportError("The OPML file is empty or exceeds the upload limit.")
+    try:
+        source = content.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise OPMLImportError("The OPML file must use UTF-8 encoding.") from exc
+    if _OPML_UNSAFE_DECLARATION.search(source):
+        raise OPMLImportError("DTD and entity declarations are not allowed.")
+    try:
+        root = ElementTree.fromstring(source)
+    except ElementTree.ParseError as exc:
+        raise OPMLImportError("The OPML XML is malformed.") from exc
+    if _xml_local_name(root.tag) != "opml":
+        raise OPMLImportError("The document root must be an OPML element.")
+    bodies = [child for child in root if _xml_local_name(child.tag) == "body"]
+    if len(bodies) != 1:
+        raise OPMLImportError("The OPML document must contain exactly one body.")
+
+    feeds: list[_OPMLFeed] = []
+    duplicate_count = 0
+    by_url: dict[str, _OPMLFeed] = {}
+    outline_count = 0
+
+    def visit(parent: ElementTree.Element, category_name: str, depth: int) -> None:
+        nonlocal duplicate_count, outline_count
+        if depth > OPML_MAX_DEPTH:
+            raise OPMLImportError("The OPML outline nesting is too deep.")
+        for child in parent:
+            if _xml_local_name(child.tag) != "outline":
+                raise OPMLImportError("The OPML body may contain only outlines.")
+            outline_count += 1
+            if outline_count > OPML_MAX_OUTLINES:
+                raise OPMLImportError("The OPML document contains too many outlines.")
+            feed_url = _opml_attribute(child, "xmlurl")
+            if feed_url:
+                if len(child):
+                    raise OPMLImportError(
+                        "Feed outlines cannot contain child outlines."
+                    )
+                parsed = _validated_opml_feed(child, category_name)
+                existing = by_url.get(parsed.feed_url)
+                if existing is not None:
+                    if existing != parsed:
+                        raise OPMLImportError(
+                            "Duplicate feed URLs must have identical fields."
+                        )
+                    duplicate_count += 1
+                    continue
+                by_url[parsed.feed_url] = parsed
+                feeds.append(parsed)
+                continue
+            child_category = _opml_attribute(child, "title") or _opml_attribute(
+                child, "text"
             )
-            outlines.extend(_opml_outlines(child, child_category))
-    return outlines
+            if not child_category or not len(child):
+                raise OPMLImportError(
+                    "Category outlines need a name and at least one child outline."
+                )
+            category = Category(
+                name=child_category, slug=slugify(child_category) or "category"
+            )
+            try:
+                category.full_clean(validate_unique=False, validate_constraints=False)
+            except ValidationError as exc:
+                raise OPMLImportError(
+                    "An outline contains invalid category fields."
+                ) from exc
+            visit(child, child_category, depth + 1)
+
+    visit(bodies[0], "", 1)
+    return feeds, duplicate_count
 
 
+@transaction.atomic
 def _category_from_name(name: str) -> Category | None:
     if not name:
         return None
-    base_slug = slugify(name) or "category"
-    slug = base_slug
-    suffix = 2
+    if connection.vendor == "postgresql":
+        # There may be no row to lock yet. A transaction-scoped advisory lock gives
+        # every importer of the same category name one stable creation boundary.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", [name]
+            )
+    existing = Category.objects.filter(name=name).first()
+    if existing is not None:
+        return existing
+    base_slug = (slugify(name) or "category")[:140]
+    suffix = 1
     while True:
-        category = Category.objects.filter(slug=slug).first()
-        if category is None:
-            return Category.objects.create(name=name, slug=slug)
-        if category.name == name:
-            return category
-        slug = f"{base_slug}-{suffix}"
-        suffix += 1
+        suffix_text = "" if suffix == 1 else f"-{suffix}"
+        slug = f"{base_slug[: 140 - len(suffix_text)]}{suffix_text}"
+        same_slug = Category.objects.filter(slug=slug).first()
+        if same_slug is not None:
+            if same_slug.name == name:
+                return same_slug
+            suffix += 1
+            continue
+        candidate = Category(name=name, slug=slug)
+        candidate.full_clean(validate_unique=False, validate_constraints=False)
+        try:
+            with transaction.atomic():
+                return Category.objects.create(name=name, slug=slug)
+        except IntegrityError:
+            try:
+                return Category.objects.get(name=name)
+            except Category.DoesNotExist:
+                suffix += 1
 
 
 def import_opml(content: bytes) -> ImportResult:
-    root = ElementTree.fromstring(content)
-    created = updated = skipped = 0
-    for outline, category_name in _opml_outlines(root):
-        feed_url = outline.attrib.get("xmlUrl") or outline.attrib.get("xmlurl")
-        if not feed_url:
-            skipped += 1
-            continue
-        title = outline.attrib.get("title") or outline.attrib.get("text") or feed_url
-        site_url = outline.attrib.get("htmlUrl") or outline.attrib.get("htmlurl") or ""
-        category = _category_from_name(category_name)
-        _, was_created = Feed.objects.update_or_create(
-            feed_url=feed_url,
-            defaults={
-                "title": title,
-                "site_url": site_url,
-                "category": category,
-                "is_active": True,
-            },
-        )
-        if was_created:
-            created += 1
-        else:
-            updated += 1
+    planned_feeds, skipped = _parse_opml(content)
+    created = updated = 0
+    with transaction.atomic():
+        for planned in planned_feeds:
+            category = _category_from_name(planned.category_name)
+            _, was_created = Feed.objects.update_or_create(
+                feed_url=planned.feed_url,
+                defaults={
+                    "title": planned.title,
+                    "site_url": planned.site_url,
+                    "category": category,
+                    "is_active": True,
+                },
+            )
+            if was_created:
+                created += 1
+            else:
+                updated += 1
     return ImportResult(created=created, updated=updated, skipped=skipped)
 
 
@@ -654,7 +783,25 @@ def export_opml() -> str:
     head = ElementTree.SubElement(root, "head")
     ElementTree.SubElement(head, "title").text = "Daily Firehose feeds"
     body = ElementTree.SubElement(root, "body")
-    for feed in Feed.objects.filter(is_active=True).order_by("title", "feed_url"):
+    category_outlines: dict[int, ElementTree.Element] = {}
+    feeds = (
+        Feed.objects.filter(is_active=True)
+        .select_related("category")
+        .order_by("category__name", "category__slug", "title", "feed_url")
+    )
+    for feed in feeds:
+        parent: ElementTree.Element = body
+        if feed.category is not None:
+            category_id = feed.category.pk
+            category_parent = category_outlines.get(category_id)
+            if category_parent is None:
+                category_parent = ElementTree.SubElement(
+                    body,
+                    "outline",
+                    {"text": feed.category.name, "title": feed.category.name},
+                )
+                category_outlines[category_id] = category_parent
+            parent = category_parent
         attrs = {
             "text": feed.title,
             "title": feed.title,
@@ -663,7 +810,7 @@ def export_opml() -> str:
         }
         if feed.site_url:
             attrs["htmlUrl"] = feed.site_url
-        ElementTree.SubElement(body, "outline", attrs)
+        ElementTree.SubElement(parent, "outline", attrs)
     return ElementTree.tostring(root, encoding="unicode", xml_declaration=True)
 
 

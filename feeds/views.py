@@ -30,6 +30,7 @@ from .models import (
 )
 from .services import (
     ArticleSaveNotAllowed,
+    OPMLImportError,
     discover_feed_metadata,
     export_opml,
     import_opml,
@@ -384,12 +385,16 @@ def feed_list(request: HttpRequest) -> HttpResponse:
 def opml_import(request: HttpRequest) -> HttpResponse:
     form = OPMLImportForm(request.POST or None, request.FILES or None)
     if request.method == "POST" and form.is_valid():
-        result = import_opml(form.cleaned_data["opml_file"].read())
-        messages.success(
-            request,
-            f"Imported OPML: {result.created} created, {result.updated} updated, {result.skipped} skipped.",
-        )
-        return redirect("feeds")
+        try:
+            result = import_opml(form.cleaned_data["opml_file"].read())
+        except OPMLImportError:
+            form.add_error("opml_file", "Upload a valid OPML file.")
+        else:
+            messages.success(
+                request,
+                f"Imported OPML: {result.created} created, {result.updated} updated, {result.skipped} skipped.",
+            )
+            return redirect("feeds")
     return render(
         request,
         "feeds/opml_import.html",

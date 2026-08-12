@@ -357,8 +357,7 @@ class KnownCorrectnessFailureTests(StaticFilesTestCase):
         self.assertEqual(existing.guid, "new-guid")
         self.assertEqual(existing.title, "Updated title")
 
-    # Bug: malformed OPML escapes as a server error instead of form feedback.
-    @expectedFailure
+    # Regression: malformed OPML returns inline feedback without writes.
     def test_malformed_opml_returns_form_feedback_without_writes(self) -> None:
         self.client.force_login(self.user)
         self.client.raise_request_exception = False
