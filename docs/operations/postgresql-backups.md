@@ -9,13 +9,18 @@ This repository implements a **direct push** from the canonical application chec
 A bounded production installation on **2026-08-11** at revision `45c97cc` created the
 restricted TrueNAS user, exact data/control datasets, 20 GiB quota, dataset-persistent
 receiver, local maintenance job, pinned SSH host key, root-owned application-host
-credential, and dormant systemd units. One foreground service run produced and
-independently confirmed backup `20260811T200522Z-077caa88`: 15,173,740 bytes, 165
-manifest entries, matching size/SHA-256 metadata, and a receiver receipt. An isolated
-PostgreSQL 17/application restore passed every check in 15.384 seconds and removed its
-exact temporary container, volume, and network. This measures script execution, not
-full incident RTO or application cutover. The timer remains disabled until every
-remaining alert/rekey gate below passes.
+credential, and dormant systemd units. Two valid receipt-backed backups now exist. The
+first foreground service run produced and independently confirmed backup
+`20260811T200522Z-077caa88`: 15,173,740 bytes, 165 manifest entries, and matching
+size/SHA-256 metadata. The administrator recovery-key health/read/restore drill passed
+in **11.345 seconds** with exact temporary container, volume, and network cleanup. A
+fresh application key was then installed, and the post-rekey oneshot produced valid
+backup `20260812T011026Z-4c03472d`. These durations measure script execution, not full
+incident RTO or application cutover. The owner has verified SMTP delivery through
+Fastmail. Remaining gates are monitor installation and transition tests, timer
+activation, continuing production RPO observation, and an independently attested remote
+copy. The repository monitor and exact hourly cron are defined but not installed or
+activated on TrueNAS, and the application backup timer remains disabled.
 
 The application host creates an unencrypted PostgreSQL custom-format, compression-9
 dump with an exact local Docker Compose command, validates it with the exact local
@@ -237,9 +242,11 @@ CONTROL=/mnt/nas_general/homes/backups/daily-firehose-control
 install -d -m 0755 -o root -g root "$CONTROL/scripts"
 install -m 0644 -o root -g root scripts/__init__.py \
   scripts/postgres_backup_common.py scripts/postgres_backup_receiver.py \
-  "$CONTROL/scripts/"
+  scripts/postgres_backup_monitor.py "$CONTROL/scripts/"
 install -m 0755 -o root -g root deploy/truenas/daily-firehose-backup-receiver \
   "$CONTROL/daily-firehose-backup-receiver"
+install -m 0755 -o root -g root deploy/truenas/daily-firehose-backup-monitor \
+  "$CONTROL/daily-firehose-backup-monitor"
 ```
 
 Verify the control dataset has `exec=on`; the data dataset has `exec=off`; every code
@@ -267,7 +274,43 @@ midclt call cronjob.create '{"user":"daily-firehose-backup","command":"/mnt/nas_
 Root may invoke the same exact local command for recovery maintenance. Never add the
 maintenance argument to `authorized_keys` or expose it through another application key.
 
-### 5. Pin host key and stage service credentials
+### 5. Schedule root-only receipt supervision
+
+The dependency-free monitor runs locally as root, accepts only `--check`, opens the
+exact data and root-owned control ZFS dataset mounts, takes receiver-compatible locks,
+and revalidates receipt-backed dump/metadata pairs. It uses the newest valid receiver
+receipt time: under 14 hours is `ok`, 14 hours is a missed scheduled completion, 20
+hours is critical, and 24 hours is containment. No valid receipt is containment.
+
+Notification state is atomically persisted as mode 0600 in the exact control dataset.
+Default TrueNAS administrators are notified through `mail.send` only on severity
+transition, recovery to `ok`, and once per 24 hours while unresolved. `ok`, including
+recovery, exits zero; missed, critical, containment, and no valid receipt exit nonzero
+after successful notification/state update. A delivery failure also exits nonzero and
+does not advance state. Subjects and text are fixed and bounded and contain no dump
+metadata, content, or credentials. The owner verified SMTP delivery
+through Fastmail separately; **the monitor and cron below are not yet installed or
+activated in production**.
+
+After reviewing and installing the launcher, run a foreground check first. A stale or
+missing receipt intentionally exits nonzero after alerting:
+
+```bash
+/mnt/nas_general/homes/backups/daily-firehose-control/daily-firehose-backup-monitor
+```
+
+Then create this exact root cron at minute 37 hourly through **System Settings →
+Advanced → Cron Jobs**, or use the equivalent 25.10.5 payload:
+
+```bash
+midclt call cronjob.create '{"user":"root","command":"/mnt/nas_general/homes/backups/daily-firehose-control/daily-firehose-backup-monitor","description":"Daily Firehose PostgreSQL receiver receipt supervision","schedule":{"minute":"37","hour":"*","dom":"*","month":"*","dow":"*"},"enabled":true,"stdout":true,"stderr":true}'
+```
+
+Do not add paths, thresholds, recipients, or other arguments. On containment, stop
+destructive changes, contain application writes, investigate/revoke suspect keys, and
+recover before normal writes resume.
+
+### 6. Pin host key and stage service credentials
 
 Obtain the SSH host key/fingerprint from a trusted TrueNAS UI or console. Do not trust
 `ssh-keyscan` alone. Install the verified known-host line and dedicated private key on
@@ -390,21 +433,26 @@ reads, and cleans only the exact run-labeled resources recorded in evidence.
 Before timer activation, configure and test all three independent supervision gates:
 
 1. every scheduled service failure produces an actionable alert;
-2. newest verified receiver receipt age reaching **20 hours** produces an age alert; and
-3. receipt age reaching **24 hours** triggers the documented containment action: stop
+2. the exact TrueNAS root monitor cron at minute 37 hourly observes each receipt-age
+   threshold within **less than one hour after** its boundary: missed completion at
+   **14 hours** and critical at **20 hours**; and
+3. it observes the **24-hour** receipt-age boundary within less than one hour and
+   triggers the documented containment action: stop
    destructive changes, contain application writes, investigate/revoke suspect keys,
    and recover before normal writes resume.
 
-Only after those alerts/containment, the manual service backup, exact ZFS mount check,
-independent dataset/off-site inspection, timed restore, quota alert test,
-administrator rekey/health/read/restore drill, fresh application-key installation,
-successful post-rekey oneshot backup, and owner approval may the timer be enabled.
-Production RPO/RTO remain unknown until observed. A successful SSH upload or timer is
-not off-site or restore evidence.
+The exact ZFS mount check, manual backups, quota/SMTP checks, administrator recovery-key
+health/read/restore drill, fresh application-key installation, and successful post-rekey
+oneshot are complete. Only monitor installation and transition tests remain before the
+timer may be activated; independent remote-copy attestation and continuing production
+RPO observation remain after activation. Full incident RTO and
+application cutover remain unmeasured. A successful SSH upload or timer is not off-site
+or restore evidence.
 
 ## Repository validation
 
 ```bash
+uv run python -m unittest tests.postgres_backup_monitor_cases  # 13 tests
 uv run python -m unittest tests.postgres_backup_script_cases
 uv run python -m unittest tests.postgres_backup_capacity_cases
 ./scripts/postgres_backup_capacity.py

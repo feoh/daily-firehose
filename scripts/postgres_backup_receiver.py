@@ -85,7 +85,9 @@ def _device_number(path: Path) -> str:
     return f"{os.major(device)}:{os.minor(device)}"
 
 
-def _require_active_zfs_dataset(data_directory: Path) -> None:
+def _require_active_zfs_dataset(
+    data_directory: Path, expected_source: str = ZFS_DATASET_SOURCE
+) -> None:
     """Reject an ordinary directory, parent mount, or masking overmount."""
     try:
         lines = MOUNTINFO_PATH.read_text(encoding="utf-8").splitlines()
@@ -105,7 +107,7 @@ def _require_active_zfs_dataset(data_directory: Path) -> None:
         if mounted_at != data_directory:
             continue
         matches.append((mount_root, fields[separator + 1], fields[separator + 2]))
-    if matches != [("/", "zfs", ZFS_DATASET_SOURCE)]:
+    if matches != [("/", "zfs", expected_source)]:
         raise OperatorError("backup path must be the exact effective ZFS dataset mount")
 
 

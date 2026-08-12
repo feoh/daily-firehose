@@ -903,6 +903,9 @@ class DeploymentArtifactCases(unittest.TestCase):
         launcher = (
             REPOSITORY_ROOT / "deploy/truenas/daily-firehose-backup-receiver"
         ).read_text()
+        monitor_launcher = (
+            REPOSITORY_ROOT / "deploy/truenas/daily-firehose-backup-monitor"
+        ).read_text()
         exact_launcher = (
             "/mnt/nas_general/homes/backups/daily-firehose-control/"
             "daily-firehose-backup-receiver"
@@ -912,7 +915,10 @@ class DeploymentArtifactCases(unittest.TestCase):
         self.assertIn("/mnt/nas_general/homes/backups/daily-firehose-control", launcher)
         self.assertIn("PYTHON[A-Za-z0-9_]*", launcher)
         self.assertIn('unset "$variable"', launcher)
-        self.assertNotIn("/usr/local", key + launcher)
+        self.assertIn("scripts.postgres_backup_monitor", monitor_launcher)
+        self.assertIn("--check", monitor_launcher)
+        self.assertNotIn("$@", monitor_launcher)
+        self.assertNotIn("/usr/local", key + launcher + monitor_launcher)
 
     def test_runbook_pins_middleware_payloads_quota_local_maintenance_and_credentials(
         self,
@@ -935,10 +941,19 @@ class DeploymentArtifactCases(unittest.TestCase):
         )
         self.assertIn("systemd-run", runbook)
         self.assertIn("LoadCredential=ssh-private-key:", runbook)
-        self.assertIn("rekey/health/read/restore drill", runbook)
+        self.assertIn("recovery-key health/read/restore drill", runbook)
+        self.assertIn("11.345 seconds", runbook)
+        self.assertIn("20260812T011026Z-4c03472d", runbook)
+        self.assertIn("Two valid receipt-backed backups", runbook)
         self.assertIn("scheduled service failure", runbook)
+        self.assertIn('"user":"root"', runbook)
+        self.assertIn('"minute":"37"', runbook)
+        self.assertIn("Fastmail", runbook)
+        self.assertIn("not installed or\nactivated", runbook)
+        self.assertIn("less than one hour after", runbook)
+        self.assertIn("**14 hours**", runbook)
         self.assertIn("**20 hours**", runbook)
-        self.assertIn("**24 hours**", runbook)
+        self.assertIn("**24-hour**", runbook)
         self.assertNotIn("recovery-offline", runbook)
         self.assertNotIn("at most twenty", runbook)
 

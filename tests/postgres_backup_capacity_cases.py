@@ -113,7 +113,7 @@ class CapacityModelCases(unittest.TestCase):
             REPOSITORY_ROOT / "docs/operations/postgresql-backups.md"
         ).read_text()
         self.assertIn("15,173,740 bytes", runbook)
-        self.assertIn("15.384 seconds", runbook)
+        self.assertIn("11.345 seconds", runbook)
         self.assertIn("approximately **14.6 MiB**", runbook)
         self.assertIn("**810.44–868.33 MiB**", runbook)
         self.assertIn("**11.87–12.44 GiB**", runbook)
