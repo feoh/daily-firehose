@@ -4,7 +4,7 @@ import threading
 from collections.abc import Sequence
 from datetime import date
 from typing import Any
-from unittest import expectedFailure, skipUnless
+from unittest import skipUnless
 from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -694,7 +694,8 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
         local = threading.local()
         older_claimed = threading.Event()
         newer_claimed = threading.Event()
-        from ..services import _claim_refresh_attempt
+        newer_completed = threading.Event()
+        from ..services import _claim_refresh_attempt, _record_refresh_failure
 
         def ordered_claim(feed_to_claim: Feed, *, attempted_at):
             if local.mode == "newer" and not older_claimed.wait(_RACE_TIMEOUT):
@@ -714,12 +715,23 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
             code = "timeout" if local.mode == "older" else "connection_error"
             raise FeedFetchError(code=code, message="Feed request failed.")
 
+        def ordered_failure(*args, **kwargs):
+            if local.mode == "older" and not newer_completed.wait(_RACE_TIMEOUT):
+                raise AssertionError("newer failure did not persist terminal state")
+            owns_terminal_state = _record_refresh_failure(*args, **kwargs)
+            if local.mode == "newer":
+                newer_completed.set()
+            return owns_terminal_state
+
         def refresh(mode: str):
             local.mode = mode
             return refresh_feed(Feed.objects.get(pk=feed.pk))
 
         with (
             patch("feeds.services._claim_refresh_attempt", side_effect=ordered_claim),
+            patch(
+                "feeds.services._record_refresh_failure", side_effect=ordered_failure
+            ),
             patch("feeds.services.fetch_feed_document", side_effect=fetch_document),
         ):
             outcomes = run_concurrently(

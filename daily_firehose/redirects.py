@@ -49,11 +49,7 @@ def safe_redirect_target(
     backslashes, and control characters.
     """
 
-    if (
-        not target
-        or target != target.strip()
-        or _has_invalid_original_syntax(target)
-    ):
+    if not target or target != target.strip() or _has_invalid_original_syntax(target):
         return fallback
     allowed_hosts = {request.get_host()}
     for variant in _decoded_url_variants(target):
@@ -82,11 +78,7 @@ def safe_redirect_target(
 def safe_article_navigation_url(target: str | None, *, fallback: str) -> str:
     """Validate the intentional outbound destination of a signed save-and-go link."""
 
-    if (
-        not target
-        or target != target.strip()
-        or _has_invalid_original_syntax(target)
-    ):
+    if not target or target != target.strip() or _has_invalid_original_syntax(target):
         return fallback
     try:
         _ABSOLUTE_HTTP_URL(target)

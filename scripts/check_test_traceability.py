@@ -7,9 +7,9 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-EXPECTED_MODULES = 19
-EXPECTED_TESTS = 253
-EXPECTED_XFAILS = 7
+EXPECTED_MODULES = 20
+EXPECTED_TESTS = 276
+EXPECTED_XFAILS = 2
 DIMENSIONS = (
     "positive",
     "negative",
@@ -74,6 +74,7 @@ MECHANISMS = {
     "migration introspection/PostgreSQL 17",
     "model/PostgreSQL transaction.atomic",
     "model/PostgreSQL separate connections/barrier",
+    "request/PostgreSQL separate connections",
     "service/PostgreSQL separate connections/barrier",
     "service/PostgreSQL separate connections/events",
     "service/PostgreSQL separate connections/row lock",
@@ -122,12 +123,12 @@ REQUIRED_HEADINGS = {
 }
 INTRO_BASELINE = (
     "Current AST baseline: **82 feature IDs**, **44 invariant IDs**, "
-    "**19 app test modules**, **253 app test methods**, and "
-    "**7 `expectedFailure` methods**."
+    "**20 app test modules**, **276 app test methods**, and "
+    "**2 `expectedFailure` methods**."
 )
 BROAD_GAP_BASELINE = (
-    "Exact broad gaps: 7 expected failures; 17 PostgreSQL 17 integration tests "
-    "(1 focused XF) execute real PostgreSQL race and transaction-boundary evidence; "
+    "Exact broad gaps: 2 expected failures; 18 PostgreSQL 17 integration tests "
+    "(0 focused XFs) execute real PostgreSQL race and transaction-boundary evidence; "
     "zero automated canonical launched-Compose tests; one real receipt-backed "
     "production backup and isolated restore but no scheduled/alerted RPO or incident "
     "cutover drill and no independent off-site confirmation; zero automated "
@@ -138,15 +139,15 @@ BROAD_GAP_BASELINE = (
     "contrast, screen-reader and other manual AT tests remain."
 )
 CONTRACTS_EXPECTED_FAILURE_SENTENCE = (
-    "The current suite contains **7 expected failures**:"
+    "The current suite contains **2 expected failures**."
 )
 CONTRACTS_CURRENT_SUITE = (
-    "This post-snapshot companion maps the **current suite: 19 test modules, "
-    "253 test methods, and 7 expected failures**."
+    "This post-snapshot companion maps the **current suite: 20 test modules, "
+    "276 test methods, and 2 expected failures**."
 )
 CONTRACTS_PROGRESSIVE_EVIDENCE = (
     "| Progressive/a11y/mobile | UI-INV-001–005 | `test_article_actions.py`, "
-    "`test_article_actions_browser.py`, `test_digest_views.py`, "
+    "`test_article_actions_browser.py`, `test_browser_redirects.py`, `test_digest_views.py`, "
     "`test_mobile_today_browser.py`, `test_responsive_accessibility_browser.py`, "
     "`test_known_correctness_failures.py`, `test_behavioral_contracts.py` |"
 )
@@ -162,7 +163,7 @@ PINNED_TEXT = {
         "**8/8** snapshot expected failures mapped",
     ),
     "docs/features/contracts.md": (
-        "**current suite: 19 test modules, 253 test",
+        "**current suite: 20 test modules, 276 test",
         "15/191/8 snapshot counts",
     ),
 }
@@ -643,8 +644,17 @@ AUDITED_MATRIX = {
         {"tk-complete-browser-view-form-command-and-api-contr-55d622"},
     ),
     "WEB-018": (
-        {"mobile": "NA", "theme": "NA", "accessibility": "NA"},
-        {"tk-validate-all-browser-redirect-targets-99209e"},
+        {
+            "positive": "C",
+            "negative": "C",
+            "authorization": "C",
+            "validation": "C",
+            "mobile": "NA",
+            "theme": "NA",
+            "accessibility": "NA",
+            "configuration": "C",
+        },
+        set(),
     ),
     "WEB-019": (
         {
@@ -702,24 +712,17 @@ AUDITED_MATRIX = {
             "production": "NA",
         },
         {
-            "tk-make-opml-import-export-atomic-validated-and-rou-df59b7",
             "tk-add-real-browser-responsive-theme-keyboard-and-a-147e09",
             "tk-complete-browser-view-form-command-and-api-contr-55d622",
         },
     ),
     "ING-012": (
         {"authorization": "M"},
-        {
-            "tk-make-opml-import-export-atomic-validated-and-rou-df59b7",
-            "tk-complete-browser-view-form-command-and-api-contr-55d622",
-        },
+        {"tk-complete-browser-view-form-command-and-api-contr-55d622"},
     ),
     "ING-013": (
         {"authorization": "M"},
-        {
-            "tk-make-opml-import-export-atomic-validated-and-rou-df59b7",
-            "tk-complete-browser-view-form-command-and-api-contr-55d622",
-        },
+        {"tk-complete-browser-view-form-command-and-api-contr-55d622"},
     ),
     "NEWS-001": (
         {"concurrency": "C", "external-I/O": "C"},
@@ -780,8 +783,17 @@ AUDITED_MATRIX = {
         {"tk-harden-api-operations-security-and-release-verif-5f790a"},
     ),
     "UI-INV-005": (
-        {"mobile": "NA", "theme": "NA", "accessibility": "NA"},
-        {"tk-validate-all-browser-redirect-targets-99209e"},
+        {
+            "positive": "C",
+            "negative": "C",
+            "authorization": "C",
+            "validation": "C",
+            "mobile": "NA",
+            "theme": "NA",
+            "accessibility": "NA",
+            "configuration": "C",
+        },
+        set(),
     ),
     "API-008": (
         {"concurrency": "M", "production": "NA"},
@@ -1111,15 +1123,15 @@ def validate(root: Path) -> str:
     trace_path = root / "docs/features/test-traceability.md"
     trace = trace_path.read_text()
     if trace.count(INTRO_BASELINE) != 1:
-        raise AssertionError("stale rendered 82/44/19/253/7 intro baseline")
+        raise AssertionError("stale rendered 82/44/20/276/2 intro baseline")
     if trace.count(BROAD_GAP_BASELINE) != 1:
         raise AssertionError("stale exact broad gap summary")
     contracts_text = (root / "docs/features/contracts.md").read_text()
     contracts_flat = " ".join(contracts_text.split())
     if CONTRACTS_CURRENT_SUITE not in contracts_flat:
-        raise AssertionError("stale contracts current-suite 19/253/7 prose")
+        raise AssertionError("stale contracts current-suite 20/276/2 prose")
     if contracts_flat.count(CONTRACTS_EXPECTED_FAILURE_SENTENCE) != 1:
-        raise AssertionError("stale contracts repeated 10-expected-failures sentence")
+        raise AssertionError("stale contracts repeated 2-expected-failures sentence")
     if contracts_text.count(CONTRACTS_PROGRESSIVE_EVIDENCE) != 1:
         raise AssertionError("stale contracts progressive/a11y/mobile primary evidence")
     rendered_tasks = set(TASK_PATTERN.findall(trace))

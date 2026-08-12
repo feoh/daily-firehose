@@ -258,7 +258,9 @@ class BrowserRedirectLiveTests(StaticLiveServerTestCase):
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True)
             page = browser.new_page(java_script_enabled=False)
-            same_host_http = f"//{self.live_server_url.removeprefix('http://')}{reverse('week')}"
+            same_host_http = (
+                f"//{self.live_server_url.removeprefix('http://')}{reverse('week')}"
+            )
             page.goto(f"{self.live_server_url}{reverse('login')}?next={same_host_http}")
             page.get_by_label("Username").fill(self.user.username)
             page.get_by_label("Password").fill(self.password)

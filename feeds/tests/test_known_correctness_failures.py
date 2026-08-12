@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hmac
 from datetime import timedelta
-from unittest import expectedFailure
 from unittest.mock import patch
 
 from django.core.exceptions import ValidationError

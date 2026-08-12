@@ -19,7 +19,6 @@ import feedparser
 import requests
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, connection, transaction
-
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify

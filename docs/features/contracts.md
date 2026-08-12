@@ -354,13 +354,17 @@ a claim that every normative rule is presently satisfied.
 - **Normative current contract:** import updates one Feed selected by exact `feed_url`,
   refreshes title/site/category, and sets `is_active=true`; repeated import does not
   duplicate the Feed.
-- **Scope / precedence:** imported values replace stored values, including category;
-  this precedence is why flat export is destructive under FEED-INV-005.
-- **Executable evidence:** sequential update/reactivation remains covered by the
-  existing OPML tests; a PostgreSQL separate-connection/barrier test proves two
-  concurrent `Feed.update_or_create` calls return one create and one update.
-- **Known violation status:** **Conformant**, including concurrent Feed URL upsert;
-  category reuse and complete import atomicity remain separate known violations.
+- **Scope / precedence:** imported values replace stored values, including category.
+  Within one document, an identical repeated URL is counted as skipped; a conflicting
+  repeated URL rejects the whole import. The complete document is parsed and validated
+  before an atomic write transaction, so any later invalid entry or write failure
+  preserves all existing rows.
+- **Executable evidence:** sequential update/reactivation and duplicate policy are
+  covered by `test_opml.py`; rollback faults cover the transaction boundary; a
+  PostgreSQL separate-connection/barrier test proves two concurrent Feed upserts
+  return one create and one update.
+- **Known violation status:** **Conformant**, including atomic import and concurrent
+  Feed URL upsert.
 - **Source / feature IDs:** `feeds/services.py`; ING-011.
 
 ### FEED-INV-005 — OPML category round trip preserves classification
@@ -369,10 +373,12 @@ a claim that every normative rule is presently satisfied.
   Feed title, source URL, site URL, and Category classification.
 - **Scope / precedence:** applies to the repository's own export imported without
   external modification.
-- **Executable evidence:** expected failure
-  `test_behavioral_contracts.py::test_opml_export_import_round_trip_preserves_category`.
-- **Known violation status:** **Known violation** — export is flat and re-import clears
-  existing categories.
+- **Executable evidence:**
+  `test_behavioral_contracts.py::test_opml_export_import_round_trip_preserves_category`
+  and `test_opml.py::OPMLExportTests` prove deterministic, escaped export and round trip.
+- **Known violation status:** **Conformant** for active Feed title, source URL, site URL,
+  and category. Description and inactive-state serialization remain explicitly outside
+  this contract.
 - **Source / feature IDs:** `feeds/services.py`; ING-011, ING-013.
 
 ### FEED-INV-006 — OPML category reuse respects unique name and slug
@@ -382,11 +388,10 @@ a claim that every normative rule is presently satisfied.
   duplicate-name error.
 - **Scope / precedence:** Category's unique name and unique slug both constrain import;
   existing exact name is the reusable identity for this case.
-- **Executable evidence:** the sequential expected failure remains. A PostgreSQL
-  barrier after two real slug misses proves concurrent exact-name/category upsert also
-  gives one caller a real uniqueness error.
-- **Known violation status:** **Known violation** — lookup begins by generated slug,
-  and neither sequential alternate-slug reuse nor concurrent exact-name reuse is safe.
+- **Executable evidence:** the sequential alternate-slug test and PostgreSQL barrier
+  after two real name/slug misses both pass and return one Category.
+- **Known violation status:** **Conformant** — lookup is name-first and creation retries
+  safely after uniqueness races.
 - **Source / feature IDs:** `feeds/services.py`, `feeds/models.py`; ING-002, ING-011.
 
 ## API authentication, input, schema, and capability invariants
@@ -581,21 +586,29 @@ a claim that every normative rule is presently satisfied.
 - **Source / feature IDs:** `feeds/views.py`, `feeds/api.py`; WEB-002–WEB-006,
   WEB-016, ING-013, API-001, API-003, API-006–API-007.
 
-### UI-INV-005 — Browser mutation redirects remain same-origin
+### UI-INV-005 — Browser redirect inputs are validated for their trust boundary
 
-- **Normative current contract:** posted `next` destinations on refresh, individual
-  mark, save, period mark, and Feed mark handlers must be validated as same-origin or
-  replaced by a safe local fallback before redirecting.
-- **Scope / precedence:** applies to all five session mutation handlers; successful
-  state mutation does not authorize navigation to an attacker-controlled origin.
-- **Executable evidence:** unchanged expected failure
+- **Normative current contract:** login/logout and all five session mutation handlers
+  accept only unambiguous same-origin `next` destinations or replace them with their
+  documented local fallback. External/scheme-relative hosts, credentials, backslashes,
+  controls, malformed escapes, and recursively encoded bypasses are rejected. The
+  signed save-and-go route separately permits its intentional stored Article URL only
+  when it is a credential-free absolute HTTP(S) destination; unsafe stored values fall
+  back to Today.
+- **Scope / precedence:** request host and trusted proxy scheme define same-origin.
+  Successful authentication, logout, or mutation never authorizes caller-controlled
+  outbound navigation. API-018's validated Article URL is domain data, not a caller
+  return target; JSON API response contracts are outside this redirect policy.
+- **Executable evidence:** `test_browser_redirects.py` covers login, logout, all five
+  mutation handlers, relative success, bypass matrices, signed outbound navigation,
+  proxy host/scheme context, and live Chromium auth/session behavior. The former
+  expected failure
   `test_known_correctness_failures.py::test_mark_article_rejects_external_next_redirect`
-  characterizes one handler; the same direct `request.POST.get("next")` pattern is
-  source-evidenced in the other four handlers.
-- **Known violation status:** **Known violation** — all five handlers directly redirect
-  untrusted `next` values.
-- **Source / feature IDs:** `feeds/views.py`; WEB-018, WEB-008–WEB-010, SAVE-003,
-  ING-008.
+  now passes through the shared resolver.
+- **Known violation status:** **Conformant** for inventoried first-party redirect inputs.
+- **Source / feature IDs:** `daily_firehose/redirects.py`,
+  `daily_firehose/auth_views.py`, `feeds/views.py`, `feeds/api.py`; AUTH-001–AUTH-002,
+  WEB-018, WEB-008–WEB-010, SAVE-003, ING-008, API-018.
 
 ## Observability and recovery invariants
 
@@ -693,8 +706,8 @@ a claim that every normative rule is presently satisfied.
 
 ## Traceability matrix
 
-This post-snapshot companion maps the **current suite: 19 test modules, 253 test
-methods, and 7 expected failures**. The pinned catalog retains its independent
+This post-snapshot companion maps the **current suite: 20 test modules, 276 test
+methods, and 2 expected failures**. The pinned catalog retains its independent
 15/191/8 snapshot counts. Exact `module::class::method` identities, evidence levels,
 and dimension-specific gaps are maintained in the [detailed matrix](test-traceability.md).
 
@@ -706,22 +719,24 @@ and dimension-specific gaps are maintained in the [detailed matrix](test-traceab
 | Newsletter | NEWS-INV-001–005 | `test_newsletters.py`, `test_newsletter_save_policy.py`, `test_api_validation.py`, `test_known_correctness_failures.py`, `test_behavioral_contracts.py`, `test_postgresql_integration.py` | NEWS-001–005, API-004, API-017 |
 | Feed/OPML | FEED-INV-001–006 | `test_feed_refresh.py`, `test_opml.py`, `test_behavioral_contracts.py`, `test_postgresql_integration.py` | ING-002, ING-005, ING-007–013, API-012, API-016 |
 | API auth/input/schema/capability | API-AUTH-INV-001–002, API-INPUT-INV-001, API-SCHEMA-INV-001–002, API-CAP-INV-001–002, API-COMPAT-INV-001–002 | `test_api.py`, `test_api_validation.py`, `test_newsletter_save_policy.py`, `test_behavioral_contracts.py` | AUTH-003, API-001–019 |
-| Progressive/a11y/mobile | UI-INV-001–005 | `test_article_actions.py`, `test_article_actions_browser.py`, `test_digest_views.py`, `test_mobile_today_browser.py`, `test_responsive_accessibility_browser.py`, `test_known_correctness_failures.py`, `test_behavioral_contracts.py` | WEB-001–002, WEB-007–010, WEB-012–014, WEB-018, WEB-020–021, ING-008, SAVE-003, API-001 |
+| Progressive/a11y/mobile | UI-INV-001–005 | `test_article_actions.py`, `test_article_actions_browser.py`, `test_browser_redirects.py`, `test_digest_views.py`, `test_mobile_today_browser.py`, `test_responsive_accessibility_browser.py`, `test_known_correctness_failures.py`, `test_behavioral_contracts.py` | WEB-001–002, WEB-007–010, WEB-012–014, WEB-018, WEB-020–021, ING-008, SAVE-003, API-001 |
 | Observability/recovery | OPS-INV-001–005 | `test_feed_refresh.py`, `test_api.py`, `test_production_settings.py`, `test_postgresql_integration.py`; documented manual evidence where automation is absent | ING-007–010, API-016, OPS-002, OPS-008–014 |
 
 ## Expected-failure ledger
 
-The current suite contains **7 expected failures**: after Article identity and stale
-refresh completion fencing began passing as ordinary PostgreSQL tests, the PostgreSQL
-integration module retains one focused characterization for concurrent Category upsert
-(FEED-INV-006).
+The current suite contains **2 expected failures**. Both remaining markers are focused
+cross-feature characterizations in `test_behavioral_contracts.py`:
 
-The four cross-feature expected failures and two remaining original catalog
-characterizations remain in the ledger with their exact identities.
+1. Authenticated GET responses outside Today still lack consistent `private, no-store`
+   policy — UI-INV-004.
+2. Negative numeric path IDs still resolve before the intended authentication and JSON
+   validation envelopes — API-SCHEMA-INV-002.
 
-A green run means acknowledged failures were observed; it does not mean these
-invariants conform. Unexpected success is a suite failure and requires removing the
-marker only after the fixed contract and documentation are reviewed.
+Redirect, OPML, Article identity, and refresh-generation fencing characterizations now
+pass as ordinary regressions. A green run means the two acknowledged failures were
+observed; it does not mean those invariants conform. Unexpected success is a suite
+failure and requires removing the marker only after the fixed contract and
+documentation are reviewed.
 
 ## Maintenance protocol
 
@@ -765,7 +780,7 @@ required = ("Normative current contract", "Scope / precedence", "Executable evid
 assert all(all(label in block for label in required) for block in blocks)
 statuses = Counter("Known violation" if "**Known violation**" in block else "Conformant"
                    for block in blocks)
-assert statuses == Counter({"Conformant": 29, "Known violation": 15})
+assert statuses == Counter({"Conformant": 38, "Known violation": 6})
 test_paths = list(Path("feeds/tests").glob("test_*.py"))
 methods = expected = 0
 for path in test_paths:
@@ -777,7 +792,7 @@ for path in test_paths:
                     if isinstance(node, ast.FunctionDef)
                     and any(isinstance(d, ast.Name) and d.id == "expectedFailure"
                             for d in node.decorator_list))
-assert (len(test_paths), methods, expected) == (18, 241, 10)
+assert (len(test_paths), methods, expected) == (20, 276, 2)
 print(len(ids), statuses, len(test_paths), methods, expected)
 PY
 ```

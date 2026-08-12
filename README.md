@@ -321,8 +321,8 @@ semantic request body; legacy zero-field multipart bodies remain accepted.
 - `GET` or `PATCH /api/v1/preferences/` — inspect or update `theme`, boolean
   `compact`, and boolean `focus_mode`. Theme values are the values exposed by the
   preferences UI (for example `system`, `light`, `dark`, or `dracula`).
-- `POST /api/v1/refresh/` — refresh feeds and return succeeded, failed, and
-  backoff-skipped outcomes.
+- `POST /api/v1/refresh/` — refresh feeds and return succeeded, failed,
+  backoff-skipped, and superseded outcomes.
 
 `feed_url` and nonblank `site_url` values must be credential-free HTTP(S) URLs.
 Django model length, slug, choice, and URL validation runs before writes. A create request for
