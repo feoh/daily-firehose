@@ -289,9 +289,9 @@ transition, recovery to `ok`, and once per 24 hours while unresolved. `ok`, incl
 recovery, exits zero; missed, critical, containment, and no valid receipt exit nonzero
 after successful notification/state update. A delivery failure also exits nonzero and
 does not advance state. Subjects and text are fixed and bounded and contain no dump
-metadata, content, or credentials. The owner verified SMTP delivery
-through Fastmail separately; **the monitor and cron below are not yet installed or
-activated in production**.
+metadata, content, or credentials. The owner verified Fastmail SMTP delivery and all
+four production transitions; the monitor and exact root cron below are installed and
+active in production.
 
 After reviewing and installing the launcher, run a foreground check first. A stale or
 missing receipt intentionally exits nonzero after alerting:

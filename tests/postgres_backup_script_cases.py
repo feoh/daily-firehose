@@ -949,7 +949,7 @@ class DeploymentArtifactCases(unittest.TestCase):
         self.assertIn('"user":"root"', runbook)
         self.assertIn('"minute":"37"', runbook)
         self.assertIn("Fastmail", runbook)
-        self.assertIn("not installed or\nactivated", runbook)
+        self.assertIn("installed and\nactive in production", runbook)
         self.assertIn("less than one hour after", runbook)
         self.assertIn("**14 hours**", runbook)
         self.assertIn("**20 hours**", runbook)
