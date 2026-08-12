@@ -441,33 +441,31 @@ a higher product score.
   `tk-add-required-postgresql-integration-and-concurre-0719fc` is complete; the defect
   remains in `tk-reconcile-article-identity-and-concurrent-refres-7a1b44`.
 
-### REL-RISK-007 — Postmark creation is not atomic or race-idempotent
+### REL-RISK-007 — Postmark creation atomicity and race idempotency
 
 - **Affected IDs/objectives:** NEWS-001–NEWS-002, API-017; NEWS-INV-001–002;
   `REL-OBJ-008`.
-- **Present status/evidence:** **open-demonstrated**. Expected-failure evidence leaves
-  Feed and Article writes behind when Issue creation fails. A PostgreSQL barrier forces
-  both concurrent MessageID lookups to miss and the focused expected failure proves one
-  caller receives a real integrity error. These characterize, rather than fix, both
-  defects.
+- **Present status/evidence:** **mitigated-tested**. Newsletter Feed, Article, and Issue
+  creation share one transaction. SQLite and PostgreSQL fault tests prove rollback,
+  while a real PostgreSQL barrier forces both MessageID lookups to miss and proves both
+  callers return the same committed Issue without errors.
 - **Owner boundary:** newsletter domain transaction and PostgreSQL uniqueness; provider
   owns delivery/retry timing.
 - **Triggers:** DB/model failure between writes, duplicate/concurrent delivery,
   process crash, synthetic Feed race, or retry after orphaning.
-- **Current → preferred detection:** PostgreSQL transaction/race expected failures →
-  orphan detector, atomic outcome/replay counters, provider correlation and passing
-  concurrency test.
-- **Mitigation sequence:** detect/audit orphans; one atomic idempotent use case; race
-  handling against DB uniqueness; repair command only after backup gate.
-- **Rollback/containment:** **present:** return a safe retryable error; if corruption
-  continues, unset/rotate the configured inbound secret and restart web so requests are
-  rejected; preserve payload outside logs. Future repair rollout retains its audit and
-  schema-compatible rows on code rollback.
-- **Residual risk:** provider may retry outside retention and base URL remains a separate
-  configuration concern.
+- **Current → preferred detection:** passing PostgreSQL transaction/race regressions →
+  orphan detector, atomic outcome/replay counters, and provider correlation.
+- **Mitigation sequence:** retain the atomic command and database uniqueness arbiter;
+  add audit/detection and a repair command only if historical orphans are discovered.
+- **Rollback/containment:** **present:** return a safe retryable error for unrelated
+  integrity failures; if corruption is observed, unset/rotate the configured inbound
+  secret and restart web so requests are rejected; preserve payload outside logs.
+- **Residual risk:** provider may retry outside retention, historical orphan detection
+  is not automated, and base URL remains a separate configuration concern.
 - **Linked Witan work:** PostgreSQL characterization task
-  `tk-add-required-postgresql-integration-and-concurre-0719fc` is complete; the defect
-  remains in `tk-make-postmark-newsletter-ingestion-atomic-and-ra-e3d06e`.
+  `tk-add-required-postgresql-integration-and-concurre-0719fc` and atomicity task
+  `tk-make-postmark-newsletter-ingestion-atomic-and-ra-e3d06e` provide the executable
+  evidence; provider hardening remains separate.
 
 ### REL-RISK-008 — Signed GET capabilities are replayable and non-expiring
 

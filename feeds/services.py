@@ -460,8 +460,6 @@ def import_postmark_newsletter(
     if not message_id:
         raise ValueError("Postmark payload is missing MessageID.")
 
-    subject = str(payload.get("Subject") or "Untitled newsletter")
-    received_at = _aware_datetime(payload.get("Date"))
     existing = (
         NewsletterIssue.objects.select_related("article")
         .filter(message_id=message_id)
@@ -470,30 +468,46 @@ def import_postmark_newsletter(
     if existing is not None:
         return NewsletterImportResult(issue=existing, created=False)
 
-    public_id = uuid.uuid4()
-    archive_url = newsletter_archive_url(base_url=base_url, public_id=public_id)
-    feed = newsletter_feed()
-    article = Article.objects.create(
-        feed=feed,
-        title=subject,
-        url=archive_url,
-        guid=message_id,
-        author=_postmark_address(payload, "From"),
-        summary=str(payload.get("TextBody") or payload.get("HtmlBody") or ""),
-        published_at=received_at,
-    )
-    issue = NewsletterIssue.objects.create(
-        article=article,
-        public_id=public_id,
-        message_id=message_id,
-        from_email=_postmark_address(payload, "From"),
-        from_name=_postmark_name(payload, "From"),
-        to_email=_postmark_address(payload, "To"),
-        subject=subject,
-        html_body=str(payload.get("HtmlBody") or ""),
-        text_body=str(payload.get("TextBody") or ""),
-        received_at=received_at,
-    )
+    try:
+        with transaction.atomic():
+            subject = str(payload.get("Subject") or "Untitled newsletter")
+            received_at = _aware_datetime(payload.get("Date"))
+            public_id = uuid.uuid4()
+            archive_url = newsletter_archive_url(base_url=base_url, public_id=public_id)
+            feed = newsletter_feed()
+            article = Article.objects.create(
+                feed=feed,
+                title=subject,
+                url=archive_url,
+                guid=message_id,
+                author=_postmark_address(payload, "From"),
+                summary=str(payload.get("TextBody") or payload.get("HtmlBody") or ""),
+                published_at=received_at,
+            )
+            issue = NewsletterIssue.objects.create(
+                article=article,
+                public_id=public_id,
+                message_id=message_id,
+                from_email=_postmark_address(payload, "From"),
+                from_name=_postmark_name(payload, "From"),
+                to_email=_postmark_address(payload, "To"),
+                subject=subject,
+                html_body=str(payload.get("HtmlBody") or ""),
+                text_body=str(payload.get("TextBody") or ""),
+                received_at=received_at,
+            )
+    except IntegrityError as integrity_error:
+        # The failed transaction must be exited before reading the concurrent
+        # winner. If there is no committed issue for this MessageID, the error
+        # was unrelated to replay and must retain its normal API/error contract.
+        try:
+            winner = NewsletterIssue.objects.select_related("article").get(
+                message_id=message_id
+            )
+        except NewsletterIssue.DoesNotExist:
+            raise integrity_error
+        return NewsletterImportResult(issue=winner, created=False)
+
     return NewsletterImportResult(issue=issue, created=True)
 
 

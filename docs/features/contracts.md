@@ -240,10 +240,9 @@ a claim that every normative rule is presently satisfied.
 - **Scope / precedence:** Postmark adapter status mirrors the domain result; database
   uniqueness is the final identity boundary.
 - **Executable evidence:** `test_newsletters.py` proves sequential replay. The
-  PostgreSQL barrier waits until both real MessageID lookups miss, then proves one
-  concurrent service caller receives an `IntegrityError`; no error is injected.
-- **Known violation status:** **Known violation** — sequential replay conforms, but
-  concurrent replay is not race-idempotent.
+  PostgreSQL barrier waits until both real MessageID lookups miss, then proves both
+  concurrent service callers return the same committed issue without errors.
+- **Known violation status:** **Conformant**, including concurrent replay.
 - **Source / feature IDs:** `feeds/services.py`, `feeds/api.py`, `feeds/models.py`;
   NEWS-001, API-017.
 
@@ -253,11 +252,10 @@ a claim that every normative rule is presently satisfied.
   NewsletterIssue should commit as one idempotent unit, with no orphan on failure.
 - **Scope / precedence:** applies to domain service and webhook retries, including
   failures after Article insertion.
-- **Executable evidence:** the SQLite characterization remains, and a PostgreSQL
-  fault placed after Article creation requires both the synthetic Feed and Article to
-  roll back. This fault test is transaction-boundary evidence, not concurrency.
-- **Known violation status:** **Known violation** — Feed and Article both leak because
-  writes are not in one transaction; concurrent replay is separately characterized.
+- **Executable evidence:** the ordinary SQLite regression and a PostgreSQL fault
+  placed after Article creation require the Article and any newly-created synthetic
+  Feed to roll back. This fault test is transaction-boundary evidence, not concurrency.
+- **Known violation status:** **Conformant** at the covered transaction boundary.
 - **Source / feature IDs:** `feeds/services.py`; NEWS-002, API-017.
 
 ### NEWS-INV-003 — Synthetic Feed activity is creation-sensitive
@@ -679,7 +677,7 @@ a claim that every normative rule is presently satisfied.
 ## Traceability matrix
 
 This post-snapshot companion maps the **current suite: 18 test modules, 241 test
-methods, and 20 expected failures**. The pinned catalog retains its independent
+methods, and 17 expected failures**. The pinned catalog retains its independent
 15/191/8 snapshot counts. Exact `module::class::method` identities, evidence levels,
 and dimension-specific gaps are maintained in the [detailed matrix](test-traceability.md).
 
@@ -696,21 +694,19 @@ and dimension-specific gaps are maintained in the [detailed matrix](test-traceab
 
 ## Expected-failure ledger
 
-The current suite contains **20 expected failures**: the prior 12 remain, and the
-PostgreSQL integration module adds eight fixed-path characterizations for confirmed
+The current suite contains **17 expected failures**: the prior 11 remain, and the
+PostgreSQL integration module retains six fixed-path characterizations for confirmed
 current defects:
 
 1. Bulk marker database shapes — READ-INV-006.
 2. Duplicate period-marker PostgreSQL race — READ-INV-006.
 3. Duplicate Feed-marker PostgreSQL race — READ-INV-006.
-4. Concurrent Postmark MessageID replay — NEWS-INV-001.
-5. Complete Postmark rollback boundary — NEWS-INV-002.
-6. Concurrent stable-URL/new-GUID refresh — DATA-INV-001.
-7. Stale refresh completion fencing — FEED-INV-001 and OPS-INV-001.
-8. Concurrent category upsert — FEED-INV-006.
+4. Concurrent stable-URL/new-GUID refresh — DATA-INV-001.
+5. Stale refresh completion fencing — FEED-INV-001 and OPS-INV-001.
+6. Concurrent category upsert — FEED-INV-006.
 
-The four cross-feature expected failures and eight original catalog characterizations
-remain in the ledger with their exact identities.
+The four cross-feature expected failures and seven remaining original catalog
+characterizations remain in the ledger with their exact identities.
 
 A green run means acknowledged failures were observed; it does not mean these
 invariants conform. Unexpected success is a suite failure and requires removing the

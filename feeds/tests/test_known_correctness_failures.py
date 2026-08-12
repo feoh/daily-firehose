@@ -19,7 +19,7 @@ from ..models import (
     SavedArticle,
     UserPreference,
 )
-from ..services import import_postmark_newsletter, refresh_feed
+from ..services import NEWSLETTER_FEED_URL, import_postmark_newsletter, refresh_feed
 from .support.base import StaticFilesTestCase, model_id
 from .support.builders import (
     build_api_token,
@@ -409,9 +409,9 @@ class KnownCorrectnessFailureTests(StaticFilesTestCase):
         else:
             self.assertIn(response.status_code, {400, 403})
 
-    # Bug: article creation is committed before NewsletterIssue creation fails.
-    @expectedFailure
+    # Regression: an issue write failure rolls back the newsletter Article.
     def test_postmark_issue_failure_rolls_back_article(self) -> None:
+        payload = newsletter_payload()
         with (
             patch(
                 "feeds.services.NewsletterIssue.objects.create",
@@ -420,11 +420,12 @@ class KnownCorrectnessFailureTests(StaticFilesTestCase):
             self.assertRaises(IntegrityError),
         ):
             import_postmark_newsletter(
-                payload=newsletter_payload(),
+                payload=payload,
                 base_url="https://daily-firehose.example/",
             )
 
         self.assertEqual(Article.objects.exclude(id=model_id(self.article)).count(), 0)
+        self.assertFalse(Feed.objects.filter(feed_url=NEWSLETTER_FEED_URL).exists())
 
     # Bug: no database constraint enforces the feed-marker shape.
     @expectedFailure

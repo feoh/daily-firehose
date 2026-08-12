@@ -228,7 +228,6 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
         self.assertEqual(len(errors), 1)
         self.assertIsInstance(errors[0], IntegrityError)
 
-    @expectedFailure
     def test_concurrent_postmark_replay_returns_one_issue_without_errors(self) -> None:
         newsletter_feed()
         payload = newsletter_payload(message_id="concurrent-postmark-message")
@@ -254,20 +253,16 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
             )
 
         errors = _errors(outcomes)
-        if errors:
-            self.assertEqual(len(errors), 1)
-            self.assertIsInstance(errors[0], IntegrityError)
         self.assertEqual(errors, [])
-        issue_ids = {
-            outcome.value.issue.pk for outcome in outcomes if outcome.value is not None
-        }
+        results = [outcome.value for outcome in outcomes if outcome.value is not None]
+        issue_ids = {result.issue.pk for result in results}
         self.assertEqual(len(issue_ids), 1)
+        self.assertEqual(sorted(result.created for result in results), [False, True])
         self.assertEqual(
             NewsletterIssue.objects.filter(message_id=payload["MessageID"]).count(), 1
         )
         self.assertEqual(Article.objects.filter(guid=payload["MessageID"]).count(), 1)
 
-    @expectedFailure
     def test_postmark_issue_failure_rolls_back_feed_and_article(self) -> None:
         payload = newsletter_payload(message_id="postgres-rollback-message")
         with (
@@ -285,9 +280,6 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
 
         leaked_feed = Feed.objects.filter(feed_url=NEWSLETTER_FEED_URL).exists()
         leaked_article = Article.objects.filter(guid=payload["MessageID"]).exists()
-        if leaked_feed or leaked_article:
-            self.assertTrue(leaked_feed)
-            self.assertTrue(leaked_article)
         self.assertFalse(leaked_feed)
         self.assertFalse(leaked_article)
 
