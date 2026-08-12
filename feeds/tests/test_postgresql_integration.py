@@ -340,7 +340,7 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
             sorted(result.status for result in results if result),
             ["succeeded", "superseded"],
         )
-        self.assertEqual(sorted(applied_counts), [(0, 1), (1, 0)])
+        self.assertEqual(applied_counts, [(1, 0)])
         self.assertEqual(Article.objects.filter(feed=feed, guid="same-guid").count(), 1)
         self.assertEqual(lock_hook_calls, 2)
 
@@ -470,6 +470,12 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
 
     def test_older_success_cannot_overwrite_newer_failure_status(self) -> None:
         feed = build_feed(title="Original title")
+        existing_article = build_article(
+            feed=feed,
+            guid="existing-guid",
+            url="https://example.com/existing-article",
+            title="Original article title",
+        )
         local = threading.local()
         older_claimed = threading.Event()
         newer_finished = threading.Event()
@@ -508,7 +514,21 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
             patch("feeds.services.fetch_feed_document", side_effect=fetch_document),
             patch(
                 "feeds.services.feedparser.parse",
-                return_value={"feed": {"title": "Stale success"}, "entries": []},
+                return_value={
+                    "feed": {"title": "Stale success"},
+                    "entries": [
+                        {
+                            "id": "new-guid",
+                            "link": "https://example.com/new-article",
+                            "title": "Must not be created",
+                        },
+                        {
+                            "id": existing_article.guid,
+                            "link": existing_article.url,
+                            "title": "Must not update existing article",
+                        },
+                    ],
+                },
             ),
         ):
             outcomes = run_concurrently(
@@ -523,16 +543,26 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
         if older_result is None or newer_result is None:
             self.fail("both refresh outcomes are required")
         feed.refresh_from_db()
+        existing_article.refresh_from_db()
         self.assertEqual(older_result.status, "superseded")
+        self.assertEqual((older_result.created, older_result.updated), (0, 0))
         self.assertEqual(older_result.error_code, "superseded")
         self.assertEqual(older_result.next_retry_at, feed.next_retry_at)
         self.assertEqual(newer_result.status, "failed")
+        self.assertEqual((newer_result.created, newer_result.updated), (0, 0))
         self.assertEqual(newer_result.error_code, "connection_error")
+        self.assertEqual(newer_result.error_message, "Feed connection failed.")
+        self.assertEqual(newer_result.next_retry_at, feed.next_retry_at)
+        self.assertEqual(feed.refresh_generation, 2)
         self.assertEqual(feed.title, "Original title")
         self.assertEqual(feed.last_error_code, "connection_error")
+        self.assertEqual(feed.last_error_message, "Feed connection failed.")
         self.assertEqual(feed.consecutive_failures, 1)
         self.assertIsNotNone(feed.next_retry_at)
         self.assertIsNone(feed.last_fetched_at)
+        self.assertEqual(existing_article.title, "Original article title")
+        self.assertFalse(Article.objects.filter(feed=feed, guid="new-guid").exists())
+        self.assertEqual(Article.objects.filter(feed=feed).count(), 1)
 
     def test_concurrent_preference_get_or_create_returns_one_row(self) -> None:
         user = build_user()

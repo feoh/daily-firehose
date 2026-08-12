@@ -457,12 +457,6 @@ def refresh_feed(feed: Feed) -> RefreshResult:
             # The per-Feed row lock makes the complete identity snapshot and
             # write plan immutable relative to every other refresh for this Feed.
             stored_feed = _lock_feed_for_reconciliation(cast(int, feed.pk))
-            writes = _plan_article_reconciliation(
-                feed=stored_feed, entries=list(entries)
-            )
-            created, updated = _apply_article_reconciliation(
-                feed=stored_feed, writes=writes
-            )
             if stored_feed.refresh_generation != generation:
                 feed.refresh_from_db()
                 result = _superseded_result(feed=feed, started=started)
@@ -472,6 +466,12 @@ def refresh_feed(feed: Feed) -> RefreshResult:
                 logger.info(log_message, extra=log_context)
                 return result
 
+            writes = _plan_article_reconciliation(
+                feed=stored_feed, entries=list(entries)
+            )
+            created, updated = _apply_article_reconciliation(
+                feed=stored_feed, writes=writes
+            )
             stored_feed.title = (
                 feed_info.get("title") or stored_feed.title or stored_feed.feed_url
             )
