@@ -35,7 +35,6 @@ from .services import (
     export_opml,
     import_opml,
     refresh_active_feeds,
-    sanitize_newsletter_html,
     save_article,
 )
 
@@ -226,9 +225,8 @@ def newsletter_detail(request: HttpRequest, public_id) -> HttpResponse:
         "issue": issue,
         "article": article,
         "is_read": False,
-        "sanitized_html": sanitize_newsletter_html(issue.html_body)
-        if issue.html_body
-        else "",
+        # Sanitized once at ingest; a public page never re-cleans sender markup.
+        "sanitized_html": issue.sanitized_html,
     }
     if request.user.is_authenticated:
         context["preferences"] = _preferences(request.user)
@@ -242,6 +240,19 @@ def newsletter_detail(request: HttpRequest, public_id) -> HttpResponse:
         context,
     )
     response["X-Robots-Tag"] = "noindex"
+    # Only this page renders third-party markup. Remote images stay loadable by
+    # documented policy; scripts, frames, and form posts to other origins do not.
+    response["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "img-src 'self' https: data:; "
+        "style-src 'self'; "
+        "script-src 'self'; "
+        "object-src 'none'; "
+        "frame-src 'none'; "
+        "frame-ancestors 'none'; "
+        "base-uri 'none'; "
+        "form-action 'self'"
+    )
     return response
 
 

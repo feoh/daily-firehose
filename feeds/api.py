@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
 import hmac
 import json
+import logging
 from collections.abc import Callable
 from datetime import date
 from functools import wraps
@@ -74,6 +76,8 @@ from .views import (
 )
 
 P = ParamSpec("P")
+
+logger = logging.getLogger("daily_firehose.webhook")
 
 
 def _json_error(
@@ -262,8 +266,55 @@ def _pk(model: Any) -> int:
     return cast(int, model.id)
 
 
+def _postmark_basic_credentials_match(request: HttpRequest) -> bool:
+    username = settings.POSTMARK_WEBHOOK_USERNAME
+    password = settings.POSTMARK_WEBHOOK_PASSWORD
+    if not username or not password:
+        return False
+    scheme, _, encoded = request.headers.get("Authorization", "").partition(" ")
+    if scheme.lower() != "basic" or not encoded:
+        return False
+    try:
+        decoded = base64.b64decode(encoded, validate=True).decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        return False
+    supplied_username, separator, supplied_password = decoded.partition(":")
+    if not separator:
+        return False
+    # Both halves are always compared so a timing difference cannot reveal which
+    # one was wrong.
+    username_matches = hmac.compare_digest(supplied_username, username)
+    password_matches = hmac.compare_digest(supplied_password, password)
+    return username_matches and password_matches
+
+
+@csrf_exempt
+def postmark_inbound_basic(request: HttpRequest) -> JsonResponse:
+    """Accept inbound mail authenticated by HTTP Basic credentials.
+
+    This route carries no secret in its path. It exists so the Postmark
+    configuration can be moved off the legacy secret-in-URL route below without
+    an interruption in delivery.
+    """
+
+    if request.method != "POST":
+        return _json_error("Method not allowed.", status=405, code="method_not_allowed")
+    if not _postmark_basic_credentials_match(request):
+        response = _json_error(
+            "Invalid inbound email credentials.", status=401, code="unauthorized"
+        )
+        response["WWW-Authenticate"] = 'Basic realm="postmark-inbound"'
+        return response
+    return _import_postmark_delivery(request, mechanism="basic")
+
+
 @csrf_exempt
 def postmark_inbound(request: HttpRequest, secret: str) -> JsonResponse:
+    """Legacy route whose path segment is the shared secret.
+
+    Retained only for the rotation window; prefer ``postmark_inbound_basic``.
+    """
+
     if request.method != "POST":
         return _json_error("Method not allowed.", status=405, code="method_not_allowed")
     configured_secret = settings.POSTMARK_INBOUND_SECRET
@@ -271,8 +322,24 @@ def postmark_inbound(request: HttpRequest, secret: str) -> JsonResponse:
         return _json_error(
             "Invalid inbound email secret.", status=403, code="forbidden"
         )
+    return _import_postmark_delivery(request, mechanism="path_secret")
+
+
+def _import_postmark_delivery(
+    request: HttpRequest, *, mechanism: str
+) -> JsonResponse:
+    # Recording the mechanism is what lets an operator confirm the legacy route
+    # is unused before it is removed.
+    logger.info("postmark_delivery_authenticated", extra={"mechanism": mechanism})
     try:
         _reject_query_fields(request, set())
+        body = _request_body(request)
+        if len(body) > settings.POSTMARK_MAX_BODY_BYTES:
+            raise ApiProblem(
+                "Inbound email exceeds the configured size limit.",
+                status=413,
+                code="payload_too_large",
+            )
         payload = _parse_json(request)
         result = import_postmark_newsletter(
             payload=payload, base_url=request.build_absolute_uri("/")

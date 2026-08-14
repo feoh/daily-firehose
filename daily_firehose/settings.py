@@ -419,6 +419,14 @@ LINKDING_TOKEN = os.environ.get("LINKDING_TOKEN", "")
 AGENT_LINK_SECRET = os.environ.get("AGENT_LINK_SECRET", "")
 AGENT_LINK_USERNAME = os.environ.get("AGENT_LINK_USERNAME", "")
 POSTMARK_INBOUND_SECRET = os.environ.get("POSTMARK_INBOUND_SECRET", "")
+# Preferred inbound authentication: credentials travel in the Authorization
+# header instead of the URL path. Both mechanisms are accepted during rotation.
+POSTMARK_WEBHOOK_USERNAME = os.environ.get("POSTMARK_WEBHOOK_USERNAME", "")
+POSTMARK_WEBHOOK_PASSWORD = os.environ.get("POSTMARK_WEBHOOK_PASSWORD", "")
+# An inbound delivery is read fully into memory, so its bound is explicit rather
+# than inherited from the framework default.
+POSTMARK_MAX_BODY_BYTES = _env_int("POSTMARK_MAX_BODY_BYTES", "2500000")
+DATA_UPLOAD_MAX_MEMORY_SIZE = _env_int("DJANGO_DATA_UPLOAD_MAX_MEMORY_SIZE", "2621440")
 POSTMARK_INBOUND_EMAIL = os.environ.get(
     "POSTMARK_INBOUND_EMAIL",
     "95d8c50c7df8d1ca38d7a6f55ee5a311@inbound.postmarkapp.com",
@@ -492,6 +500,7 @@ LOGGING = {
             ("feeds.jobs", _APPLICATION_LOG_LEVEL),
             ("daily_firehose.request", _APPLICATION_LOG_LEVEL),
             ("daily_firehose.health", _APPLICATION_LOG_LEVEL),
+            ("daily_firehose.webhook", _APPLICATION_LOG_LEVEL),
             ("daily_firehose.worker", _APPLICATION_LOG_LEVEL),
         )
     },

@@ -328,6 +328,65 @@ raw path — the Postmark webhook carries its shared secret as a path segment �
 and the formatter drops secret-named fields and scrubs configured secret values
 from every rendered record.
 
+## Inbound email security
+
+Postmark [does not offer HMAC signature verification for
+webhooks](https://postmarkapp.com/developer/webhooks/webhooks-overview); its
+documented recommendation is HTTP Basic Authentication combined with allowlisting
+Postmark's IP ranges. Daily Firehose therefore accepts two mechanisms during a
+rotation window:
+
+| Route | Credential | Status |
+| --- | --- | --- |
+| `POST /api/postmark/inbound/` | `POSTMARK_WEBHOOK_USERNAME` / `POSTMARK_WEBHOOK_PASSWORD`, compared in constant time | Preferred |
+| `POST /api/postmark/inbound/<secret>/` | `POSTMARK_INBOUND_SECRET` in the URL path | Legacy, remove after cutover |
+
+Every accepted delivery logs `postmark_delivery_authenticated` with the mechanism
+that authorized it and never the credential, so the legacy route can be confirmed
+unused before it is deleted.
+
+To cut over:
+
+1. Set `POSTMARK_WEBHOOK_USERNAME` and `POSTMARK_WEBHOOK_PASSWORD` in the
+   production `.env` and redeploy. Both routes now work.
+2. In Postmark, open the Server, its Inbound Message Stream, then **Settings**, and
+   set the Webhook field to
+   `https://<username>:<password>@daily-firehose.reedfish-regulus.ts.net/api/postmark/inbound/`.
+   (The same value is the `InboundHookUrl` field of the Servers API.)
+3. Confirm `mechanism=basic` in the worker/web logs for new deliveries and that no
+   `mechanism=path_secret` records remain.
+4. Only then remove the legacy route and `POSTMARK_INBOUND_SECRET`.
+
+Status codes are chosen against Postmark's documented retry behavior: it stops
+retrying on `403` and retries any other non-`200` ten times over roughly ten hours
+before marking the message Inbound Error. Authentication failure therefore answers
+`401`, so a mistyped credential still has that window to be corrected instead of
+being dropped on the first attempt. An oversized body answers `413`: those retries
+cannot succeed, but the message stays visible in Postmark's Inbound view and can be
+replayed, which is preferable to answering `200` and silently discarding mail.
+
+**Residual risk:** Postmark also recommends restricting the endpoint to its
+published IP ranges. The application is published through Tailscale Funnel, which
+does not expose a per-source-IP filter to the container, so that control is not in
+place. Basic Auth over HTTPS is the only barrier on the preferred route.
+
+### Newsletter rendering and reader privacy
+
+Sender HTML is sanitized **once at ingest** into `NewsletterIssue.sanitized_html`;
+the public page renders that stored derivation and never re-cleans attacker-supplied
+markup per request. Script, style, iframe, object, embed, form, base, meta and link
+elements, event-handler attributes, and non-`http`/`https`/`mailto` URL schemes are
+removed. The newsletter page also sends a Content-Security-Policy forbidding
+scripts, objects, framing, and cross-origin form posts.
+
+Remote images **are** loaded, which is a deliberate, owner-approved tradeoff:
+virtually every issue depends on them (365 of 368 in the current archive). The
+consequence is that opening a newsletter tells the sender it was opened, along with
+the reader's IP and user agent — and because the archive page is public, that
+applies to anyone with the link, not only the subscriber. Images carry
+`referrerpolicy="no-referrer"` so the archive URL itself does not leak to the
+sender, plus `loading="lazy"` and `decoding="async"`.
+
 ## Saved articles
 
 When an article is saved, Daily Firehose records the article URL, title, feed, category, timestamp, and Linkding status locally. This preserves a history that can later be used to highlight articles likely to be interesting.
@@ -409,16 +468,19 @@ Newsletter save attempts through bearer or signed APIs return
 `422 save_not_allowed`; session form/AJAX attempts keep the card visible and show
 a safe explanation.
 
-Postmark delivers only to `POST /api/postmark/inbound/<secret>/`; other methods
-return `405`. Secret authentication runs before body/query validation. The current
+Postmark delivers to `POST /api/postmark/inbound/` with HTTP Basic credentials
+(preferred) or to the legacy `POST /api/postmark/inbound/<secret>/`; other methods
+return `405`. Authentication runs before body/query validation. The current
 accepted body schema requires only a truthy `MessageID` (or `MessageId`). Missing
 subject defaults to “Untitled newsletter,” missing or invalid date uses the current
-time, and address/body fields are optional and string-coerced. Ingestion does not
-call model `full_clean()`: `422` is only the adapter mapping if the service raises a
-Django `ValidationError`, not a promise that malformed email strings or every model
-limit are rejected. Integrity conflicts map to `409`. The separate tracked Postmark
-atomicity task still owns rollback and race-idempotency; error mapping does not
-claim that a failed ingestion rolled back every write.
+time, and address/body fields are optional and string-coerced. Fields bound to a
+column are truncated to it, but an over-long `MessageID` is rejected with `400`
+rather than truncated, because a shortened identity would collide with a different
+message and corrupt replay detection. A body over `POSTMARK_MAX_BODY_BYTES` returns
+`413` before any write. Ingestion does not call model `full_clean()`: `422` is only
+the adapter mapping if the service raises a Django `ValidationError`, not a promise
+that malformed email strings or every model limit are rejected. Integrity conflicts
+map to `409`.
 
 The older authenticated-session digest remains at `/api/digest/today.json`.
 

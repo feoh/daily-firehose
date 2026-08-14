@@ -18,6 +18,7 @@ from xml.etree import ElementTree
 import bleach
 import feedparser
 import requests
+from bleach.html5lib_shim import Filter
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, connection, transaction
 from django.urls import reverse
@@ -28,6 +29,12 @@ from .feed_fetch import FeedFetchError, fetch_feed_document
 from .models import Article, Category, Feed, NewsletterIssue, SavedArticle
 
 LINKDING_TOREAD_TAG = "toread"
+# Postmark field bounds, matching the columns they are stored in.
+MAX_MESSAGE_ID_LENGTH = 1000
+MAX_SUBJECT_LENGTH = 500
+MAX_EMAIL_LENGTH = 254
+MAX_NAME_LENGTH = 255
+MAX_AUTHOR_LENGTH = 255
 NEWSLETTER_FEED_URL = "https://daily-firehose.local/feeds/email-newsletters"
 NEWSLETTER_FEED_TITLE = "Email Newsletters"
 
@@ -632,12 +639,26 @@ def _postmark_name(payload: dict[str, Any], field: str) -> str:
     return ""
 
 
+def _bounded(value: object, limit: int) -> str:
+    """Return text truncated to a column's limit.
+
+    Display fields are truncated rather than rejected: losing a newsletter is a
+    worse outcome than losing the tail of an overlong subject.
+    """
+
+    return str(value or "")[:limit]
+
+
 def import_postmark_newsletter(
     *, payload: dict[str, Any], base_url: str
 ) -> NewsletterImportResult:
     message_id = str(payload.get("MessageID") or payload.get("MessageId") or "")
     if not message_id:
         raise ValueError("Postmark payload is missing MessageID.")
+    # Identity is never truncated: a shortened MessageID would collide with a
+    # different message and corrupt replay detection.
+    if len(message_id) > MAX_MESSAGE_ID_LENGTH:
+        raise ValueError("Postmark MessageID exceeds the supported length.")
 
     existing = (
         NewsletterIssue.objects.select_related("article")
@@ -649,7 +670,11 @@ def import_postmark_newsletter(
 
     try:
         with transaction.atomic():
-            subject = str(payload.get("Subject") or "Untitled newsletter")
+            subject = _bounded(
+                payload.get("Subject") or "Untitled newsletter", MAX_SUBJECT_LENGTH
+            )
+            html_body = str(payload.get("HtmlBody") or "")
+            text_body = str(payload.get("TextBody") or "")
             received_at = _aware_datetime(payload.get("Date"))
             public_id = uuid.uuid4()
             archive_url = newsletter_archive_url(base_url=base_url, public_id=public_id)
@@ -659,20 +684,25 @@ def import_postmark_newsletter(
                 title=subject,
                 url=archive_url,
                 guid=message_id,
-                author=_postmark_address(payload, "From"),
-                summary=str(payload.get("TextBody") or payload.get("HtmlBody") or ""),
+                author=_bounded(_postmark_address(payload, "From"), MAX_AUTHOR_LENGTH),
+                summary=text_body or html_body,
                 published_at=received_at,
             )
             issue = NewsletterIssue.objects.create(
                 article=article,
                 public_id=public_id,
                 message_id=message_id,
-                from_email=_postmark_address(payload, "From"),
-                from_name=_postmark_name(payload, "From"),
-                to_email=_postmark_address(payload, "To"),
+                from_email=_bounded(
+                    _postmark_address(payload, "From"), MAX_EMAIL_LENGTH
+                ),
+                from_name=_bounded(_postmark_name(payload, "From"), MAX_NAME_LENGTH),
+                to_email=_bounded(_postmark_address(payload, "To"), MAX_EMAIL_LENGTH),
                 subject=subject,
-                html_body=str(payload.get("HtmlBody") or ""),
-                text_body=str(payload.get("TextBody") or ""),
+                html_body=html_body,
+                text_body=text_body,
+                sanitized_html=sanitize_newsletter_html(html_body)
+                if html_body
+                else "",
                 received_at=received_at,
             )
     except IntegrityError as integrity_error:
@@ -725,17 +755,27 @@ def sanitize_newsletter_html(html: str) -> str:
     attributes = {
         **bleach.sanitizer.ALLOWED_ATTRIBUTES,
         "a": ["href", "title", "target", "rel"],
-        "img": ["src", "alt", "title", "width", "height"],
+        "img": [
+            "src",
+            "alt",
+            "title",
+            "width",
+            "height",
+            "referrerpolicy",
+            "loading",
+            "decoding",
+        ],
         "td": ["colspan", "rowspan"],
         "th": ["colspan", "rowspan", "scope"],
     }
-    cleaned = bleach.clean(
-        html,
+    cleaner = bleach.sanitizer.Cleaner(
         tags=tags,
         attributes=attributes,
         protocols={"http", "https", "mailto"},
         strip=True,
+        filters=[_NewsletterImageFilter],
     )
+    cleaned = cleaner.clean(html)
     return bleach.linkify(
         cleaned,
         callbacks=[bleach.callbacks.nofollow, _newsletter_link_attrs],
@@ -747,6 +787,27 @@ def _newsletter_link_attrs(attrs, new=False):
     attrs[(None, "target")] = "_blank"
     attrs[(None, "rel")] = "noopener noreferrer"
     return attrs
+
+
+class _NewsletterImageFilter(Filter):
+    """Bound what a remote newsletter image can learn about the reader.
+
+    Newsletter images are deliberately still loaded, so a tracking pixel does
+    reveal that the issue was opened. `no-referrer` keeps the archive URL itself
+    out of the sender's logs, which is what makes an unlisted public link
+    guessable-by-disclosure rather than merely unlisted.
+    """
+
+    def __iter__(self):
+        for token in super().__iter__():
+            if token.get("type") in {"StartTag", "EmptyTag"} and token.get(
+                "name"
+            ) == "img":
+                data = token.setdefault("data", {})
+                data[(None, "referrerpolicy")] = "no-referrer"
+                data[(None, "loading")] = "lazy"
+                data[(None, "decoding")] = "async"
+            yield token
 
 
 def discover_feed_metadata(feed_url: str) -> dict[str, str]:

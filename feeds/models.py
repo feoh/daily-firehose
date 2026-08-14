@@ -133,6 +133,9 @@ class NewsletterIssue(models.Model):
     subject = models.CharField(max_length=500)
     html_body = models.TextField(blank=True)
     text_body = models.TextField(blank=True)
+    # Derived at ingest so a public page never re-sanitizes attacker-supplied
+    # markup on every request.
+    sanitized_html = models.TextField(blank=True)
     received_at = models.DateTimeField(default=timezone.now)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

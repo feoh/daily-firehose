@@ -31,6 +31,11 @@ urlpatterns = [
     path("mark-period-read/", views.mark_period_read, name="mark-period-read"),
     path("api/digest/today.json", views.digest_json, name="digest-json"),
     path(
+        "api/postmark/inbound/",
+        api.postmark_inbound_basic,
+        name="postmark-inbound-basic",
+    ),
+    path(
         "api/postmark/inbound/<str:secret>/",
         api.postmark_inbound,
         name="postmark-inbound",
