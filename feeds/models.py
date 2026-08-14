@@ -108,6 +108,12 @@ class Article(models.Model):
 
     class Meta:
         ordering = ["-published_at", "title"]
+        # Every digest selects a fetched_at window, and feed markers narrow that
+        # window to one feed.
+        indexes = [
+            models.Index(fields=["fetched_at"]),
+            models.Index(fields=["feed", "fetched_at"]),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["feed", "guid"], name="unique_article_guid_per_feed"
@@ -169,6 +175,7 @@ class SavedArticle(models.Model):
 
     class Meta:
         ordering = ["-saved_at"]
+        indexes = [models.Index(fields=["user", "-saved_at"])]
         constraints = [
             models.UniqueConstraint(
                 fields=["user", "article"], name="unique_saved_article"
@@ -188,6 +195,8 @@ class ArticleReadState(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        # Serves the archived view's most-recently-read ordering.
+        indexes = [models.Index(fields=["user", "is_read", "-updated_at"])]
         constraints = [
             models.UniqueConstraint(
                 fields=["user", "article"], name="unique_article_read_state"
@@ -216,6 +225,8 @@ class BulkReadMarker(models.Model):
 
     class Meta:
         ordering = ["-marked_read_at"]
+        # Marker relevance is filtered by owner and by when the mark was set.
+        indexes = [models.Index(fields=["user", "marked_read_at"])]
         constraints = [
             models.CheckConstraint(
                 condition=(

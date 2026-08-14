@@ -1,10 +1,6 @@
-from importlib import import_module
-
 from django.urls import path
 
-from . import views
-
-api = import_module("feeds.api")
+from . import api, views
 
 urlpatterns = [
     path("", views.today, name="today"),

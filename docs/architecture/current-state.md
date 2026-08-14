@@ -248,12 +248,14 @@ flowchart TD
     Browser --> Templates["Templates and static JS"]
     Admin --> Models
 
-    API -. "known violation: imports private helpers" .-> Browser
+    Browser --> Queries["Article visibility and read-state policy: queries"]
+    API --> Queries
+    Queries --> Models
 ```
 
 **[F]** Normal direction is adapter → application service/query → ORM/integration. Browser JS submits routes embedded by templates. CLI commands call services/models. Admin usually writes ORM directly.
 
-**[D] Layering violation.** [`feeds/api.py`](../../feeds/api.py) imports `_article_cards`, `_articles_between`, `_mark_articles_read`, period bounds, preferences, and read calculation from [`feeds/views.py`](../../feeds/views.py). [`feeds/urls.py`](../../feeds/urls.py) dynamically imports API to tolerate this cycle-like relationship. Business/query behavior therefore points upward into a presentation adapter.
+**[F] Resolved layering.** Article visibility, read-state resolution, period bounds, and preference lookup live in [`feeds/queries.py`](../../feeds/queries.py), which both [`feeds/views.py`](../../feeds/views.py) and [`feeds/api.py`](../../feeds/api.py) consume. The API no longer imports private helpers from the presentation adapter, so [`feeds/urls.py`](../../feeds/urls.py) imports both modules directly instead of deferring the API import to break a cycle.
 
 **[D] Policy/orchestration spread.** Refresh summaries, mark-read orchestration, individual-state changes, and save metadata are duplicated among browser/API/command adapters, with differing atomicity and count semantics. Admin writes bypass most service commands. This is current drift, not a separated application architecture.
 
@@ -411,8 +413,8 @@ erDiagram
 | Interest score is null or 0..5 finite. | No DB CHECK. | Bearer API validator enforces; admin/direct writes and service do not establish same bound. |
 | Token prefix corresponds to key/hash source. | No DB relation can prove it. | `create_token` constructs both consistently; direct writes can diverge. |
 | Feed failure count is nonnegative. | Positive integer field check semantics. | Service increments under row lock; concurrent refresh success/failure status ownership remains uncoordinated. |
-| Effective read is explicit true or applicable marker, minus explicit false. | Not materialized as DB constraint/view. | Python `_read_article_ids`; marker applies only when `article.fetched_at <= marked_read_at`; day matching uses local date of `fetched_at`. |
-| Normal digest visibility excludes effective-read **and** locally saved articles. | Query/application only. | `_article_cards`; archived/saved views have separate presentation semantics. |
+| Effective read is explicit true or applicable marker, minus explicit false. | Not materialized as DB constraint/view. | `queries.read_article_ids`; marker applies only when `article.fetched_at <= marked_read_at`; day matching uses local date of `fetched_at`. |
+| Normal digest visibility excludes effective-read **and** locally saved articles. | Query/application only. | `queries.article_cards`; archived/saved views have separate presentation semantics. |
 
 ## 7. Runtime data flows and boundaries
 
@@ -489,7 +491,9 @@ flowchart TD
 
 **[F]** Scope is based on `fetched_at`/its UTC-local date, not `published_at`. A marker does not mark an article fetched after the marker timestamp. Explicit unread is the final override. Bulk actions both materialize current explicit rows and retain markers.
 
-**[D]** Session period/feed paths do the materialization and marker write without `transaction.atomic`; API and signed paths are atomic. `_read_article_ids` is marker×article Python work and date filtering uses `fetched_at__date` without a dedicated application index.
+**[D]** Session period/feed paths do the materialization and marker write without `transaction.atomic`; API and signed paths are atomic.
+
+**[F]** `queries.read_article_ids` resolves coverage in SQL. Markers are narrowed before they are read — by owner, by the oldest `fetched_at` on screen, by the feeds present, and by period overlap — so resolution cost tracks the window shown rather than the reader's whole marking history. `fetched_at`, `(feed, fetched_at)`, `(user, is_read, -updated_at)`, `(user, marked_read_at)`, and `(user, -saved_at)` indexes back these paths.
 
 ### Local save and Linkding
 

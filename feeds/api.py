@@ -57,6 +57,15 @@ from .models import (
     SavedArticle,
     UserPreference,
 )
+from .queries import (
+    article_cards,
+    articles_between,
+    mark_articles_read,
+    month_bounds,
+    read_article_ids,
+    user_preference,
+    week_bounds,
+)
 from .services import (
     ArticleSaveNotAllowed,
     article_save_capability,
@@ -64,15 +73,6 @@ from .services import (
     import_postmark_newsletter,
     refresh_active_feeds,
     save_article,
-)
-from .views import (
-    _article_cards,
-    _articles_between,
-    _mark_articles_read,
-    _month_bounds,
-    _preferences,
-    _read_article_ids,
-    _week_bounds,
 )
 
 P = ParamSpec("P")
@@ -416,9 +416,9 @@ def _article_window(period: str) -> tuple[date, date]:
     if period == "today":
         return current, current
     if period == "week":
-        return _week_bounds(current)
+        return week_bounds(current)
     if period == "month":
-        return _month_bounds(current)
+        return month_bounds(current)
     raise ValueError("period must be one of: today, week, month.")
 
 
@@ -455,10 +455,10 @@ def article_list(request: HttpRequest, user) -> JsonResponse:
         feed = _get_api_object(Feed.objects.all(), "Feed", id=feed_id)
     include_read = query_boolean(request.GET, "include_read")
     include_saved = query_boolean(request.GET, "include_saved")
-    articles = _articles_between(start, end, feed).select_related(
+    articles = articles_between(start, end, feed).select_related(
         "feed", "feed__category", "newsletter_issue"
     )
-    read_ids = _read_article_ids(user, articles)
+    read_ids = read_article_ids(user, articles)
     article_ids = list(articles.values_list("id", flat=True))
     saved_ids = set(
         SavedArticle.objects.filter(user=user, article_id__in=article_ids).values_list(
@@ -488,10 +488,10 @@ def morning_briefing(request: HttpRequest, user) -> JsonResponse:
     _validate_empty_body(request)
     _reject_query_fields(request, set())
     current = timezone.localdate()
-    articles = _articles_between(current, current).select_related(
+    articles = articles_between(current, current).select_related(
         "feed", "feed__category", "newsletter_issue"
     )
-    cards = _article_cards(user, articles)
+    cards = article_cards(user, articles)
     return JsonResponse(
         {
             "title": "Today’s Firehose",
@@ -619,9 +619,9 @@ def mark_period_read_and_go(request: HttpRequest) -> HttpResponse:
     marked_read_at = timezone.now()
     try:
         with transaction.atomic():
-            _mark_articles_read(
+            mark_articles_read(
                 user,
-                _articles_between(start, end).filter(fetched_at__lte=marked_read_at),
+                articles_between(start, end).filter(fetched_at__lte=marked_read_at),
             )
             BulkReadMarker.objects.update_or_create(
                 user=user,
@@ -686,7 +686,7 @@ def article_saved_state(request: HttpRequest, user, article_id: int) -> JsonResp
                 "article": _article_payload(
                     article,
                     is_read=_pk(article)
-                    in _read_article_ids(user, Article.objects.filter(id=_pk(article))),
+                    in read_article_ids(user, Article.objects.filter(id=_pk(article))),
                     is_saved=False,
                 )
             }
@@ -711,7 +711,7 @@ def article_saved_state(request: HttpRequest, user, article_id: int) -> JsonResp
                 "article": _article_payload(
                     article,
                     is_read=_pk(article)
-                    in _read_article_ids(user, Article.objects.filter(id=_pk(article))),
+                    in read_article_ids(user, Article.objects.filter(id=_pk(article))),
                     is_saved=False,
                 )
             }
@@ -758,7 +758,7 @@ def article_saved_state(request: HttpRequest, user, article_id: int) -> JsonResp
             "article": _article_payload(
                 article,
                 is_read=_pk(article)
-                in _read_article_ids(user, Article.objects.filter(id=_pk(article))),
+                in read_article_ids(user, Article.objects.filter(id=_pk(article))),
                 is_saved=True,
             ),
         }
@@ -794,9 +794,9 @@ def mark_period_read_api(request: HttpRequest, user) -> JsonResponse:
         period_end=end,
     ).full_clean(validate_unique=False, validate_constraints=False)
     with transaction.atomic():
-        _mark_articles_read(
+        mark_articles_read(
             user,
-            _articles_between(start, end).filter(fetched_at__lte=marked_read_at),
+            articles_between(start, end).filter(fetched_at__lte=marked_read_at),
         )
         BulkReadMarker.objects.update_or_create(
             user=user,
@@ -914,7 +914,7 @@ def mark_feed_read_api(request: HttpRequest, user, feed_id: int) -> JsonResponse
         period_end=None,
     ).full_clean(validate_unique=False, validate_constraints=False)
     with transaction.atomic():
-        _mark_articles_read(
+        mark_articles_read(
             user,
             Article.objects.filter(feed=feed, fetched_at__lte=marked_read_at),
         )
@@ -986,7 +986,7 @@ def preferences_api(request: HttpRequest, user) -> JsonResponse:
             compact = boolean(data, "compact")
         if "focus_mode" in data:
             focus_mode = boolean(data, "focus_mode")
-    preferences = _preferences(user)
+    preferences = user_preference(user)
     if request.method == "PATCH":
         if theme is not None:
             preferences.theme = theme

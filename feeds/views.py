@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 from typing import Any, cast
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -25,8 +24,17 @@ from .models import (
     Feed,
     NewsletterIssue,
     ReadScope,
-    SavedArticle,
-    UserPreference,
+)
+from .queries import (
+    archived_article_cards,
+    article_cards,
+    articles_between,
+    mark_articles_read,
+    month_bounds,
+    read_article_ids,
+    saved_article_cards,
+    user_preference,
+    week_bounds,
 )
 from .services import (
     ArticleSaveNotAllowed,
@@ -38,171 +46,9 @@ from .services import (
     save_article,
 )
 
-ARCHIVED_ARTICLE_LIMIT = 50
-SAVED_ARTICLE_LIMIT = 50
-
-
-def _week_bounds(day: date) -> tuple[date, date]:
-    start = day - timedelta(days=day.weekday())
-    return start, start + timedelta(days=6)
-
-
-def _month_bounds(day: date) -> tuple[date, date]:
-    start = day.replace(day=1)
-    if start.month == 12:
-        end = start.replace(year=start.year + 1, month=1) - timedelta(days=1)
-    else:
-        end = start.replace(month=start.month + 1) - timedelta(days=1)
-    return start, end
-
 
 def _pk(model: Any) -> int:
     return cast(int, model.id)
-
-
-def _model_field_id(model: Any, field_name: str) -> int | None:
-    value = getattr(model, field_name)
-    return cast(int | None, value)
-
-
-def _articles_between(
-    start: date, end: date, feed: Feed | None = None
-) -> QuerySet[Article]:
-    queryset = Article.objects.select_related("feed", "feed__category").filter(
-        fetched_at__date__gte=start,
-        fetched_at__date__lte=end,
-    )
-    if feed is not None:
-        queryset = queryset.filter(feed=feed)
-    return queryset.order_by("feed__title", "-fetched_at", "title")
-
-
-def _read_article_ids(user, articles: QuerySet[Article]) -> set[int]:
-    ids = list(articles.values_list("id", flat=True))
-    explicit_read = set(
-        ArticleReadState.objects.filter(
-            user=user, article_id__in=ids, is_read=True
-        ).values_list("article_id", flat=True)
-    )
-    explicit_unread = set(
-        ArticleReadState.objects.filter(
-            user=user, article_id__in=ids, is_read=False
-        ).values_list("article_id", flat=True)
-    )
-    bulk_markers = BulkReadMarker.objects.filter(user=user)
-    for marker in bulk_markers:
-        marker_feed_id = _model_field_id(marker, "feed_id")
-        for article in articles:
-            if article.fetched_at > marker.marked_read_at:
-                continue
-            article_id = _pk(article)
-            seen_day = timezone.localtime(article.fetched_at).date()
-            feed_marked = (
-                marker.scope == ReadScope.FEED
-                and marker_feed_id == _model_field_id(article, "feed_id")
-            )
-            period_marked = (
-                marker.period_start
-                and marker.period_end
-                and marker.period_start <= seen_day <= marker.period_end
-                and marker.scope in {ReadScope.DAY, ReadScope.WEEK, ReadScope.MONTH}
-            )
-            if feed_marked or period_marked:
-                explicit_read.add(article_id)
-    return explicit_read - explicit_unread
-
-
-def _mark_articles_read(user, articles: QuerySet[Article]) -> None:
-    user_id = _pk(user)
-    article_ids = list(articles.values_list("id", flat=True))
-    if not article_ids:
-        return
-    updated_at = timezone.now()
-    ArticleReadState.objects.bulk_create(
-        [
-            ArticleReadState(
-                user_id=user_id,
-                article_id=article_id,
-                is_read=True,
-                updated_at=updated_at,
-            )
-            for article_id in article_ids
-        ],
-        update_conflicts=True,
-        update_fields=["is_read", "updated_at"],
-        unique_fields=["user", "article"],
-    )
-
-
-def _article_cards(user, articles: QuerySet[Article]) -> list[dict]:
-    read_ids = _read_article_ids(user, articles)
-    saved_ids = set(
-        SavedArticle.objects.filter(
-            user=user, article_id__in=articles.values_list("id", flat=True)
-        ).values_list("article_id", flat=True)
-    )
-    return [
-        {"article": article, "is_read": False, "is_saved": False}
-        for article in articles
-        if _pk(article) not in read_ids and _pk(article) not in saved_ids
-    ]
-
-
-def _archived_article_cards(user) -> list[dict]:
-    read_states = list(
-        ArticleReadState.objects.select_related(
-            "article",
-            "article__feed",
-            "article__newsletter_issue",
-        )
-        .filter(user=user, is_read=True)
-        .order_by("-updated_at")[:ARCHIVED_ARTICLE_LIMIT]
-    )
-    article_ids = [_pk(state.article) for state in read_states]
-    saved_ids = set(
-        SavedArticle.objects.filter(user=user, article_id__in=article_ids).values_list(
-            "article_id", flat=True
-        )
-    )
-    return [
-        {
-            "article": state.article,
-            "is_read": True,
-            "is_saved": _pk(state.article) in saved_ids,
-        }
-        for state in read_states
-    ]
-
-
-def _saved_article_cards(user) -> list[dict]:
-    saved_articles = list(
-        SavedArticle.objects.select_related(
-            "article",
-            "article__feed",
-            "article__newsletter_issue",
-        )
-        .filter(user=user)
-        .order_by("-saved_at")[:SAVED_ARTICLE_LIMIT]
-    )
-    articles = Article.objects.filter(
-        id__in=[_pk(saved.article) for saved in saved_articles]
-    )
-    read_ids = _read_article_ids(user, articles)
-    return [
-        {
-            "article": saved.article,
-            "saved_article": saved,
-            "is_read": _pk(saved.article) in read_ids,
-            "is_saved": True,
-            "hide_save_action": True,
-        }
-        for saved in saved_articles
-    ]
-
-
-def _preferences(user) -> UserPreference:
-    preferences, _ = UserPreference.objects.get_or_create(user=user)
-    return preferences
 
 
 def _wants_json(request: HttpRequest) -> bool:
@@ -229,8 +75,8 @@ def newsletter_detail(request: HttpRequest, public_id) -> HttpResponse:
         "sanitized_html": issue.sanitized_html,
     }
     if request.user.is_authenticated:
-        context["preferences"] = _preferences(request.user)
-        context["is_read"] = _pk(article) in _read_article_ids(
+        context["preferences"] = user_preference(request.user)
+        context["is_read"] = _pk(article) in read_article_ids(
             request.user, Article.objects.filter(pk=_pk(article))
         )
 
@@ -260,8 +106,8 @@ def newsletter_detail(request: HttpRequest, public_id) -> HttpResponse:
 @never_cache
 def today(request: HttpRequest) -> HttpResponse:
     current = timezone.localdate()
-    articles = _articles_between(current, current)
-    cards = _article_cards(request.user, articles)
+    articles = articles_between(current, current)
+    cards = article_cards(request.user, articles)
     return render(
         request,
         "feeds/digest.html",
@@ -272,45 +118,45 @@ def today(request: HttpRequest) -> HttpResponse:
             "scope": ReadScope.DAY,
             "period_start": current,
             "period_end": current,
-            "preferences": _preferences(request.user),
+            "preferences": user_preference(request.user),
         },
     )
 
 
 @login_required
 def week(request: HttpRequest) -> HttpResponse:
-    start, end = _week_bounds(timezone.localdate())
-    articles = _articles_between(start, end)
+    start, end = week_bounds(timezone.localdate())
+    articles = articles_between(start, end)
     return render(
         request,
         "feeds/digest.html",
         {
             "title": "This Week’s Firehose",
             "period_label": f"{start:%B %-d} – {end:%B %-d, %Y}",
-            "cards": _article_cards(request.user, articles),
+            "cards": article_cards(request.user, articles),
             "scope": ReadScope.WEEK,
             "period_start": start,
             "period_end": end,
-            "preferences": _preferences(request.user),
+            "preferences": user_preference(request.user),
         },
     )
 
 
 @login_required
 def month(request: HttpRequest) -> HttpResponse:
-    start, end = _month_bounds(timezone.localdate())
-    articles = _articles_between(start, end)
+    start, end = month_bounds(timezone.localdate())
+    articles = articles_between(start, end)
     return render(
         request,
         "feeds/digest.html",
         {
             "title": "This Month’s Firehose",
             "period_label": f"{start:%B %Y}",
-            "cards": _article_cards(request.user, articles),
+            "cards": article_cards(request.user, articles),
             "scope": ReadScope.MONTH,
             "period_start": start,
             "period_end": end,
-            "preferences": _preferences(request.user),
+            "preferences": user_preference(request.user),
         },
     )
 
@@ -323,9 +169,9 @@ def archived(request: HttpRequest) -> HttpResponse:
         {
             "title": "Archived (Marked Read)",
             "period_label": "Recently marked read",
-            "cards": _archived_article_cards(request.user),
+            "cards": archived_article_cards(request.user),
             "remove_on_success": True,
-            "preferences": _preferences(request.user),
+            "preferences": user_preference(request.user),
         },
     )
 
@@ -338,8 +184,8 @@ def saved_links(request: HttpRequest) -> HttpResponse:
         {
             "title": "Saved (L)inks",
             "period_label": "Recently saved to Linkding",
-            "cards": _saved_article_cards(request.user),
-            "preferences": _preferences(request.user),
+            "cards": saved_article_cards(request.user),
+            "preferences": user_preference(request.user),
         },
     )
 
@@ -355,8 +201,8 @@ def feed_detail(request: HttpRequest, feed_id: int) -> HttpResponse:
         "feeds/feed_detail.html",
         {
             "feed": feed,
-            "cards": _article_cards(request.user, articles),
-            "preferences": _preferences(request.user),
+            "cards": article_cards(request.user, articles),
+            "preferences": user_preference(request.user),
         },
     )
 
@@ -387,7 +233,7 @@ def feed_list(request: HttpRequest) -> HttpResponse:
             ),
             "form": form,
             "postmark_inbound_email": settings.POSTMARK_INBOUND_EMAIL,
-            "preferences": _preferences(request.user),
+            "preferences": user_preference(request.user),
         },
     )
 
@@ -409,7 +255,7 @@ def opml_import(request: HttpRequest) -> HttpResponse:
     return render(
         request,
         "feeds/opml_import.html",
-        {"form": form, "preferences": _preferences(request.user)},
+        {"form": form, "preferences": user_preference(request.user)},
     )
 
 
@@ -422,7 +268,7 @@ def opml_export(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def preferences(request: HttpRequest) -> HttpResponse:
-    prefs = _preferences(request.user)
+    prefs = user_preference(request.user)
     form = ThemeForm(request.POST or None, instance=prefs)
     if request.method == "POST" and form.is_valid():
         form.save()
@@ -492,9 +338,9 @@ def mark_period_read(request: HttpRequest) -> HttpResponse:
     end = date.fromisoformat(request.POST["period_end"])
     user_id = _pk(request.user)
     marked_read_at = timezone.now()
-    _mark_articles_read(
+    mark_articles_read(
         request.user,
-        _articles_between(start, end).filter(fetched_at__lte=marked_read_at),
+        articles_between(start, end).filter(fetched_at__lte=marked_read_at),
     )
     BulkReadMarker.objects.update_or_create(
         user_id=user_id,
@@ -514,7 +360,7 @@ def mark_feed_read(request: HttpRequest, feed_id: int) -> HttpResponse:
     feed = get_object_or_404(Feed, id=feed_id)
     user_id = _pk(request.user)
     marked_read_at = timezone.now()
-    _mark_articles_read(
+    mark_articles_read(
         request.user,
         Article.objects.filter(feed=feed, fetched_at__lte=marked_read_at),
     )
@@ -599,8 +445,8 @@ def save_article_view(request: HttpRequest, article_id: int) -> HttpResponse:
 @login_required
 def digest_json(request: HttpRequest) -> JsonResponse:
     current = timezone.localdate()
-    articles = _articles_between(current, current)
-    cards = _article_cards(request.user, articles)
+    articles = articles_between(current, current)
+    cards = article_cards(request.user, articles)
     return JsonResponse(
         {
             "title": "Today’s Firehose",

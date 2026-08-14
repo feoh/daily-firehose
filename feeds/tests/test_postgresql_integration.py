@@ -38,7 +38,7 @@ from ..services import (
     newsletter_feed,
     refresh_feed,
 )
-from ..views import _preferences
+from ..queries import user_preference
 from .support.builders import (
     build_article,
     build_feed,
@@ -580,7 +580,7 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
         user = build_user()
         outcomes = run_concurrently(
             [
-                lambda: _preferences(type(user).objects.get(pk=user.pk))
+                lambda: user_preference(type(user).objects.get(pk=user.pk))
                 for _ in range(2)
             ],
             timeout=_RACE_TIMEOUT,
