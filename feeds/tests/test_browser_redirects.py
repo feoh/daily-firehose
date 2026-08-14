@@ -99,7 +99,7 @@ class BrowserRedirectRequestTests(StaticFilesTestCase):
         self.assertRedirects(rejected, reverse("login"))
         self.assertNotIn(SESSION_KEY, self.client.session)
 
-    @patch("feeds.views.refresh_active_feeds", return_value=[])
+    @patch("feeds.commands.refresh_active_feeds", return_value=[])
     def test_every_browser_mutation_rejects_external_next(self, _refresh) -> None:
         self.client.force_login(self.user)
         external = "https://attacker.example/phish"

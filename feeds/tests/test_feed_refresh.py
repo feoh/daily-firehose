@@ -854,7 +854,7 @@ class RefreshFeedsFeedbackTests(StaticFilesTestCase):
         )
         self.client.force_login(self.user)
 
-    @patch("feeds.views.refresh_active_feeds")
+    @patch("feeds.commands.refresh_active_feeds")
     def test_refresh_feedback_includes_feeds_with_new_articles(
         self, mock_refresh_active_feeds
     ) -> None:
@@ -871,7 +871,7 @@ class RefreshFeedsFeedbackTests(StaticFilesTestCase):
         )
         mock_refresh_active_feeds.assert_called_once_with()
 
-    @patch("feeds.views.refresh_active_feeds")
+    @patch("feeds.commands.refresh_active_feeds")
     def test_refresh_feedback_names_failed_feeds_safely(
         self, mock_refresh_active_feeds
     ) -> None:

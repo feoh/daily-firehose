@@ -150,10 +150,11 @@ a claim that every normative rule is presently satisfied.
 - **Normative current contract:** repeating the same user/scope/feed-or-date action
   upserts its logical marker and replaces `marked_read_at`, extending the cutoff;
   current matching explicit states are materialized again.
-- **Scope / precedence:** session, bearer, and signed implementations share logical
-  behavior, although their transaction boundaries differ.
-- **Executable evidence:** `test_digest_views.py::test_mark_period_read_updates_existing_marker_timestamp`
-  and state-propagation Feed-marker tests.
+- **Scope / precedence:** session, bearer, and signed adapters call one command in
+  `feeds/commands.py`, so they share both logical behavior and transaction boundary.
+- **Executable evidence:** `test_digest_views.py::test_mark_period_read_updates_existing_marker_timestamp`,
+  state-propagation Feed-marker tests, and `test_mutation_commands.py` adapter-agreement
+  tests that drive all three period adapters and both Feed adapters into one marker row.
 - **Known violation status:** **Conformant** for sequential valid markers.
 - **Source / feature IDs:** `feeds/views.py`, `feeds/api.py`, `feeds/models.py`;
   WEB-009–WEB-011, API-010, API-013, API-018.
@@ -163,19 +164,23 @@ a claim that every normative rule is presently satisfied.
 - **Normative current contract:** Feed markers have a Feed and no dates; period markers
   have ordered dates and no Feed; each logical marker is unique. Explicit-state
   materialization and marker upsert should commit or roll back together.
-- **Scope / precedence:** database shape applies to all writers. Bearer and signed
-  commands are atomic; session bulk commands currently are not.
+- **Scope / precedence:** database shape applies to all writers. Every adapter now
+  marks read through `feeds/commands.py`, which validates the marker shape and wraps
+  materialization and marker upsert in one transaction.
 - **Executable evidence:** four SQLite model/direct-write tests require validation and
   database rejection; PostgreSQL coverage tries all invalid shapes, introspects the
   named constraints, and races duplicate period and Feed markers from separate
   connections. Migration-audit coverage proves invalid or duplicate preexisting rows
-  stop the migration without modifying user state. API fault injection covers only
-  the adapter rollback envelope and is not labeled concurrency.
-- **Known violation status:** **Known violation** only for session bulk command
-  atomicity. Marker shape and logical uniqueness are conformant at model/database
-  boundaries on SQLite and PostgreSQL 17, including concurrent duplicate inserts.
-- **Source / feature IDs:** `feeds/models.py`, `feeds/views.py`, `feeds/api.py`;
-  WEB-009, WEB-010, WEB-019, API-010, API-013.
+  stop the migration without modifying user state. Fault injection covers the rollback
+  envelope of the bearer adapter and of both session bulk commands, and is not labeled
+  concurrency.
+- **Known violation status:** **Conformant.** Session bulk atomicity was the outstanding
+  violation; `test_mutation_commands.py` fails against the previous session code, which
+  left articles materialized read with no marker when the marker write failed. Marker
+  shape and logical uniqueness are conformant at model/database boundaries on SQLite
+  and PostgreSQL 17, including concurrent duplicate inserts.
+- **Source / feature IDs:** `feeds/models.py`, `feeds/commands.py`, `feeds/views.py`,
+  `feeds/api.py`; WEB-009, WEB-010, WEB-019, API-010, API-013.
 
 ## Save invariants
 
@@ -713,7 +718,7 @@ a claim that every normative rule is presently satisfied.
 
 ## Traceability matrix
 
-This post-snapshot companion maps the **current suite: 25 test modules, 371 test
+This post-snapshot companion maps the **current suite: 26 test modules, 380 test
 methods, and 2 expected failures**. The pinned catalog retains its independent
 15/191/8 snapshot counts. Exact `module::class::method` identities, evidence levels,
 and dimension-specific gaps are maintained in the [detailed matrix](test-traceability.md).

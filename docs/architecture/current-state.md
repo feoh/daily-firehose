@@ -251,13 +251,21 @@ flowchart TD
     Browser --> Queries["Article visibility and read-state policy: queries"]
     API --> Queries
     Queries --> Models
+
+    Browser --> Commands["Validated transactional mutations: commands"]
+    API --> Commands
+    Commands --> Queries
+    Commands --> Services
+    Commands --> Models
 ```
 
 **[F]** Normal direction is adapter → application service/query → ORM/integration. Browser JS submits routes embedded by templates. CLI commands call services/models. Admin usually writes ORM directly.
 
 **[F] Resolved layering.** Article visibility, read-state resolution, period bounds, and preference lookup live in [`feeds/queries.py`](../../feeds/queries.py), which both [`feeds/views.py`](../../feeds/views.py) and [`feeds/api.py`](../../feeds/api.py) consume. The API no longer imports private helpers from the presentation adapter, so [`feeds/urls.py`](../../feeds/urls.py) imports both modules directly instead of deferring the API import to break a cycle.
 
-**[D] Policy/orchestration spread.** Refresh summaries, mark-read orchestration, individual-state changes, and save metadata are duplicated among browser/API/command adapters, with differing atomicity and count semantics. Admin writes bypass most service commands. This is current drift, not a separated application architecture.
+**[F] Shared mutation commands.** Read-state mutation and refresh orchestration live in [`feeds/commands.py`](../../feeds/commands.py). Marking an article, a period, or a Feed read, and tallying a refresh, each have exactly one implementation that the session, bearer, and signed-link adapters call. A command validates the marker shape and commits explicit-state materialization together with the marker upsert, so the session surface no longer differs from the other two in atomicity, validation, or counts. Adapters retain only their own wire-format parsing and error rendering.
+
+**[D] Remaining policy spread.** Save metadata, Feed/Category creation, and preference updates are still written directly by each adapter, with Django forms validating the browser path and `api_validation` validating the JSON path. Admin writes bypass service commands entirely. Splitting the external Linkding gateway from pure domain state is tracked separately.
 
 ## 6. Persistence model
 

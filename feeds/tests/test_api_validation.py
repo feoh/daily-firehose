@@ -493,7 +493,7 @@ class ApiValidationTests(StaticFilesTestCase):
         self.assert_error(response, status=400, code="bad_request")
         self.assertFalse(UserPreference.objects.filter(user=self.user).exists())
 
-    @patch("feeds.api.refresh_active_feeds")
+    @patch("feeds.commands.refresh_active_feeds")
     def test_no_input_endpoints_reject_bodies_of_any_media_before_mutation(
         self, refresh
     ) -> None:

@@ -119,7 +119,7 @@ class ApiTests(StaticFilesTestCase):
         self.assertEqual(saved.notes, "Brief me on this.")
         self.assertTrue(response.json()["article"]["is_saved"])
 
-    @patch("feeds.api.refresh_active_feeds")
+    @patch("feeds.commands.refresh_active_feeds")
     def test_refresh_api_reports_partial_failures_and_backoff(
         self, mock_refresh_active_feeds
     ) -> None:

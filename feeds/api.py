@@ -17,7 +17,7 @@ from django.core.exceptions import (
     TooManyFieldsSent,
     ValidationError,
 )
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError
 from django.http import Http404, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -45,11 +45,16 @@ from .api_validation import (
     string,
     validation_problem,
 )
+from .commands import (
+    mark_article_read,
+    mark_feed_read,
+    mark_period_read,
+    run_feed_refresh,
+)
 from .feed_fetch import FeedFetchError
 from .models import (
     ApiToken,
     Article,
-    ArticleReadState,
     BulkReadMarker,
     Category,
     Feed,
@@ -60,7 +65,6 @@ from .models import (
 from .queries import (
     article_cards,
     articles_between,
-    mark_articles_read,
     month_bounds,
     read_article_ids,
     user_preference,
@@ -71,7 +75,6 @@ from .services import (
     article_save_capability,
     discover_feed_metadata,
     import_postmark_newsletter,
-    refresh_active_feeds,
     save_article,
 )
 
@@ -616,21 +619,10 @@ def mark_period_read_and_go(request: HttpRequest) -> HttpResponse:
     else:
         period = "month"
     start, end = _article_window(period)
-    marked_read_at = timezone.now()
     try:
-        with transaction.atomic():
-            mark_articles_read(
-                user,
-                articles_between(start, end).filter(fetched_at__lte=marked_read_at),
-            )
-            BulkReadMarker.objects.update_or_create(
-                user=user,
-                scope=scope,
-                feed=None,
-                period_start=start,
-                period_end=end,
-                defaults={"marked_read_at": marked_read_at},
-            )
+        mark_period_read(user=user, scope=scope, period_start=start, period_end=end)
+    except ValidationError as exc:
+        return validation_problem(exc).response()
     except BulkReadMarker.MultipleObjectsReturned:
         return conflict(
             "Stored read-marker state conflicts with this request."
@@ -651,12 +643,7 @@ def article_read_state(request: HttpRequest, user, article_id: int) -> JsonRespo
     data = _parse_json(request)
     reject_unknown(data, {"is_read"})
     is_read = boolean(data, "is_read", default=True)
-    ArticleReadState(user=user, article=article, is_read=is_read).full_clean(
-        validate_unique=False, validate_constraints=False
-    )
-    ArticleReadState.objects.update_or_create(
-        user=user, article=article, defaults={"is_read": is_read}
-    )
+    mark_article_read(user=user, article=article, is_read=is_read)
     return JsonResponse(
         {
             "article": _article_payload(
@@ -785,27 +772,7 @@ def mark_period_read_api(request: HttpRequest, user) -> JsonResponse:
         start, end = _article_window(
             {"day": "today", "week": "week", "month": "month"}[scope]
         )
-    marked_read_at = timezone.now()
-    BulkReadMarker(
-        user=user,
-        scope=scope,
-        feed=None,
-        period_start=start,
-        period_end=end,
-    ).full_clean(validate_unique=False, validate_constraints=False)
-    with transaction.atomic():
-        mark_articles_read(
-            user,
-            articles_between(start, end).filter(fetched_at__lte=marked_read_at),
-        )
-        BulkReadMarker.objects.update_or_create(
-            user=user,
-            scope=scope,
-            feed=None,
-            period_start=start,
-            period_end=end,
-            defaults={"marked_read_at": marked_read_at},
-        )
+    mark_period_read(user=user, scope=scope, period_start=start, period_end=end)
     return JsonResponse(
         {
             "marked_read": {
@@ -905,27 +872,7 @@ def mark_feed_read_api(request: HttpRequest, user, feed_id: int) -> JsonResponse
     _reject_query_fields(request, set())
     _validate_empty_body(request)
     feed = _get_api_object(Feed.objects.all(), "Feed", id=feed_id)
-    marked_read_at = timezone.now()
-    BulkReadMarker(
-        user=user,
-        scope=ReadScope.FEED,
-        feed=feed,
-        period_start=None,
-        period_end=None,
-    ).full_clean(validate_unique=False, validate_constraints=False)
-    with transaction.atomic():
-        mark_articles_read(
-            user,
-            Article.objects.filter(feed=feed, fetched_at__lte=marked_read_at),
-        )
-        BulkReadMarker.objects.update_or_create(
-            user=user,
-            scope=ReadScope.FEED,
-            feed=feed,
-            period_start=None,
-            period_end=None,
-            defaults={"marked_read_at": marked_read_at},
-        )
+    mark_feed_read(user=user, feed=feed)
     return JsonResponse(
         {"marked_read": {"scope": ReadScope.FEED, "feed": _feed_payload(feed)}}
     )
@@ -1011,21 +958,18 @@ def preferences_api(request: HttpRequest, user) -> JsonResponse:
 def refresh_feeds_api(request: HttpRequest, user) -> JsonResponse:
     _reject_query_fields(request, set())
     _validate_empty_body(request)
-    results = refresh_active_feeds()
-    attempted = [result for result in results if result.status != "skipped"]
+    tally = run_feed_refresh()
     return JsonResponse(
         {
-            "checked": len(results),
-            "attempted": len(attempted),
-            "succeeded": sum(result.status == "succeeded" for result in results),
-            "failed": sum(result.status == "failed" for result in results),
-            "skipped": sum(result.status == "skipped" for result in results),
-            "superseded": sum(result.status == "superseded" for result in results),
-            "feeds_with_new_articles": sum(
-                1 for result in results if result.success and result.created > 0
-            ),
-            "created": sum(result.created for result in results),
-            "updated": sum(result.updated for result in results),
+            "checked": tally.checked,
+            "attempted": len(tally.attempted),
+            "succeeded": tally.succeeded,
+            "failed": len(tally.failures),
+            "skipped": len(tally.skipped),
+            "superseded": len(tally.superseded),
+            "feeds_with_new_articles": tally.feeds_with_new_articles,
+            "created": tally.created,
+            "updated": tally.updated,
             "feeds": [
                 {
                     "id": _pk(result.feed),
@@ -1048,7 +992,7 @@ def refresh_feeds_api(request: HttpRequest, user) -> JsonResponse:
                         else None
                     ),
                 }
-                for result in results
+                for result in tally.results
             ],
         }
     )

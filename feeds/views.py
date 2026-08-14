@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from datetime import date
 from typing import Any, cast
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ValidationError
 from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -15,21 +15,14 @@ from django.views.decorators.http import require_POST
 
 from daily_firehose.redirects import safe_redirect_target
 
+from . import commands
 from .feed_fetch import FeedFetchError
 from .forms import FeedForm, OPMLImportForm, ThemeForm
-from .models import (
-    Article,
-    ArticleReadState,
-    BulkReadMarker,
-    Feed,
-    NewsletterIssue,
-    ReadScope,
-)
+from .models import Article, Feed, NewsletterIssue, ReadScope
 from .queries import (
     archived_article_cards,
     article_cards,
     articles_between,
-    mark_articles_read,
     month_bounds,
     read_article_ids,
     saved_article_cards,
@@ -42,7 +35,6 @@ from .services import (
     discover_feed_metadata,
     export_opml,
     import_opml,
-    refresh_active_feeds,
     save_article,
 )
 
@@ -282,33 +274,25 @@ def preferences(request: HttpRequest) -> HttpResponse:
 @require_POST
 @login_required
 def refresh_feeds(request: HttpRequest) -> HttpResponse:
-    results = refresh_active_feeds()
-    attempted = [result for result in results if result.status != "skipped"]
-    failures = [result for result in results if result.status == "failed"]
-    skipped = [result for result in results if result.status == "skipped"]
-    superseded = [result for result in results if result.status == "superseded"]
-    created = sum(result.created for result in results)
-    updated = sum(result.updated for result in results)
-    succeeded = sum(result.status == "succeeded" for result in results)
-    feeds_with_new_articles = sum(
-        1 for result in results if result.success and result.created > 0
-    )
+    tally = commands.run_feed_refresh()
     summary = (
-        f"Refresh complete: checked {len(results)} feeds; attempted {len(attempted)}; "
-        f"succeeded {succeeded}; failed {len(failures)}; skipped {len(skipped)}; "
-        f"superseded {len(superseded)}; {feeds_with_new_articles} feeds had new "
-        f"articles; {created} new articles; {updated} existing articles updated."
+        f"Refresh complete: checked {tally.checked} feeds; "
+        f"attempted {len(tally.attempted)}; succeeded {tally.succeeded}; "
+        f"failed {len(tally.failures)}; skipped {len(tally.skipped)}; "
+        f"superseded {len(tally.superseded)}; {tally.feeds_with_new_articles} feeds "
+        f"had new articles; {tally.created} new articles; "
+        f"{tally.updated} existing articles updated."
     )
-    if failures:
-        failed_titles = ", ".join(result.feed.title for result in failures)
+    if tally.failures:
+        failed_titles = ", ".join(result.feed.title for result in tally.failures)
         messages.warning(request, f"{summary} Failed feeds: {failed_titles}.")
-    elif skipped:
-        skipped_titles = ", ".join(result.feed.title for result in skipped)
+    elif tally.skipped:
+        skipped_titles = ", ".join(result.feed.title for result in tally.skipped)
         messages.warning(request, f"{summary} Backoff feeds: {skipped_titles}.")
     else:
         messages.success(request, summary)
-    if superseded:
-        superseded_titles = ", ".join(result.feed.title for result in superseded)
+    if tally.superseded:
+        superseded_titles = ", ".join(result.feed.title for result in tally.superseded)
         messages.info(request, f"Superseded feeds: {superseded_titles}.")
     return _redirect_to_posted_next(request, fallback=reverse("today"))
 
@@ -318,10 +302,7 @@ def refresh_feeds(request: HttpRequest) -> HttpResponse:
 def mark_article(request: HttpRequest, article_id: int) -> HttpResponse:
     article = get_object_or_404(Article, id=article_id)
     is_read = request.POST.get("state", "read") == "read"
-    user_id = _pk(request.user)
-    ArticleReadState.objects.update_or_create(
-        user_id=user_id, article=article, defaults={"is_read": is_read}
-    )
+    commands.mark_article_read(user=request.user, article=article, is_read=is_read)
     message = "Marked article read." if is_read else "Marked article unread."
     if _wants_json(request):
         remove = is_read or request.POST.get("remove_on_success") == "true"
@@ -333,23 +314,19 @@ def mark_article(request: HttpRequest, article_id: int) -> HttpResponse:
 @require_POST
 @login_required
 def mark_period_read(request: HttpRequest) -> HttpResponse:
-    scope = request.POST["scope"]
-    start = date.fromisoformat(request.POST["period_start"])
-    end = date.fromisoformat(request.POST["period_end"])
-    user_id = _pk(request.user)
-    marked_read_at = timezone.now()
-    mark_articles_read(
-        request.user,
-        articles_between(start, end).filter(fetched_at__lte=marked_read_at),
-    )
-    BulkReadMarker.objects.update_or_create(
-        user_id=user_id,
-        scope=scope,
-        feed=None,
-        period_start=start,
-        period_end=end,
-        defaults={"marked_read_at": marked_read_at},
-    )
+    try:
+        commands.mark_period_read(
+            user=request.user,
+            scope=commands.parse_period_scope(request.POST.get("scope")),
+            period_start=commands.parse_iso_date(
+                request.POST.get("period_start"), "period_start"
+            ),
+            period_end=commands.parse_iso_date(
+                request.POST.get("period_end"), "period_end"
+            ),
+        )
+    except ValidationError:
+        return HttpResponseBadRequest("Invalid period selection.")
     messages.success(request, "Marked this period read.")
     return _redirect_to_posted_next(request, fallback=reverse("today"))
 
@@ -358,20 +335,7 @@ def mark_period_read(request: HttpRequest) -> HttpResponse:
 @login_required
 def mark_feed_read(request: HttpRequest, feed_id: int) -> HttpResponse:
     feed = get_object_or_404(Feed, id=feed_id)
-    user_id = _pk(request.user)
-    marked_read_at = timezone.now()
-    mark_articles_read(
-        request.user,
-        Article.objects.filter(feed=feed, fetched_at__lte=marked_read_at),
-    )
-    BulkReadMarker.objects.update_or_create(
-        user_id=user_id,
-        scope=ReadScope.FEED,
-        feed=feed,
-        period_start=None,
-        period_end=None,
-        defaults={"marked_read_at": marked_read_at},
-    )
+    commands.mark_feed_read(user=request.user, feed=feed)
     messages.success(request, f"Marked {feed.title} read.")
     return _redirect_to_posted_next(
         request, fallback=reverse("feed-detail", args=[_pk(feed)])
