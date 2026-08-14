@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hmac
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -29,6 +28,8 @@ from .support.builders import (
     build_saved_article,
     build_user,
     newsletter_payload,
+    signed_action_query,
+    signed_action_url,
 )
 
 
@@ -299,15 +300,14 @@ class KnownCorrectnessFailureTests(StaticFilesTestCase):
         self.user.save(update_fields=["username"])
         article = self.build_newsletter_article()
         article_id = model_id(article)
-        signature = hmac.new(
-            b"test-secret",
-            f"save-and-go:{article_id}".encode(),
-            "sha256",
-        ).hexdigest()
 
-        response = self.client.get(
-            reverse("api-article-save-and-go", args=[article_id]),
-            {"sig": signature},
+        response = self.client.post(
+            signed_action_url(
+                reverse("api-article-save-and-go", args=[article_id]),
+                **signed_action_query(
+                    purpose="save-and-go", target=str(article_id)
+                ),
+            )
         )
 
         self.assertFalse(SavedArticle.objects.filter(article=article).exists())

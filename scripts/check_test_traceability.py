@@ -7,8 +7,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-EXPECTED_MODULES = 26
-EXPECTED_TESTS = 380
+EXPECTED_MODULES = 27
+EXPECTED_TESTS = 392
 EXPECTED_XFAILS = 2
 DIMENSIONS = (
     "positive",
@@ -122,8 +122,8 @@ REQUIRED_HEADINGS = {
     "## Maintenance and review protocol",
 }
 INTRO_BASELINE = (
-    "Current AST baseline: **82 feature IDs**, **44 invariant IDs**, "
-    "**26 app test modules**, **380 app test methods**, and "
+    "Current AST baseline: **82 feature IDs**, **45 invariant IDs**, "
+    "**27 app test modules**, **392 app test methods**, and "
     "**2 `expectedFailure` methods**."
 )
 BROAD_GAP_BASELINE = (
@@ -142,8 +142,8 @@ CONTRACTS_EXPECTED_FAILURE_SENTENCE = (
     "The current suite contains **2 expected failures**."
 )
 CONTRACTS_CURRENT_SUITE = (
-    "This post-snapshot companion maps the **current suite: 26 test modules, "
-    "380 test methods, and 2 expected failures**."
+    "This post-snapshot companion maps the **current suite: 27 test modules, "
+    "392 test methods, and 2 expected failures**."
 )
 CONTRACTS_PROGRESSIVE_EVIDENCE = (
     "| Progressive/a11y/mobile | UI-INV-001–005 | `test_article_actions.py`, "
@@ -163,7 +163,7 @@ PINNED_TEXT = {
         "**8/8** snapshot expected failures mapped",
     ),
     "docs/features/contracts.md": (
-        "**current suite: 26 test modules, 380 test",
+        "**current suite: 27 test modules, 392 test",
         "15/191/8 snapshot counts",
     ),
 }
@@ -179,7 +179,7 @@ AUDITED_LEDGER = {
         ("API-016",),
     ),
     8: (
-        "test_signed_save_and_go_link_saves_and_redirects",
+        "test_signed_save_and_go_action_saves_and_redirects",
         "primary",
         "API/SQLite",
         ("API-018", "API-COMPAT-INV-002"),
@@ -805,7 +805,7 @@ AUDITED_MATRIX = {
     ),
     "API-018": (
         {"external-I/O": "M", "production": "NA"},
-        {"tk-add-explicit-api-capabilities-and-replace-replay-69180c"},
+        {"tk-harden-api-operations-security-and-release-verif-5f790a"},
     ),
     "OPS-002": (
         {"migration": "C", "production": "M"},
@@ -1055,7 +1055,7 @@ def _stable_ids(root: Path) -> tuple[set[str], set[str]]:
     invariants = set(
         re.findall(rf"^### ({INVARIANT_PATTERN}) —", contracts, re.MULTILINE)
     )
-    if len(features) != 82 or len(invariants) != 44:
+    if len(features) != 82 or len(invariants) != 45:
         raise AssertionError(
             f"stable-ID baseline drift: features={len(features)}, invariants={len(invariants)}"
         )

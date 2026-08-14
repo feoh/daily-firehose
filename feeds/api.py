@@ -4,8 +4,9 @@ import base64
 import hmac
 import json
 import logging
+import re
 from collections.abc import Callable
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from functools import wraps
 from typing import Any, Concatenate, ParamSpec, cast
 from urllib.parse import unquote_plus
@@ -17,7 +18,7 @@ from django.core.exceptions import (
     TooManyFieldsSent,
     ValidationError,
 )
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.http import Http404, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -60,6 +61,7 @@ from .models import (
     Feed,
     ReadScope,
     SavedArticle,
+    SignedActionNonce,
     UserPreference,
 )
 from .queries import (
@@ -190,7 +192,7 @@ def _get_api_object(query: Any, resource: str, **lookup: Any) -> Any:
         raise not_found(resource) from exc
 
 
-def _authenticated_api_user(request: HttpRequest):
+def _authenticated_api_token(request: HttpRequest) -> ApiToken | None:
     header = request.headers.get("Authorization", "")
     scheme, _, key = header.partition(" ")
     if scheme.lower() not in {"bearer", "token"} or not key:
@@ -208,7 +210,15 @@ def _authenticated_api_user(request: HttpRequest):
         return None
     token.last_used_at = timezone.now()
     token.save(update_fields=["last_used_at"])
-    return token.user
+    return token
+
+
+def _required_capability(method: str | None) -> str:
+    """Safe methods need read; anything that can change state needs write."""
+
+    if method in {"GET", "HEAD"}:
+        return ApiToken.Capability.READ
+    return ApiToken.Capability.WRITE
 
 
 def api_view(
@@ -229,8 +239,8 @@ def api_view(
                 return _json_error(
                     "Method not allowed.", status=405, code="method_not_allowed"
                 )
-            user = _authenticated_api_user(request)
-            if user is None:
+            token = _authenticated_api_token(request)
+            if token is None:
                 response = _json_error(
                     "Provide a valid API token in the Authorization header.",
                     status=401,
@@ -238,6 +248,14 @@ def api_view(
                 )
                 response["WWW-Authenticate"] = "Bearer"
                 return response
+            capability = _required_capability(request.method)
+            if not token.allows(capability):
+                return _json_error(
+                    f"This token lacks the {capability} capability.",
+                    status=403,
+                    code="insufficient_capability",
+                )
+            user = token.user
             request.user = user
             try:
                 return view(request, user, *args, **kwargs)
@@ -513,18 +531,15 @@ def morning_briefing(request: HttpRequest, user) -> JsonResponse:
     )
 
 
-def _agent_link_signature(article_id: int) -> str:
-    return hmac.new(
-        settings.AGENT_LINK_SECRET.encode("utf-8"),
-        f"save-and-go:{article_id}".encode(),
-        "sha256",
-    ).hexdigest()
+NONCE_PATTERN = re.compile(r"\A[A-Za-z0-9_-]{16,64}\Z")
 
 
-def _agent_link_period_read_signature(scope: str) -> str:
+def agent_link_signature(*, purpose: str, target: str, expires: int, nonce: str) -> str:
+    """Bind a signed action to its purpose, target, deadline, and single use."""
+
     return hmac.new(
         settings.AGENT_LINK_SECRET.encode("utf-8"),
-        f"mark-period-read:{scope}".encode(),
+        f"{purpose}:{target}:{expires}:{nonce}".encode(),
         "sha256",
     ).hexdigest()
 
@@ -538,21 +553,96 @@ def _agent_link_user():
     ).first()
 
 
-def article_save_and_go(request: HttpRequest, article_id: int) -> HttpResponse:
-    """Save an article from a signed GET link, then redirect to the article URL."""
+class _SignedActionRejected(Exception):
+    def __init__(self, response: JsonResponse) -> None:
+        super().__init__("signed action rejected")
+        self.response = response
 
-    if request.method != "GET":
-        return _json_error("Method not allowed.", status=405, code="method_not_allowed")
+
+def _authorize_signed_action(
+    request: HttpRequest, *, purpose: str, target: str
+) -> None:
+    """Authenticate one single-use signed action and spend it.
+
+    Method precedes signature and signature precedes semantic input, which is the
+    documented order. The nonce is spent before the action runs: a signed action
+    that fails partway is not retried under the same capability.
+    """
+
+    if request.method != "POST":
+        raise _SignedActionRejected(
+            _json_error("Method not allowed.", status=405, code="method_not_allowed")
+        )
+    expires_value = _raw_query_value(request, "expires")
+    nonce = _raw_query_value(request, "nonce")
     signature = _raw_query_value(request, "sig")
-    if not settings.AGENT_LINK_SECRET or not hmac.compare_digest(
-        signature, _agent_link_signature(article_id)
-    ):
-        return _json_error("Invalid article save link.", status=403, code="forbidden")
     try:
-        _reject_query_fields(request, {"sig"})
+        expires = int(expires_value)
+    except ValueError:
+        expires = 0
+    expected = (
+        agent_link_signature(
+            purpose=purpose, target=target, expires=expires, nonce=nonce
+        )
+        if settings.AGENT_LINK_SECRET
+        else ""
+    )
+    if not settings.AGENT_LINK_SECRET or not hmac.compare_digest(signature, expected):
+        raise _SignedActionRejected(
+            _json_error("Invalid signed action.", status=403, code="forbidden")
+        )
+    if not NONCE_PATTERN.fullmatch(nonce):
+        raise _SignedActionRejected(
+            _json_error(
+                "nonce must be 16-64 URL-safe characters.",
+                status=403,
+                code="forbidden",
+            )
+        )
+    now = timezone.now()
+    deadline = datetime.fromtimestamp(expires, tz=UTC)
+    horizon = now + timedelta(seconds=settings.AGENT_LINK_MAX_LIFETIME_SECONDS)
+    if deadline <= now:
+        raise _SignedActionRejected(
+            _json_error("This signed action has expired.", status=403, code="expired")
+        )
+    if deadline > horizon:
+        raise _SignedActionRejected(
+            _json_error(
+                "This signed action outlives the permitted lifetime.",
+                status=403,
+                code="forbidden",
+            )
+        )
+    try:
+        _reject_query_fields(request, {"sig", "expires", "nonce", "scope"})
         _validate_empty_body(request)
     except ApiProblem as exc:
-        return exc.response()
+        raise _SignedActionRejected(exc.response()) from exc
+    SignedActionNonce.objects.filter(expires_at__lt=now).delete()
+    try:
+        # A savepoint keeps the replay conflict from poisoning any surrounding
+        # transaction: losing this race is an answer, not a failure.
+        with transaction.atomic():
+            SignedActionNonce.objects.create(
+                nonce=nonce, purpose=purpose, expires_at=deadline
+            )
+    except IntegrityError as exc:
+        raise _SignedActionRejected(
+            conflict("This signed action has already been used.").response()
+        ) from exc
+
+
+@csrf_exempt
+def article_save_and_go(request: HttpRequest, article_id: int) -> HttpResponse:
+    """Save an article from a single-use signed POST, then redirect to it."""
+
+    try:
+        _authorize_signed_action(
+            request, purpose="save-and-go", target=str(article_id)
+        )
+    except _SignedActionRejected as exc:
+        return exc.response
     user = _agent_link_user()
     if user is None:
         return _json_error(
@@ -585,22 +675,15 @@ def article_save_and_go(request: HttpRequest, article_id: int) -> HttpResponse:
     return redirect(safe_article_navigation_url(article.url, fallback=reverse("today")))
 
 
+@csrf_exempt
 def mark_period_read_and_go(request: HttpRequest) -> HttpResponse:
-    """Mark a day, week, or month read from a signed GET link."""
+    """Mark a day, week, or month read from a single-use signed POST."""
 
-    if request.method != "GET":
-        return _json_error("Method not allowed.", status=405, code="method_not_allowed")
     scope = _raw_query_value(request, "scope") or ReadScope.DAY
-    signature = _raw_query_value(request, "sig")
-    if not settings.AGENT_LINK_SECRET or not hmac.compare_digest(
-        signature, _agent_link_period_read_signature(scope)
-    ):
-        return _json_error("Invalid period read link.", status=403, code="forbidden")
     try:
-        _reject_query_fields(request, {"scope", "sig"})
-        _validate_empty_body(request)
-    except ApiProblem as exc:
-        return exc.response()
+        _authorize_signed_action(request, purpose="mark-period-read", target=scope)
+    except _SignedActionRejected as exc:
+        return exc.response
     if scope not in {ReadScope.DAY, ReadScope.WEEK, ReadScope.MONTH}:
         return semantic_error(
             "scope must be one of: day, week, month.", field="scope"

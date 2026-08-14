@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hmac
 from unittest.mock import patch
 
 from django.contrib.messages import get_messages
@@ -23,6 +22,8 @@ from .support.builders import (
     build_feed,
     build_newsletter_issue,
     build_user,
+    signed_action_query,
+    signed_action_url,
 )
 
 
@@ -284,15 +285,16 @@ class NewsletterSavePolicyTests(StaticFilesTestCase):
         self, external_save
     ) -> None:
         article_id = model_id(self.newsletter)
-        signature = hmac.new(
-            b"newsletter-agent-secret",
-            f"save-and-go:{article_id}".encode(),
-            "sha256",
-        ).hexdigest()
 
-        response = self.client.get(
-            reverse("api-article-save-and-go", args=[article_id]),
-            {"sig": signature},
+        response = self.client.post(
+            signed_action_url(
+                reverse("api-article-save-and-go", args=[article_id]),
+                **signed_action_query(
+                    purpose="save-and-go",
+                    target=str(article_id),
+                    secret="newsletter-agent-secret",
+                ),
+            )
         )
 
         self.assertEqual(response.status_code, 422)

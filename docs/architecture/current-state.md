@@ -20,7 +20,7 @@ Cross-cutting tracked evidence includes [`README.md`](../../README.md), [`AGENTS
 
 ## 2. System summary
 
-**[F]** Daily Firehose is one Django project with one first-party app, `feeds`. Gunicorn serves server-rendered pages, a progressive-enhancement JavaScript controller, a session JSON digest, a bearer-token JSON API, deterministic signed-link actions, a Postmark webhook, and Django admin. A separate Compose container repeatedly invokes the same Django feed-refresh command. Both application processes share one PostgreSQL database. See [`daily_firehose/urls.py`](../../daily_firehose/urls.py), [`feeds/urls.py`](../../feeds/urls.py), and [`docker-compose.yml`](../../docker-compose.yml).
+**[F]** Daily Firehose is one Django project with one first-party app, `feeds`. Gunicorn serves server-rendered pages, a progressive-enhancement JavaScript controller, a session JSON digest, a capability-scoped bearer-token JSON API, single-use signed actions, a Postmark webhook, and Django admin. A separate Compose container repeatedly invokes the same Django feed-refresh command. Both application processes share one PostgreSQL database. See [`daily_firehose/urls.py`](../../daily_firehose/urls.py), [`feeds/urls.py`](../../feeds/urls.py), and [`docker-compose.yml`](../../docker-compose.yml).
 
 **[F]** Articles from RSS/Atom and email newsletters converge on `Article`. A reverse one-to-one `NewsletterIssue` distinguishes newsletter-backed articles. Per-user read state and saved state are stored separately. See [`feeds/models.py`](../../feeds/models.py).
 
@@ -88,7 +88,7 @@ flowchart TB
 | [`feeds/services.py`](../../feeds/services.py) | **[F]** Application/integration layer: save capability policy; feed parse/refresh/backoff/logging; newsletter import/archive URL/sanitization; feed discovery; OPML import/export; local save and Linkding POST. Uses ORM, `feed_fetch`, feedparser, Bleach, Requests, and XML parsing. |
 | [`feeds/views.py`](../../feeds/views.py) | **[F]** Session/browser controllers and legacy digest JSON. Also owns shared period, visibility, read-state, card-query, and preference helpers. Uses forms, models, services, templates/messages. |
 | [`feeds/api_validation.py`](../../feeds/api_validation.py) | **[F]** Strict primitive/query/body validation and normalized JSON problem responses. |
-| [`feeds/api.py`](../../feeds/api.py) | **[F]** Postmark, signed-link and bearer-API adapters; authentication, serializers, input mapping and exception mapping. Uses models/services/validation and, contrary to intended layering, private helpers from `views`. |
+| [`feeds/api.py`](../../feeds/api.py) | **[F]** Postmark, signed-action and bearer-API adapters; authentication, capability enforcement, serializers, input mapping and exception mapping. Uses models, services, commands and validation. |
 | [`feeds/urls.py`](../../feeds/urls.py) | **[F]** Complete first-party route registration. Dynamically imports `feeds.api` because API imports browser helpers. |
 | [`feeds/admin.py`](../../feeds/admin.py) | **[F]** Registers all nine app models. List/search/filter/read-only configuration exposes refresh state and tokens. On create or Article reassignment only, `SavedArticleAdminForm` blocks selecting a newsletter article; normal admin persistence writes ORM state directly without the save service or Linkding, and non-admin ORM writes bypass the form check. |
 | `feeds/migrations/__init__.py` | **[F]** Migration package marker. |
@@ -166,7 +166,7 @@ flowchart TB
 
 ## 4. Route and adapter map
 
-Legend: **session** means `login_required` and CSRF middleware protects mutations; **bearer** means an active `ApiToken` for an active user, with CSRF exemption; **signed** means global HMAC query capability; **public-secret** means a secret path segment; **public** means no authentication. `GET*` or `GET/POST*` means those are intended paths, but the view has no explicit method decorator and may render the same response for other verbs. That permissiveness is current fact, not a recommendation.
+Legend: **session** means `login_required` and CSRF middleware protects mutations; **bearer** means an active `ApiToken` for an active user whose capabilities permit the request method, with CSRF exemption; **signed** means a single-use expiring HMAC capability in the query; **public-secret** means a secret path segment; **public** means no authentication. `GET*` or `GET/POST*` means those are intended paths, but the view has no explicit method decorator and may render the same response for other verbs. That permissiveness is current fact, not a recommendation.
 
 ### Framework-mounted routes
 
@@ -198,8 +198,8 @@ Legend: **session** means `login_required` and CSRF middleware protects mutation
 | POST | `/mark-period-read/` / `mark-period-read` | session | Required scope/start/end strings and optional `next` → redirect | Materializes explicit rows then upserts period marker. **[D]** No validation guard/transaction; malformed fields can error; untrusted redirect. |
 | GET* | `/api/digest/today.json` / `digest-json` | session | Method/query/body ignored by the view → legacy JSON digest | Reads unread/unsaved Today cards; no API-token auth and no standardized API error envelope. Django CSRF middleware rejects unsafe requests without a valid token; CSRF-valid unsafe methods reach the same method-agnostic view. |
 | POST | `/api/postmark/inbound/<secret>/` / `postmark-inbound` | public-secret; CSRF exempt | No query; strict JSON object requiring only truthy MessageID → `{id, created}`, 200/201 or problem JSON | Constant-time path-secret check precedes validation. Other payload fields are optional/string-coerced and created models are not passed through `full_clean()`. Creates the synthetic Feed as inactive only when absent; an existing Feed is reused without changing its active state, then Article and NewsletterIssue are created. **[D]** The writes are not one transaction. |
-| GET | `/api/v1/articles/<id>/save-and-go/` / `api-article-save-and-go` | signed | Sole `sig` query → external article redirect or problem JSON | Global deterministic HMAC over article ID; configured active username; local + Linkding save. **[D]** Replayable, non-expiring mutating GET. Redirect occurs even when Linkding failure was persisted. |
-| GET | `/api/v1/mark-period-read-and-go/` / `api-mark-period-read-and-go` | signed | `scope` day/week/month (default day), `sig` → Today redirect/problem JSON | Global deterministic HMAC over scope; resolves current period at use time; atomically materializes rows and marker. **[D]** Replayable, non-expiring mutating GET whose same URL targets a changing period. |
+| POST | `/api/v1/articles/<id>/save-and-go/` / `api-article-save-and-go` | signed | `expires`, `nonce`, `sig` query → external article redirect or problem JSON | **[F]** HMAC binds purpose, article ID, deadline, and nonce; single use, bounded lifetime; configured active username; local + Linkding save. GET returns 405. Redirect occurs even when Linkding failure was persisted. |
+| POST | `/api/v1/mark-period-read-and-go/` / `api-mark-period-read-and-go` | signed | `scope` day/week/month (default day), `expires`, `nonce`, `sig` → Today redirect/problem JSON | **[F]** HMAC binds purpose, scope, deadline, and nonce; single use, bounded lifetime; resolves current period at use time; atomically materializes rows and marker. GET returns 405. The same scope still targets a changing period, which the short lifetime bounds. |
 
 ### Bearer JSON API
 
@@ -499,7 +499,7 @@ flowchart TD
 
 **[F]** Scope is based on `fetched_at`/its UTC-local date, not `published_at`. A marker does not mark an article fetched after the marker timestamp. Explicit unread is the final override. Bulk actions both materialize current explicit rows and retain markers.
 
-**[D]** Session period/feed paths do the materialization and marker write without `transaction.atomic`; API and signed paths are atomic.
+**[F]** Every adapter marks read through one command in [`feeds/commands.py`](../../feeds/commands.py), so the materialization and the marker write commit or roll back together on the session, bearer, and signed paths alike.
 
 **[F]** `queries.read_article_ids` resolves coverage in SQL. Markers are narrowed before they are read — by owner, by the oldest `fetched_at` on screen, by the feeds present, and by period overlap — so resolution cost tracks the window shown rather than the reader's whole marking history. `fetched_at`, `(feed, fetched_at)`, `(user, is_read, -updated_at)`, `(user, marked_read_at)`, and `(user, -saved_at)` indexes back these paths.
 

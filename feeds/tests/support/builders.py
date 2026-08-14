@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import json
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -9,6 +10,7 @@ from itertools import count
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import patch
+from urllib.parse import urlencode
 
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -206,8 +208,48 @@ def build_saved_article(
     )
 
 
-def build_api_token(*, user: Any, name: str | None = None) -> tuple[ApiToken, str]:
-    return ApiToken.create_token(user=user, name=name or _identity("api-token"))
+def build_api_token(
+    *, user: Any, name: str | None = None, capabilities: list[str] | None = None
+) -> tuple[ApiToken, str]:
+    return ApiToken.create_token(
+        user=user, name=name or _identity("api-token"), capabilities=capabilities
+    )
+
+
+def signed_action_query(
+    *,
+    purpose: str,
+    target: str,
+    secret: str = "test-secret",
+    lifetime_seconds: int = 60,
+    nonce: str | None = None,
+    expires: int | None = None,
+) -> dict[str, str]:
+    """Build the query a caller must present for one single-use signed action.
+
+    Mirrors what an external agent constructs, so a test that tampers with any
+    field is tampering with the real contract rather than a test-only shape.
+    """
+
+    nonce = nonce or _identity("single-use-test-nonce")
+    if expires is None:
+        expires = int(timezone.now().timestamp()) + lifetime_seconds
+    signature = hmac.new(
+        secret.encode("utf-8"),
+        f"{purpose}:{target}:{expires}:{nonce}".encode(),
+        "sha256",
+    ).hexdigest()
+    return {"expires": str(expires), "nonce": nonce, "sig": signature}
+
+
+def signed_action_url(path: str, /, **extra: str) -> str:
+    """Attach a signed action's credentials to its URL.
+
+    They travel in the query string because the action itself takes no body, so
+    the endpoint can keep rejecting every request body outright.
+    """
+
+    return f"{path}?{urlencode(extra)}"
 
 
 def newsletter_payload(*, message_id: str | None = None) -> dict[str, Any]:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hmac
 from unittest.mock import patch
 
 from django.contrib.auth import SESSION_KEY
@@ -14,7 +13,13 @@ from playwright.sync_api import (  # pyright: ignore[reportMissingImports]
 
 from ..models import Article, ReadScope
 from .support.base import TEST_STORAGES, StaticFilesTestCase, model_id
-from .support.builders import build_article, build_feed, build_user
+from .support.builders import (
+    build_article,
+    build_feed,
+    build_user,
+    signed_action_query,
+    signed_action_url,
+)
 
 
 @override_settings(LINKDING_TOKEN="")
@@ -189,25 +194,25 @@ class BrowserRedirectRequestTests(StaticFilesTestCase):
     def test_signed_save_go_validates_intentional_outbound_article_url(self) -> None:
         signed_user = build_user(username="signed-redirect-reader")
         article_id = model_id(self.article)
-        signature = hmac.new(
-            b"test-secret",
-            f"save-and-go:{article_id}".encode(),
-            "sha256",
-        ).hexdigest()
 
-        valid = self.client.get(
-            reverse("api-article-save-and-go", args=[article_id]),
-            {"sig": signature},
-        )
+        def save_and_go():
+            # Each attempt mints its own capability: a signed action is single use.
+            return self.client.post(
+                signed_action_url(
+                    reverse("api-article-save-and-go", args=[article_id]),
+                    **signed_action_query(
+                        purpose="save-and-go", target=str(article_id)
+                    ),
+                )
+            )
+
+        valid = save_and_go()
         self.assertEqual(valid.status_code, 302)
         self.assertEqual(valid.headers["Location"], self.article.url)
 
         encoded_article_url = "https://example.com/search/?q=100%25%20coverage"
         Article.objects.filter(pk=article_id).update(url=encoded_article_url)
-        encoded_response = self.client.get(
-            reverse("api-article-save-and-go", args=[article_id]),
-            {"sig": signature},
-        )
+        encoded_response = save_and_go()
         self.assertRedirects(
             encoded_response, encoded_article_url, fetch_redirect_response=False
         )
@@ -223,10 +228,7 @@ class BrowserRedirectRequestTests(StaticFilesTestCase):
         for target in unsafe_urls:
             with self.subTest(target=target):
                 Article.objects.filter(pk=article_id).update(url=target)
-                response = self.client.get(
-                    reverse("api-article-save-and-go", args=[article_id]),
-                    {"sig": signature},
-                )
+                response = save_and_go()
                 self.assertRedirects(
                     response, reverse("today"), fetch_redirect_response=False
                 )

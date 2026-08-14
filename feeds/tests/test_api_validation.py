@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hmac
 from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
@@ -17,7 +16,14 @@ from ..models import (
     UserPreference,
 )
 from .support.base import StaticFilesTestCase, model_id
-from .support.builders import build_api_token, build_article, build_feed, build_user
+from .support.builders import (
+    build_api_token,
+    build_article,
+    build_feed,
+    build_user,
+    signed_action_query,
+    signed_action_url,
+)
 
 
 class ApiValidationTests(StaticFilesTestCase):
@@ -717,11 +723,24 @@ class ApiValidationTests(StaticFilesTestCase):
     )
     def test_signed_action_methods_and_missing_resource_use_json_errors(self) -> None:
         article_id = 999999
-        signature = hmac.new(
-            b"test-secret", f"save-and-go:{article_id}".encode(), "sha256"
-        ).hexdigest()
-        response = self.client.get(
-            reverse("api-article-save-and-go", args=[article_id]), {"sig": signature}
+        save_path = reverse("api-article-save-and-go", args=[model_id(self.article)])
+
+        def save_query(**extra: str) -> str:
+            return signed_action_url(
+                save_path,
+                **signed_action_query(
+                    purpose="save-and-go", target=str(model_id(self.article))
+                ),
+                **extra,
+            )
+
+        response = self.client.post(
+            signed_action_url(
+                reverse("api-article-save-and-go", args=[article_id]),
+                **signed_action_query(
+                    purpose="save-and-go", target=str(article_id)
+                ),
+            )
         )
         self.assert_error(
             response,
@@ -729,67 +748,54 @@ class ApiValidationTests(StaticFilesTestCase):
             code="not_found",
             message="Article not found.",
         )
-        response = self.client.post(
-            reverse("api-article-save-and-go", args=[model_id(self.article)])
-        )
+        response = self.client.get(save_path)
         self.assert_error(response, status=405, code="method_not_allowed")
-        response = self.client.post(reverse("api-mark-period-read-and-go"))
+        response = self.client.get(reverse("api-mark-period-read-and-go"))
         self.assert_error(response, status=405, code="method_not_allowed")
 
         response = self.client.generic(
-            "GET",
-            f"{reverse('api-article-save-and-go', args=[model_id(self.article)])}?sig=invalid&unknown=x",
+            "POST",
+            f"{save_path}?sig=invalid&unknown=x",
             data="x",
             content_type="text/plain",
         )
         self.assert_error(response, status=403, code="forbidden")
-        response = self.client.get(
-            reverse("api-mark-period-read-and-go"),
-            {"scope": "century", "sig": "invalid", "unknown": "x"},
+
+        response = self.client.post(
+            signed_action_url(
+                reverse("api-mark-period-read-and-go"),
+                scope="century",
+                sig="invalid",
+                unknown="x",
+            )
         )
         self.assert_error(response, status=403, code="forbidden")
 
         excessive_query = "&".join("unknown=x" for _ in range(1_100))
-        response = self.client.get(
-            f"{reverse('api-article-save-and-go', args=[model_id(self.article)])}?{excessive_query}"
-        )
+        response = self.client.post(f"{save_path}?{excessive_query}")
         self.assert_error(response, status=403, code="forbidden")
 
-        invalid_scope_signature = hmac.new(
-            b"test-secret", b"mark-period-read:century", "sha256"
-        ).hexdigest()
-        response = self.client.get(
-            reverse("api-mark-period-read-and-go"),
-            {"scope": "century", "sig": invalid_scope_signature},
+        response = self.client.post(
+            signed_action_url(
+                reverse("api-mark-period-read-and-go"),
+                scope="century",
+                **signed_action_query(
+                    purpose="mark-period-read", target="century"
+                ),
+            )
         )
         error = self.assert_error(response, status=422, code="validation_error")
         self.assertIn("scope", error["fields"])
 
-        save_signature = hmac.new(
-            b"test-secret",
-            f"save-and-go:{model_id(self.article)}".encode(),
-            "sha256",
-        ).hexdigest()
-        response = self.client.get(
-            reverse("api-article-save-and-go", args=[model_id(self.article)]),
-            {"sig": save_signature, "unknown": "x"},
-        )
+        response = self.client.post(save_query(unknown="x"))
         self.assert_error(response, status=400, code="bad_request")
-        response = self.client.get(
-            f"{reverse('api-article-save-and-go', args=[model_id(self.article)])}?sig={save_signature}&{excessive_query}"
-        )
+        response = self.client.post(f"{save_query()}&{excessive_query}")
         self.assert_error(response, status=400, code="bad_request")
         response = self.client.generic(
-            "GET",
-            f"{reverse('api-article-save-and-go', args=[model_id(self.article)])}?sig={save_signature}",
-            data="x",
-            content_type="text/plain",
+            "POST", save_query(), data="x", content_type="text/plain"
         )
         self.assert_error(response, status=400, code="bad_request")
         self.assertFalse(SavedArticle.objects.exists())
         with override_settings(AGENT_LINK_USERNAME="missing-user"):
-            response = self.client.get(
-                reverse("api-article-save-and-go", args=[model_id(self.article)]),
-                {"sig": save_signature},
-            )
+            response = self.client.post(save_query())
         self.assert_error(response, status=503, code="not_configured")

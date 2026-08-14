@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hmac
 from unittest.mock import patch
 
 from django.test import override_settings
@@ -26,6 +25,8 @@ from .support.builders import (
     build_article,
     build_feed,
     build_user,
+    signed_action_query,
+    signed_action_url,
 )
 
 
@@ -240,17 +241,15 @@ class ApiTests(StaticFilesTestCase):
         AGENT_LINK_SECRET="test-secret",
         AGENT_LINK_USERNAME="api-reader",
     )
-    def test_signed_save_and_go_link_saves_and_redirects(self) -> None:
+    def test_signed_save_and_go_action_saves_and_redirects(self) -> None:
         article_id = model_id(self.article)
-        signature = hmac.new(
-            b"test-secret",
-            f"save-and-go:{article_id}".encode(),
-            "sha256",
-        ).hexdigest()
-
-        response = self.client.get(
-            reverse("api-article-save-and-go", args=[article_id]),
-            {"sig": signature},
+        response = self.client.post(
+            signed_action_url(
+                reverse("api-article-save-and-go", args=[article_id]),
+                **signed_action_query(
+                    purpose="save-and-go", target=str(article_id)
+                ),
+            )
         )
 
         self.assertEqual(response.status_code, 302)
@@ -263,16 +262,13 @@ class ApiTests(StaticFilesTestCase):
         AGENT_LINK_SECRET="test-secret",
         AGENT_LINK_USERNAME="api-reader",
     )
-    def test_signed_mark_period_read_link_marks_today_read(self) -> None:
-        signature = hmac.new(
-            b"test-secret",
-            b"mark-period-read:day",
-            "sha256",
-        ).hexdigest()
-
-        response = self.client.get(
-            reverse("api-mark-period-read-and-go"),
-            {"scope": "day", "sig": signature},
+    def test_signed_mark_period_read_action_marks_today_read(self) -> None:
+        response = self.client.post(
+            signed_action_url(
+                reverse("api-mark-period-read-and-go"),
+                scope="day",
+                **signed_action_query(purpose="mark-period-read", target="day"),
+            )
         )
 
         today = timezone.localdate()

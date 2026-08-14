@@ -414,6 +414,23 @@ a claim that every normative rule is presently satisfied.
 - **Known violation status:** **Conformant** on matched routes.
 - **Source / feature IDs:** `feeds/api.py`; API-003, API-017, API-018.
 
+### API-AUTH-INV-003 — Token capability is enforced by method after authentication
+
+- **Normative current contract:** every token carries at least one explicit capability.
+  Safe methods require `read` and state-changing methods require `write`. A token
+  lacking the required capability returns `403 insufficient_capability`, after the 405
+  method check and after authentication, so an anonymous caller still receives `401`.
+- **Scope / precedence:** capabilities bound what a leaked token can do on a
+  single-user deployment; they are not per-user authorization. Signed actions are
+  governed by API-CAP-INV-002 instead, having no token.
+- **Executable evidence:** `test_api_capabilities.py::TokenCapabilityTests` proves a
+  read-only token reads but cannot mark, save, create, or refresh; a write-only token
+  is refused reads; the precedence order holds; and a token cannot be created with an
+  empty, unknown, or repeated capability. A migration test proves tokens created
+  before this field kept `read,write`.
+- **Known violation status:** **Conformant.**
+- **Source / feature IDs:** `feeds/models.py`, `feeds/api.py`; API-002, API-003.
+
 ### API-AUTH-INV-002 — Token compatibility and use timestamp are stable
 
 - **Normative current contract:** case-insensitive `Bearer` and compatibility `Token`
@@ -484,16 +501,20 @@ a claim that every normative rule is presently satisfied.
 
 ### API-CAP-INV-002 — Signed mutation capabilities are non-replayable unsafe-method actions
 
-- **Normative current contract:** a signed mutation capability should use an unsafe
-  method and be bounded by expiry or one-use state, actor/purpose binding, and a
-  revocation/audit boundary so previews and replay cannot repeat state changes.
+- **Normative current contract:** a signed mutation capability uses an unsafe method
+  and is bounded by expiry and one-use state, with the signature binding purpose,
+  target, deadline, and nonce together so previews and replay cannot repeat state
+  changes.
 - **Scope / precedence:** applies to signed save-and-go and period-read actions; this
-  desired security rule takes precedence over convenience-link compatibility.
-- **Executable evidence:** architecture/catalog evidence and signed action tests prove
-  the required controls are absent; no passing non-replayability test exists.
-- **Known violation status:** **Known violation** — current links mutate through
-  deterministic, non-expiring, replayable GET requests.
-- **Source / feature IDs:** `feeds/api.py`; API-018, API-019.
+  security rule takes precedence over convenience-link compatibility.
+- **Executable evidence:** `test_api_capabilities.py::SignedActionSecurityTests` proves
+  replay returns `409` without repeating the save or advancing the marker, expired and
+  over-horizon deadlines are refused, every tampered field is refused, and `GET`
+  returns `405` without writing.
+- **Known violation status:** **Conformant.** Signed actions are single-use expiring
+  POSTs; `AGENT_LINK_MAX_LIFETIME_SECONDS` bounds how far ahead one may be minted, so
+  an expiry field cannot be used to mint a permanent capability.
+- **Source / feature IDs:** `feeds/api.py`, `feeds/models.py`; API-018, API-019.
 
 ### API-COMPAT-INV-001 — Legacy digest remains behind session and CSRF middleware
 
@@ -507,17 +528,17 @@ a claim that every normative rule is presently satisfied.
 - **Source / feature IDs:** `feeds/views.py`, `daily_firehose/settings.py`; API-001,
   AUTH-003.
 
-### API-COMPAT-INV-002 — Signed GET semantics are a current compatibility fact
+### API-COMPAT-INV-002 — Signed actions accept POST only and keep their check order
 
-- **Normative current contract:** current signed links accept GET only, authenticate a
-  deterministic HMAC bound to the exact Article ID or raw period scope, execute as one
-  configured active user, and check method then signature then semantic input.
-- **Scope / precedence:** this characterizes compatibility until API-CAP-INV-002 is
-  implemented; it does not make replayability the desired security norm.
-- **Executable evidence:** signed happy-path and precedence tests in `test_api.py` and
-  `test_api_validation.py`.
-- **Known violation status:** **Conformant current fact** — GET/replay behavior matches
-  implementation while separately violating API-CAP-INV-002.
+- **Normative current contract:** signed actions accept POST only, authenticate an HMAC
+  binding purpose, target, expiry, and nonce, execute as one configured active user,
+  and check method, then signature, then nonce shape and deadline, then query/body,
+  then semantic input. The nonce is spent before the action runs.
+- **Scope / precedence:** the previous GET form was removed outright rather than kept
+  behind a compatibility window; a caller holding an old URL receives `405`.
+- **Executable evidence:** signed happy-path and precedence tests in `test_api.py`,
+  `test_api_validation.py`, and `test_api_capabilities.py`.
+- **Known violation status:** **Conformant.**
 - **Source / feature IDs:** `feeds/api.py`; API-018, API-019.
 
 ## Progressive enhancement, accessibility, and mobile invariants
@@ -718,7 +739,7 @@ a claim that every normative rule is presently satisfied.
 
 ## Traceability matrix
 
-This post-snapshot companion maps the **current suite: 26 test modules, 380 test
+This post-snapshot companion maps the **current suite: 27 test modules, 392 test
 methods, and 2 expected failures**. The pinned catalog retains its independent
 15/191/8 snapshot counts. Exact `module::class::method` identities, evidence levels,
 and dimension-specific gaps are maintained in the [detailed matrix](test-traceability.md).
@@ -730,7 +751,7 @@ and dimension-specific gaps are maintained in the [detailed matrix](test-traceab
 | Save | SAVE-INV-001–004 | `test_article_actions.py`, `test_article_state_propagation.py`, `test_newsletter_save_policy.py`, `test_behavioral_contracts.py`, `test_postgresql_integration.py` | AUTH-005, NEWS-005, SAVE-001–004, API-005, API-009, API-018 |
 | Newsletter | NEWS-INV-001–005 | `test_newsletters.py`, `test_newsletter_save_policy.py`, `test_api_validation.py`, `test_known_correctness_failures.py`, `test_behavioral_contracts.py`, `test_postgresql_integration.py` | NEWS-001–005, API-004, API-017 |
 | Feed/OPML | FEED-INV-001–006 | `test_feed_refresh.py`, `test_opml.py`, `test_behavioral_contracts.py`, `test_postgresql_integration.py` | ING-002, ING-005, ING-007–013, API-012, API-016 |
-| API auth/input/schema/capability | API-AUTH-INV-001–002, API-INPUT-INV-001, API-SCHEMA-INV-001–002, API-CAP-INV-001–002, API-COMPAT-INV-001–002 | `test_api.py`, `test_api_validation.py`, `test_newsletter_save_policy.py`, `test_behavioral_contracts.py` | AUTH-003, API-001–019 |
+| API auth/input/schema/capability | API-AUTH-INV-001–003, API-INPUT-INV-001, API-SCHEMA-INV-001–002, API-CAP-INV-001–002, API-COMPAT-INV-001–002 | `test_api.py`, `test_api_capabilities.py`, `test_api_validation.py`, `test_newsletter_save_policy.py`, `test_behavioral_contracts.py` | AUTH-003, API-001–019 |
 | Progressive/a11y/mobile | UI-INV-001–005 | `test_article_actions.py`, `test_article_actions_browser.py`, `test_browser_redirects.py`, `test_digest_views.py`, `test_mobile_today_browser.py`, `test_responsive_accessibility_browser.py`, `test_known_correctness_failures.py`, `test_behavioral_contracts.py` | WEB-001–002, WEB-007–010, WEB-012–014, WEB-018, WEB-020–021, ING-008, SAVE-003, API-001 |
 | Observability/recovery | OPS-INV-001–005 | `test_feed_refresh.py`, `test_api.py`, `test_production_settings.py`, `test_postgresql_integration.py`; documented manual evidence where automation is absent | ING-007–010, API-016, OPS-002, OPS-008–014 |
 

@@ -418,6 +418,10 @@ LINKDING_URL = os.environ.get(
 LINKDING_TOKEN = os.environ.get("LINKDING_TOKEN", "")
 AGENT_LINK_SECRET = os.environ.get("AGENT_LINK_SECRET", "")
 AGENT_LINK_USERNAME = os.environ.get("AGENT_LINK_USERNAME", "")
+# A signed action is a bearer capability in a URL. Bounding how far ahead one may
+# be minted is what makes "expiring" mean anything: without it a caller could
+# sign a request valid for years and reintroduce the permanent-link defect.
+AGENT_LINK_MAX_LIFETIME_SECONDS = _env_int("AGENT_LINK_MAX_LIFETIME_SECONDS", "300")
 POSTMARK_INBOUND_SECRET = os.environ.get("POSTMARK_INBOUND_SECRET", "")
 # Preferred inbound authentication: credentials travel in the Authorization
 # header instead of the URL path. Both mechanisms are accepted during rotation.

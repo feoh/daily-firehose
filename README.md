@@ -397,7 +397,17 @@ Create a bearer token for an agent or other program:
 
 ```bash
 uv run python manage.py create_api_token <username> --name morning-agent
+uv run python manage.py create_api_token <username> --name briefing --capabilities read
 ```
+
+A token carries explicit capabilities: `read` permits safe methods and `write`
+permits every state change. `--capabilities` defaults to `read,write`; a token
+issued only `read` can fetch the briefing but cannot mark, save, create, or
+refresh anything, which bounds what a leaked briefing token can do. A request
+whose method needs a capability the token lacks returns `403
+insufficient_capability`, after authentication so an anonymous caller still sees
+`401`. Tokens created before capabilities existed were migrated to `read,write`
+so nothing they already did stopped working; reissue them to narrow one.
 
 Use it with `Authorization: Bearer <token>` (or `Token <token>`) against
 `/api/v1/` endpoints. Every nonempty JSON request body must use
@@ -456,14 +466,30 @@ articles retain Open/Read and mark-read actions, but omit save and report
 Linkding. The morning briefing retains its top-level action templates only for
 backward compatibility.
 
-Signed browser-agent actions remain:
+Signed agent actions are single-use, expiring `POST` requests:
 
-- `GET /api/v1/articles/<id>/save-and-go/?sig=...`
-- `GET /api/v1/mark-period-read-and-go/?scope=day&sig=...`
+- `POST /api/v1/articles/<id>/save-and-go/?expires=<unix>&nonce=<n>&sig=<hex>`
+- `POST /api/v1/mark-period-read-and-go/?scope=day&expires=<unix>&nonce=<n>&sig=<hex>`
+
+The signature is `HMAC-SHA256(AGENT_LINK_SECRET, "<purpose>:<target>:<expires>:<nonce>")`
+as lowercase hex, where `purpose` is `save-and-go` or `mark-period-read`,
+`target` is the article ID or the scope, `expires` is a Unix timestamp, and
+`nonce` is 16–64 URL-safe characters unique to that one action. Binding all four
+means a signature cannot be moved to another article, scope, or deadline.
+
+This replaces the previous permanent `GET` links, which any scanner, prefetcher,
+or mail client could execute simply by fetching the URL, and which anyone who had
+seen one could replay forever. `GET` now returns `405` and changes nothing.
+Each action may be spent once: a repeat returns `409`. `expires` must be in the
+future and no further ahead than `AGENT_LINK_MAX_LIFETIME_SECONDS` (default 300),
+so a caller cannot mint an effectively permanent capability. The nonce is spent
+before the action runs, so a failed action is not retried under the same
+signature — sign a new one.
 
 A valid signed action returns `302` on success. Invalid signatures return `403`
-before query/semantic validation, a valid signature with an invalid scope returns
-`422`, and missing agent-link configuration returns `503 not_configured`.
+before query/semantic validation, an expired action returns `403 expired`, a
+valid signature with an invalid scope returns `422`, and missing agent-link
+configuration returns `503 not_configured`.
 Newsletter save attempts through bearer or signed APIs return
 `422 save_not_allowed`; session form/AJAX attempts keep the card visible and show
 a safe explanation.

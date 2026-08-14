@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 import uuid
+from typing import ClassVar
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -297,12 +298,21 @@ class BulkReadMarker(models.Model):
 
 
 class ApiToken(models.Model):
+    class Capability(models.TextChoices):
+        READ = "read", "Read"
+        WRITE = "write", "Write"
+
+    # Tokens that predate capabilities were all-powerful, so the migration maps
+    # them here rather than silently narrowing a token already in use.
+    LEGACY_CAPABILITIES: ClassVar[list[str]] = [Capability.READ, Capability.WRITE]
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="api_tokens"
     )
     name = models.CharField(max_length=120)
     key_hash = models.CharField(max_length=64, unique=True)
     prefix = models.CharField(max_length=12)
+    capabilities = models.JSONField(default=list)
     created_at = models.DateTimeField(auto_now_add=True)
     last_used_at = models.DateTimeField(blank=True, null=True)
     is_active = models.BooleanField(default=True)
@@ -318,20 +328,69 @@ class ApiToken(models.Model):
     def __str__(self) -> str:
         return f"{self.name} ({self.user})"
 
+    def clean(self) -> None:
+        super().clean()
+        valid = {choice[0] for choice in self.Capability.choices}
+        if not isinstance(self.capabilities, list) or not self.capabilities:
+            raise ValidationError(
+                {"capabilities": "A token requires at least one capability."}
+            )
+        unknown = [value for value in self.capabilities if value not in valid]
+        if unknown:
+            raise ValidationError(
+                {"capabilities": f"Unknown capabilities: {', '.join(map(str, unknown))}."}
+            )
+        if len(set(self.capabilities)) != len(self.capabilities):
+            raise ValidationError(
+                {"capabilities": "Capabilities must not repeat."}
+            )
+
+    def allows(self, capability: str) -> bool:
+        return capability in self.capabilities
+
     @staticmethod
     def hash_key(key: str) -> str:
         return hashlib.sha256(key.encode("utf-8")).hexdigest()
 
     @classmethod
-    def create_token(cls, *, user, name: str) -> tuple[ApiToken, str]:
+    def create_token(
+        cls, *, user, name: str, capabilities: list[str] | None = None
+    ) -> tuple[ApiToken, str]:
         key = secrets.token_urlsafe(32)
-        token = cls.objects.create(
+        token = cls(
             user=user,
             name=name,
             key_hash=cls.hash_key(key),
             prefix=key[:12],
+            # An explicitly empty list is a caller error, not a request for the
+            # default, so it must reach validation rather than widen the token.
+            capabilities=list(
+                cls.LEGACY_CAPABILITIES if capabilities is None else capabilities
+            ),
         )
+        token.full_clean(validate_unique=False, validate_constraints=False)
+        token.save()
         return token, key
+
+
+class SignedActionNonce(models.Model):
+    """One spent single-use signed action.
+
+    The unique constraint is the replay check itself: consuming a nonce is an
+    insert, so a second attempt conflicts instead of repeating the mutation.
+    """
+
+    nonce = models.CharField(max_length=64, unique=True)
+    purpose = models.CharField(max_length=64)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-used_at"]
+        indexes = [models.Index(fields=["expires_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.purpose} nonce spent at {self.used_at.isoformat()}"
 
 
 class UserPreference(models.Model):

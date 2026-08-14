@@ -33,7 +33,15 @@ class SavedArticleAdminForm(forms.ModelForm):
 
 @admin.register(ApiToken)
 class ApiTokenAdmin(admin.ModelAdmin):
-    list_display = ["name", "user", "prefix", "is_active", "created_at", "last_used_at"]
+    list_display = [
+        "name",
+        "user",
+        "prefix",
+        "capabilities",
+        "is_active",
+        "created_at",
+        "last_used_at",
+    ]
     list_filter = ["is_active", "created_at", "last_used_at"]
     search_fields = ["name", "user__username", "prefix"]
     readonly_fields = ["key_hash", "prefix", "created_at", "last_used_at"]
