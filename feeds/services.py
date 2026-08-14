@@ -6,6 +6,7 @@ import re
 import time
 import unicodedata
 import uuid
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
@@ -564,24 +565,30 @@ def _entry_article_url(entry: Any) -> str:
     return entry_link or entry_id
 
 
-def refresh_active_feeds() -> list[RefreshResult]:
-    results: list[RefreshResult] = []
+def iter_refresh_active_feeds() -> Iterator[RefreshResult]:
+    """Yield each active Feed's result as soon as that Feed is finished.
+
+    A long-running worker consumes this so it can heartbeat and observe a stop
+    request between Feeds instead of only at the end of a whole cycle.
+    """
+
     for feed in Feed.objects.filter(is_active=True):
         eligibility_time = timezone.now()
         if feed.next_retry_at is not None and feed.next_retry_at > eligibility_time:
-            results.append(
-                RefreshResult(
-                    feed=feed,
-                    success=False,
-                    skipped=True,
-                    error_code=feed.last_error_code,
-                    error_message=feed.last_error_message,
-                    next_retry_at=feed.next_retry_at,
-                )
+            yield RefreshResult(
+                feed=feed,
+                success=False,
+                skipped=True,
+                error_code=feed.last_error_code,
+                error_message=feed.last_error_message,
+                next_retry_at=feed.next_retry_at,
             )
             continue
-        results.append(refresh_feed(feed))
-    return results
+        yield refresh_feed(feed)
+
+
+def refresh_active_feeds() -> list[RefreshResult]:
+    return list(iter_refresh_active_feeds())
 
 
 def newsletter_feed() -> Feed:

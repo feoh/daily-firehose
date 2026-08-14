@@ -302,6 +302,10 @@ X_FRAME_OPTIONS = "DENY"
 SECURE_HSTS_SECONDS = 0
 SILENCED_SYSTEM_CHECKS = ["security.W004"] if IS_PRODUCTION else []
 
+# Container health probes reach Gunicorn directly on loopback with no TLS in
+# front of them, so the HTTPS redirect must not hide the probe's real result.
+SECURE_REDIRECT_EXEMPT = [r"^health/(?:live|ready)$"]
+
 
 # Application definition
 
@@ -316,6 +320,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "daily_firehose.middleware.CorrelationIdMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -429,26 +434,66 @@ FEED_FETCH_TOTAL_TIMEOUT_SECONDS = _env_float("FEED_FETCH_TOTAL_TIMEOUT_SECONDS"
 FEED_FETCH_MAX_BYTES = _env_int("FEED_FETCH_MAX_BYTES", "5000000")
 FEED_FETCH_MAX_REDIRECTS = _env_int("FEED_FETCH_MAX_REDIRECTS", "3")
 
-# Refresh success records are INFO-level operational signals. Configure their
-# logger explicitly so container logs include both successful and failed runs.
+# A worker renews its lease every cycle step; an owner silent for longer than the
+# lease has abandoned the job and its claim may be reclaimed.
+JOB_LEASE_SECONDS = _env_float("JOB_LEASE_SECONDS", "900")
+JOB_HEARTBEAT_SECONDS = _env_float("JOB_HEARTBEAT_SECONDS", "60")
+JOB_MAX_HEARTBEAT_AGE_SECONDS = _env_float("JOB_MAX_HEARTBEAT_AGE_SECONDS", "300")
+FEED_REFRESH_SECONDS = _env_float("FEED_REFRESH_SECONDS", "3600")
+# A worker that has not completed a successful cycle within two nominal intervals
+# plus the stale-heartbeat allowance is reported as stale rather than healthy.
+JOB_MAX_SUCCESS_AGE_SECONDS = _env_float(
+    "JOB_MAX_SUCCESS_AGE_SECONDS",
+    str(2 * FEED_REFRESH_SECONDS + JOB_MAX_HEARTBEAT_AGE_SECONDS),
+)
+if FEED_REFRESH_SECONDS <= 0:
+    raise ImproperlyConfigured("FEED_REFRESH_SECONDS must be greater than zero.")
+if not 0 < JOB_HEARTBEAT_SECONDS < JOB_LEASE_SECONDS:
+    raise ImproperlyConfigured(
+        "JOB_HEARTBEAT_SECONDS must be greater than zero and below JOB_LEASE_SECONDS."
+    )
+
+# Operational records are structured so a log reader can filter by correlation ID
+# and outcome. The formatter drops sensitive field names and scrubs configured
+# secret values from every rendered record.
+LOG_FORMAT = os.environ.get("DJANGO_LOG_FORMAT", "json")
+if LOG_FORMAT not in {"json", "plain"}:
+    raise ImproperlyConfigured("DJANGO_LOG_FORMAT must be exactly 'json' or 'plain'.")
+_APPLICATION_LOG_LEVEL = os.environ.get("DJANGO_LOG_LEVEL", "INFO")
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
         "plain": {"format": "%(levelname)s %(name)s %(message)s"},
+        "json": {"()": "daily_firehose.observability.JsonLogFormatter"},
+    },
+    "filters": {
+        "correlation_id": {
+            "()": "daily_firehose.observability.CorrelationIdFilter",
+        },
     },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
-            "formatter": "plain",
+            "formatter": LOG_FORMAT,
         },
     },
+    # The filter is attached per logger rather than to the handler so the ID
+    # reaches records captured by any handler, including a test's.
     "loggers": {
-        "feeds.services": {
+        name: {
             "handlers": ["console"],
-            "level": os.environ.get("FEED_REFRESH_LOG_LEVEL", "INFO"),
+            "filters": ["correlation_id"],
+            "level": level,
             "propagate": False,
-        },
+        }
+        for name, level in (
+            ("feeds.services", os.environ.get("FEED_REFRESH_LOG_LEVEL", "INFO")),
+            ("feeds.jobs", _APPLICATION_LOG_LEVEL),
+            ("daily_firehose.request", _APPLICATION_LOG_LEVEL),
+            ("daily_firehose.health", _APPLICATION_LOG_LEVEL),
+            ("daily_firehose.worker", _APPLICATION_LOG_LEVEL),
+        )
     },
 }
 

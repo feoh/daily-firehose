@@ -639,11 +639,17 @@ a claim that every normative rule is presently satisfied.
   process/TCP existence.
 - **Scope / precedence:** Compose health and operator verification must detect a stale
   or hung refresh worker.
-- **Executable evidence:** architecture and the 2026-08-11 ingestion incident document
-  the absence; no passing health test exists.
-- **Known violation status:** **Known violation** — web health is TCP-only and the
-  worker has no healthcheck/heartbeat.
-- **Source / feature IDs:** `docker-compose.yml`,
+- **Executable evidence:** `feeds/tests/test_health.py` proves liveness without a
+  database, readiness over real database access and applied migrations, and stale/hung
+  worker detection from heartbeat age, last successful cycle, and consecutive failures;
+  `feeds/tests/test_refresh_worker.py::WorkerHealthCommandTests` proves the worker's
+  container health command exits nonzero without recent successful progress; the
+  Compose probes are asserted in
+  `feeds/tests/test_production_settings.py::ComposeConfigurationTests::test_probes_and_restart_policies_are_explicit`.
+- **Known violation status:** **Conforms in the current suite** — semantic web
+  readiness and worker staleness are executed. Live observation of the probes against
+  a running production stack remains unautomated.
+- **Source / feature IDs:** `feeds/health.py`, `feeds/jobs.py`, `docker-compose.yml`,
   `docs/incidents/2026-08-11-mobile-today-empty.md`; OPS-008, OPS-014.
 
 ### OPS-INV-003 — Deployment fails before application restart on unsafe state
@@ -707,7 +713,7 @@ a claim that every normative rule is presently satisfied.
 
 ## Traceability matrix
 
-This post-snapshot companion maps the **current suite: 20 test modules, 276 test
+This post-snapshot companion maps the **current suite: 23 test modules, 327 test
 methods, and 2 expected failures**. The pinned catalog retains its independent
 15/191/8 snapshot counts. Exact `module::class::method` identities, evidence levels,
 and dimension-specific gaps are maintained in the [detailed matrix](test-traceability.md).

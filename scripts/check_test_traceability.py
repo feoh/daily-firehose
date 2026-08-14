@@ -7,8 +7,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-EXPECTED_MODULES = 20
-EXPECTED_TESTS = 276
+EXPECTED_MODULES = 23
+EXPECTED_TESTS = 327
 EXPECTED_XFAILS = 2
 DIMENSIONS = (
     "positive",
@@ -123,11 +123,11 @@ REQUIRED_HEADINGS = {
 }
 INTRO_BASELINE = (
     "Current AST baseline: **82 feature IDs**, **44 invariant IDs**, "
-    "**20 app test modules**, **276 app test methods**, and "
+    "**23 app test modules**, **327 app test methods**, and "
     "**2 `expectedFailure` methods**."
 )
 BROAD_GAP_BASELINE = (
-    "Exact broad gaps: 2 expected failures; 18 PostgreSQL 17 integration tests "
+    "Exact broad gaps: 2 expected failures; 20 PostgreSQL 17 integration tests "
     "(0 focused XFs) execute real PostgreSQL race and transaction-boundary evidence; "
     "zero automated canonical launched-Compose tests; one real receipt-backed "
     "production backup and isolated restore but no scheduled/alerted RPO or incident "
@@ -142,8 +142,8 @@ CONTRACTS_EXPECTED_FAILURE_SENTENCE = (
     "The current suite contains **2 expected failures**."
 )
 CONTRACTS_CURRENT_SUITE = (
-    "This post-snapshot companion maps the **current suite: 20 test modules, "
-    "276 test methods, and 2 expected failures**."
+    "This post-snapshot companion maps the **current suite: 23 test modules, "
+    "327 test methods, and 2 expected failures**."
 )
 CONTRACTS_PROGRESSIVE_EVIDENCE = (
     "| Progressive/a11y/mobile | UI-INV-001–005 | `test_article_actions.py`, "
@@ -163,7 +163,7 @@ PINNED_TEXT = {
         "**8/8** snapshot expected failures mapped",
     ),
     "docs/features/contracts.md": (
-        "**current suite: 20 test modules, 276 test",
+        "**current suite: 23 test modules, 327 test",
         "15/191/8 snapshot counts",
     ),
 }

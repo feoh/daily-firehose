@@ -34,8 +34,9 @@ If SSH auth fails, do not invent a new deployment path. Report the SSH/access is
 
 That sequence rebuilds and recreates changed application services:
 
+- `migrate` — one-shot schema migration that must complete before the others start
 - `web` — Django + Gunicorn
-- `refresh-feeds` — background feed refresh loop
+- `refresh-feeds` — supervised feed refresh worker
 
 The unchanged `db` service normally remains running and always keeps its data on
 the `postgres-data` volume. If the connectivity probe fails, stop before the
@@ -48,7 +49,10 @@ After redeploying, verify the stack:
 
 ```bash
 docker compose ps
-docker compose logs --no-color --tail=80 web refresh-feeds
+docker compose logs --no-color --tail=80 migrate web refresh-feeds
+curl -s -H 'Host: daily-firehose.reedfish-regulus.ts.net' \
+  http://127.0.0.1:8000/health/ready
+docker compose exec refresh-feeds python manage.py check_refresh_worker
 curl -I -H 'Host: daily-firehose.reedfish-regulus.ts.net' \
   http://127.0.0.1:8000/
 curl -I -H 'Host: daily-firehose.reedfish-regulus.ts.net' \
@@ -58,9 +62,14 @@ curl -I https://daily-firehose.reedfish-regulus.ts.net/
 
 Expected results:
 
-- `web`, `refresh-feeds`, and `db` are `Up`
+- `migrate` is `Exited (0)`; `web`, `refresh-feeds`, and `db` are `Up (healthy)`
 - web logs show Gunicorn started successfully
 - migrations either apply cleanly or report `No migrations to apply`
+- `/health/ready` returns `{"status": "ready", ...}`
+- `check_refresh_worker` prints the worker's status and exits `0`. Immediately
+  after a deploy the worker may not yet have completed a cycle; the container
+  stays healthy through its 15-minute start period, so re-check rather than
+  treating a first-run `stale` as a failure
 - direct loopback HTTP returns a `301` HTTPS redirect
 - the proxy-header and public HTTPS requests return `302 Found` redirecting to `/accounts/login/?next=/` for an anonymous request
 

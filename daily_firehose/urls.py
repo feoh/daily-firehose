@@ -18,9 +18,14 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 
+from feeds import health
+
 from . import auth_views
 
 urlpatterns = [
+    path("health/live", health.live, name="health-live"),
+    path("health/ready", health.ready, name="health-ready"),
+    path("health/status", health.status, name="health-status"),
     path("", include("feeds.urls")),
     path("accounts/login/", auth_views.LoginView.as_view(), name="login"),
     path("accounts/logout/", auth_views.LogoutView.as_view(), name="logout"),

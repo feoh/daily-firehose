@@ -7,6 +7,11 @@ import sys
 def main():
     """Run administrative tasks."""
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'daily_firehose.settings')
+    if 'test' in sys.argv[1:2]:
+        # Access and job records are production signals; a test run that emitted
+        # one per request would bury its own failures. assertLogs still raises
+        # the level of whichever logger a test inspects.
+        os.environ.setdefault('DJANGO_LOG_LEVEL', 'WARNING')
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:

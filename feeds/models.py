@@ -10,6 +10,52 @@ from django.db import models
 from django.utils import timezone
 
 
+class JobRun(models.Model):
+    """One background job cycle, and the lock that keeps cycles from overlapping.
+
+    The partial unique constraint on running rows is the overlap lock itself: a
+    second worker's insert conflicts instead of starting a concurrent cycle.
+    """
+
+    class Status(models.TextChoices):
+        RUNNING = "running", "Running"
+        SUCCEEDED = "succeeded", "Succeeded"
+        FAILED = "failed", "Failed"
+        INTERRUPTED = "interrupted", "Interrupted"
+
+    name = models.CharField(max_length=64)
+    correlation_id = models.CharField(max_length=64, blank=True)
+    owner = models.CharField(max_length=128, blank=True)
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.RUNNING
+    )
+    started_at = models.DateTimeField(default=timezone.now)
+    heartbeat_at = models.DateTimeField(default=timezone.now)
+    finished_at = models.DateTimeField(blank=True, null=True)
+    checked = models.PositiveIntegerField(default=0)
+    attempted = models.PositiveIntegerField(default=0)
+    succeeded = models.PositiveIntegerField(default=0)
+    failed = models.PositiveIntegerField(default=0)
+    skipped = models.PositiveIntegerField(default=0)
+    superseded = models.PositiveIntegerField(default=0)
+    error_code = models.CharField(max_length=64, blank=True)
+    error_message = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-started_at", "-id"]
+        indexes = [models.Index(fields=["name", "-started_at"])]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["name"],
+                condition=models.Q(status="running"),
+                name="unique_running_job_run",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} {self.status} at {self.started_at.isoformat()}"
+
+
 class Category(models.Model):
     name = models.CharField(max_length=120, unique=True)
     slug = models.SlugField(max_length=140, unique=True)

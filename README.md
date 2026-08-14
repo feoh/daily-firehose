@@ -86,7 +86,10 @@ Browser screenshots and DOM snapshots are written to the ignored
 
 ## Docker Compose setup
 
-The compose stack includes the Django web app, PostgreSQL, and a simple feed-refresh loop.
+The compose stack includes the Django web app, PostgreSQL, a one-shot migration
+service, and a supervised feed-refresh worker. Migrations run to completion in
+their own service before the web app serves or the worker refreshes, so a failed
+migration stops the deployment instead of leaving new code on an old schema.
 
 ```bash
 cp .env.example .env
@@ -168,7 +171,8 @@ port 8000 only on host loopback. The verified Tailscale Funnel path terminates
 TLS and proxies to that port with `X-Forwarded-Proto: https`. Django trusts only
 that scheme header, redirects direct HTTP to HTTPS, and marks session and CSRF
 cookies secure. The refresh worker waits for the web healthcheck, which becomes
-healthy only after migrations finish and Gunicorn starts listening.
+healthy only after migrations complete and `/health/ready` proves real database
+access and applied migrations.
 
 HSTS remains explicitly disabled (`SECURE_HSTS_SECONDS=0`) until an operator
 confirms a staged rollout will not lock out recovery paths. Only deploy-check
@@ -200,6 +204,14 @@ Environment variables:
 - `FEED_FETCH_TOTAL_TIMEOUT_SECONDS` — deadline checked before requests and between chunks, default `60`.
 - `FEED_FETCH_MAX_BYTES` — maximum identity-encoded feed response size, default `5000000`.
 - `FEED_FETCH_MAX_REDIRECTS` — maximum redirects per feed request, default `3`.
+- `FEED_REFRESH_SECONDS` — delay between refresh cycles, default `3600`.
+- `DJANGO_LOG_FORMAT` — exactly `json` (default) or `plain`.
+- `DJANGO_LOG_LEVEL` — level for request, health, job, and worker records, default `INFO`.
+- `FEED_REFRESH_LOG_LEVEL` — level for per-feed refresh records, default `INFO`.
+- `JOB_LEASE_SECONDS` — how long a worker's claim on the refresh job survives without a heartbeat, default `900`.
+- `JOB_HEARTBEAT_SECONDS` — minimum interval between heartbeats during a cycle, default `60`; must be below the lease.
+- `JOB_MAX_HEARTBEAT_AGE_SECONDS` — heartbeat age above which a running cycle is reported stale, default `300`.
+- `JOB_MAX_SUCCESS_AGE_SECONDS` — age of the last successful cycle above which the worker is reported stale, defaulting to two refresh intervals plus the stale-heartbeat allowance.
 
 ## Feeds and OPML
 
@@ -268,6 +280,45 @@ skips), while `attempted` excludes only `skipped` rows and therefore includes
 `superseded` rows. The API returns a separate `superseded` aggregate count and retains
 each checked row in `feeds`. The management command exits nonzero only when at least one
 result is actually `failed`.
+
+## Health, observability, and the refresh worker
+
+Three endpoints report runtime state:
+
+| Path | Auth | Purpose |
+| --- | --- | --- |
+| `/health/live` | none | The web process answers HTTP. Touches no database, so a database outage never reports a working listener as dead. |
+| `/health/ready` | none | Real database connection plus applied migrations. Returns `503` when either fails. |
+| `/health/status` | bearer token | Worker heartbeat, last successful cycle, consecutive failed cycles, and aggregate active/failing/backing-off feed counts. Returns `503` when the worker is stale. |
+
+`/health/live` and `/health/ready` are exempt from the HTTPS redirect so the
+container probe on loopback receives a real result. They report booleans only;
+failure detail goes to logs. `/health/status` reports counts and never feed
+titles or URLs.
+
+The refresh worker runs as a management command rather than a shell loop:
+
+```bash
+uv run python manage.py run_refresh_worker          # loop until stopped
+uv run python manage.py run_refresh_worker --once   # a single cycle
+uv run python manage.py check_refresh_worker        # nonzero when stale
+```
+
+Each cycle claims the refresh job in the `JobRun` table. A partial unique index
+on running cycles is the overlap lock, so a second worker is refused instead of
+refreshing the same feeds concurrently; PostgreSQL enforces this across
+connections. A cycle heartbeats between feeds and renews its lease, so a slow
+run is never stolen while a crashed worker's lease expires and is reclaimed.
+`SIGTERM` finishes the feed in flight, records the interrupted cycle, releases
+the lock, and exits.
+
+Logs are one JSON object per record by default, carrying a correlation ID that
+ties a response to every record written while serving it. Clients may supply
+`X-Correlation-ID`; the value is bounded and character-restricted before use,
+and it is echoed on the response. Records name the matched view rather than the
+raw path — the Postmark webhook carries its shared secret as a path segment —
+and the formatter drops secret-named fields and scrubs configured secret values
+from every rendered record.
 
 ## Saved articles
 

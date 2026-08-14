@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Sequence
-from datetime import date
+from collections.abc import Callable, Sequence
+from datetime import date, timedelta
 from typing import Any
 from unittest import skipUnless
 from unittest.mock import patch
@@ -14,14 +14,17 @@ from django.db.migrations.recorder import MigrationRecorder
 from django.db.models.query import QuerySet
 from django.test import Client, TransactionTestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from .. import services
 from ..feed_fetch import FeedFetchError, FetchedFeedDocument
+from ..jobs import REFRESH_JOB, JobAlreadyRunning, acquire_job
 from ..models import (
     Article,
     BulkReadMarker,
     Category,
     Feed,
+    JobRun,
     NewsletterIssue,
     ReadScope,
     SavedArticle,
@@ -51,6 +54,13 @@ _DOCUMENT = FetchedFeedDocument(
     response_headers={"content-location": "https://example.com/feed.xml"},
 )
 _RACE_TIMEOUT = 10.0
+
+
+def _claim_refresh_job(owner: str) -> Callable[[], JobRun]:
+    def claim() -> JobRun:
+        return acquire_job(REFRESH_JOB, correlation_id=owner, owner=owner)
+
+    return claim
 
 
 def _errors[T](outcomes: Sequence[ConcurrentOutcome[T]]) -> list[BaseException]:
@@ -787,3 +797,48 @@ class PostgreSQLIntegrationTests(TransactionTestCase):
         self.assertEqual(feed.refresh_generation, 2)
         self.assertEqual(feed.consecutive_failures, 1)
         self.assertEqual(feed.last_error_code, "connection_error")
+
+    def test_concurrent_workers_produce_exactly_one_running_cycle(self) -> None:
+        outcomes = run_concurrently(
+            [_claim_refresh_job(f"host:{index}") for index in range(4)],
+            timeout=_RACE_TIMEOUT,
+        )
+
+        owners = [
+            outcome.value.owner for outcome in outcomes if outcome.value is not None
+        ]
+        self.assertEqual(len(owners), 1)
+        for error in _errors(outcomes):
+            self.assertIsInstance(error, JobAlreadyRunning)
+        self.assertEqual(
+            list(
+                JobRun.objects.filter(status=JobRun.Status.RUNNING).values_list(
+                    "owner", flat=True
+                )
+            ),
+            owners,
+        )
+
+    def test_concurrent_reclaim_of_one_expired_lease_yields_one_successor(self) -> None:
+        abandoned = acquire_job(REFRESH_JOB, correlation_id="dead", owner="dead:1")
+        JobRun.objects.filter(pk=abandoned.pk).update(
+            heartbeat_at=timezone.now() - timedelta(seconds=10_000)
+        )
+
+        outcomes = run_concurrently(
+            [_claim_refresh_job(f"live:{index}") for index in range(3)],
+            timeout=_RACE_TIMEOUT,
+        )
+
+        successors = [
+            outcome.value for outcome in outcomes if outcome.value is not None
+        ]
+        self.assertEqual(len(successors), 1)
+        for error in _errors(outcomes):
+            self.assertIsInstance(error, JobAlreadyRunning)
+        abandoned.refresh_from_db()
+        self.assertEqual(abandoned.status, JobRun.Status.INTERRUPTED)
+        self.assertEqual(abandoned.error_code, "lease_expired")
+        self.assertEqual(
+            JobRun.objects.filter(status=JobRun.Status.RUNNING).count(), 1
+        )

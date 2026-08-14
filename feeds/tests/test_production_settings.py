@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
+import yaml
 from django.test import Client, SimpleTestCase, override_settings
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -340,11 +341,33 @@ class ComposeConfigurationTests(SimpleTestCase):
     def test_canonical_compose_is_fail_closed_and_orders_the_worker(self) -> None:
         compose = (BASE_DIR / "docker-compose.yml").read_text()
 
-        self.assertEqual(compose.count("DJANGO_ENV: ${DJANGO_ENV:-production}"), 2)
+        self.assertEqual(compose.count("DJANGO_ENV: ${DJANGO_ENV:-production}"), 1)
+        self.assertEqual(compose.count("environment: *app-environment"), 3)
         self.assertNotIn("DATABASE_URL:", compose)
-        self.assertEqual(compose.count("POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}"), 3)
+        self.assertEqual(compose.count("POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}"), 2)
         self.assertIn("condition: service_healthy", compose)
-        self.assertIn("socket.create_connection", compose)
+        self.assertIn("condition: service_completed_successfully", compose)
+        self.assertNotIn("socket.create_connection", compose)
+        self.assertNotIn("manage.py migrate &&", compose)
+
+    def test_probes_and_restart_policies_are_explicit(self) -> None:
+        compose = yaml.safe_load((BASE_DIR / "docker-compose.yml").read_text())
+
+        services = compose["services"]
+        self.assertEqual(services["migrate"]["restart"], "no")
+        for name in ("db", "web", "refresh-feeds"):
+            self.assertEqual(services[name]["restart"], "unless-stopped")
+        self.assertEqual(
+            services["web"]["healthcheck"]["test"],
+            ["CMD", "python", "deploy/healthcheck.py", "/health/ready"],
+        )
+        self.assertEqual(
+            services["refresh-feeds"]["healthcheck"]["test"],
+            ["CMD", "python", "manage.py", "check_refresh_worker"],
+        )
+        for name in ("web", "refresh-feeds"):
+            self.assertTrue(services[name]["init"])
+            self.assertIn("stop_grace_period", services[name])
 
     @classmethod
     def _compose_config(cls, env_file: Path) -> dict[str, Any]:
@@ -375,15 +398,41 @@ class ComposeConfigurationTests(SimpleTestCase):
         self.assertEqual(services["db"]["environment"]["POSTGRES_DB"], "")
         self.assertEqual(services["db"]["environment"]["POSTGRES_USER"], "")
         self.assertEqual(services["db"]["environment"]["POSTGRES_PASSWORD"], "")
-        for service_name in ("web", "refresh-feeds"):
+        for service_name in ("web", "refresh-feeds", "migrate"):
             environment = services[service_name]["environment"]
             self.assertEqual(environment["DJANGO_ENV"], "production")
+            self.assertEqual(environment["DJANGO_LOG_FORMAT"], "json")
             self.assertNotIn("DATABASE_URL", environment)
         self.assertEqual(
             services["refresh-feeds"]["depends_on"]["web"]["condition"],
             "service_healthy",
         )
         self.assertIn("healthcheck", services["web"])
+
+    def test_serving_and_refreshing_wait_for_completed_migrations(self) -> None:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".env") as env_file:
+            config = self._compose_config(Path(env_file.name))
+
+        services = config["services"]
+        for service_name in ("web", "refresh-feeds"):
+            self.assertEqual(
+                services[service_name]["depends_on"]["migrate"]["condition"],
+                "service_completed_successfully",
+            )
+        self.assertEqual(
+            services["migrate"]["command"],
+            ["python", "manage.py", "migrate", "--noinput"],
+        )
+        self.assertNotIn("healthcheck", services["migrate"])
+        self.assertEqual(
+            services["web"]["command"],
+            [
+                "gunicorn",
+                "daily_firehose.wsgi:application",
+                "--bind",
+                "0.0.0.0:8000",
+            ],
+        )
 
     def test_development_env_and_reserved_password_survive_compose(self) -> None:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".env") as env_file:
