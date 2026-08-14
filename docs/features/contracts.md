@@ -713,7 +713,7 @@ a claim that every normative rule is presently satisfied.
 
 ## Traceability matrix
 
-This post-snapshot companion maps the **current suite: 23 test modules, 327 test
+This post-snapshot companion maps the **current suite: 23 test modules, 328 test
 methods, and 2 expected failures**. The pinned catalog retains its independent
 15/191/8 snapshot counts. Exact `module::class::method` identities, evidence levels,
 and dimension-specific gaps are maintained in the [detailed matrix](test-traceability.md).

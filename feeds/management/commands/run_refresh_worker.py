@@ -113,15 +113,13 @@ class Command(BaseCommand):
                     **counts,
                 )
                 raise
+            # A cycle that evaluated every Feed made progress even when some
+            # Feeds failed: per-Feed failure is what backoff and the failing-feed
+            # counts are for. Reserving FAILED for a cycle that could not finish
+            # keeps worker staleness meaning "ingestion stopped".
             if interrupted:
                 status = JobRun.Status.INTERRUPTED
                 error_code, error_message = "stopped", "The worker was asked to stop."
-            elif counts["failed"]:
-                status = JobRun.Status.FAILED
-                error_code, error_message = (
-                    "feed_failures",
-                    f"{counts['failed']} feed refresh failed.",
-                )
             else:
                 status = JobRun.Status.SUCCEEDED
                 error_code, error_message = "", ""

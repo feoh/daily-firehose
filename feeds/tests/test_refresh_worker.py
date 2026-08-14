@@ -173,15 +173,25 @@ class RefreshWorkerCycleTests(TestCase):
         self.assertEqual(run.error_code, "")
         self.assertIsNotNone(run.finished_at)
 
-    def test_failed_feeds_make_the_cycle_failed_without_losing_counts(self) -> None:
+    def test_feed_failures_are_recorded_without_stalling_the_worker(self) -> None:
         _run_worker(_results(self.feed, "succeeded", "failed"))
 
         run = JobRun.objects.get()
-        self.assertEqual(run.status, JobRun.Status.FAILED)
+        self.assertEqual(run.status, JobRun.Status.SUCCEEDED)
         self.assertEqual(run.failed, 1)
         self.assertEqual(run.succeeded, 1)
-        self.assertEqual(run.error_code, "feed_failures")
-        self.assertEqual(job_health().consecutive_failures, 1)
+        self.assertEqual(run.error_code, "")
+        health = job_health()
+        self.assertEqual(health.consecutive_failures, 0)
+        self.assertFalse(health.stale)
+
+    def test_every_feed_failing_still_counts_as_worker_progress(self) -> None:
+        _run_worker(_results(self.feed, "failed", "failed", "failed"))
+
+        run = JobRun.objects.get()
+        self.assertEqual(run.status, JobRun.Status.SUCCEEDED)
+        self.assertEqual(run.failed, 3)
+        self.assertFalse(job_health().stale)
 
     def test_cycle_completion_is_logged_with_one_correlation_id(self) -> None:
         with self.assertLogs("daily_firehose.worker", level="INFO") as logs:

@@ -312,6 +312,14 @@ run is never stolen while a crashed worker's lease expires and is reclaimed.
 `SIGTERM` finishes the feed in flight, records the interrupted cycle, releases
 the lock, and exits.
 
+A cycle that evaluates every feed is recorded as succeeded even when individual
+feeds failed, because per-feed failure is what backoff, `consecutive_failures`,
+and the `feeds.failing` count already report. A cycle is only failed when it
+could not finish. That keeps worker staleness meaning "ingestion stopped" rather
+than "one feed is broken", which is the distinction the 2026-08-11 incident
+needed. The `refresh_feeds` command keeps its separate contract of exiting
+nonzero when any feed failed, for manual and cron use.
+
 Logs are one JSON object per record by default, carrying a correlation ID that
 ties a response to every record written while serving it. Clients may supply
 `X-Correlation-ID`; the value is bounded and character-restricted before use,
