@@ -1,0 +1,91 @@
+---
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Lint, types, and fast suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install the locked environment
+        run: uv sync --locked
+
+      - name: Run pre-commit
+        run: uv run pre-commit run --all-files --show-diff-on-failure
+
+      - name: Django system checks
+        run: uv run python manage.py check
+
+      - name: Fail on unmade migrations
+        run: uv run python manage.py makemigrations --check --dry-run
+
+      - name: Type-check
+        run: uv run mypy .
+
+      - name: Install the Chromium browser used by the live-browser tests
+        run: uv run playwright install --with-deps chromium
+
+      - name: Run the SQLite suite
+        run: uv run python manage.py test feeds
+
+      - name: Check feature-to-test traceability
+        run: uv run python scripts/check_test_traceability.py
+
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-artifacts
+          path: test-artifacts/
+          if-no-files-found: ignore
+
+  postgresql:
+    name: PostgreSQL integration suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install the locked environment
+        run: uv sync --locked
+
+      - name: Install the Chromium browser used by the live-browser tests
+        run: uv run playwright install --with-deps chromium
+
+      - name: Run the suite against PostgreSQL 17
+        run: ./scripts/test_postgresql.sh
+
+  image:
+    name: Docker image build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
