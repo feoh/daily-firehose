@@ -36,6 +36,24 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
         self.assertIn(old, text)
         path.write_text(text.replace(old, new, 1))
 
+    def decrement(self, relative: str, pattern: str) -> None:
+        """Reduce by one the number `pattern` captures in the live artifact.
+
+        Deriving the value from the artifact rather than repeating it keeps these
+        mutation tests from going stale every time the suite grows: a hardcoded
+        count silently stops mutating anything once the real number moves on, and
+        the guard it was meant to prove goes unexercised.
+        """
+
+        path = self.root / relative
+        text = path.read_text()
+        match = re.search(pattern, text)
+        self.assertIsNotNone(match, f"{pattern} no longer matches {relative}")
+        assert match is not None
+        value = int(match.group(1))
+        start, end = match.span(1)
+        path.write_text(f"{text[:start]}{value - 1}{text[end:]}")
+
     def assert_rejected(self, pattern: str) -> None:
         with self.assertRaisesRegex(AssertionError, pattern):
             validate(self.root)
@@ -60,10 +78,9 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
         self.assert_rejected("malformed ledger result")
 
     def test_rejects_stale_primary_support_summary(self) -> None:
-        self.mutate(
+        self.decrement(
             "docs/features/test-traceability.md",
-            "Ledger classification: **267 primary**, **9 support/redundant**.",
-            "Ledger classification: **266 primary**, **8 support/redundant**.",
+            r"Ledger classification: \*\*(\d+) primary\*\*",
         )
         self.assert_rejected("stale primary/support")
 
@@ -153,26 +170,20 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
         self.assert_rejected("stale rendered 82/44/20/276/2 intro")
 
     def test_rejects_stale_intro_invariant_count(self) -> None:
-        self.mutate(
-            "docs/features/test-traceability.md",
-            "**44 invariant IDs**",
-            "**43 invariant IDs**",
+        self.decrement(
+            "docs/features/test-traceability.md", r"\*\*(\d+) invariant IDs\*\*"
         )
         self.assert_rejected("stale rendered 82/44/20/276/2 intro")
 
     def test_rejects_stale_intro_module_count(self) -> None:
-        self.mutate(
-            "docs/features/test-traceability.md",
-            "**20 app test modules**",
-            "**19 app test modules**",
+        self.decrement(
+            "docs/features/test-traceability.md", r"\*\*(\d+) app test modules\*\*"
         )
         self.assert_rejected("stale rendered 82/44/20/276/2 intro")
 
     def test_rejects_stale_intro_method_count(self) -> None:
-        self.mutate(
-            "docs/features/test-traceability.md",
-            "**276 app test methods**",
-            "**275 app test methods**",
+        self.decrement(
+            "docs/features/test-traceability.md", r"\*\*(\d+) app test methods\*\*"
         )
         self.assert_rejected("stale rendered 82/44/20/276/2 intro")
 
@@ -209,17 +220,13 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
         self.assert_rejected("stale exact broad gap summary")
 
     def test_rejects_stale_contracts_module_count(self) -> None:
-        self.mutate(
-            "docs/features/contracts.md",
-            "current suite: 20 test modules",
-            "current suite: 19 test modules",
+        self.decrement(
+            "docs/features/contracts.md", r"current suite: (\d+) test modules"
         )
         self.assert_rejected("stale contracts current-suite 20/276/2 prose")
 
     def test_rejects_stale_contracts_method_count(self) -> None:
-        self.mutate(
-            "docs/features/contracts.md", "276 test\nmethods", "275 test\nmethods"
-        )
+        self.decrement("docs/features/contracts.md", r"(\d+) test\nmethods")
         self.assert_rejected("stale contracts current-suite 20/276/2 prose")
 
     def test_rejects_stale_contracts_expected_failure_count(self) -> None:

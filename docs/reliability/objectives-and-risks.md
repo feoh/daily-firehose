@@ -228,8 +228,8 @@ is explicitly `insufficient volume`.
 | 4 | `REL-RISK-004` | deployment/data integrity | 5 | 2 | 5 | 50 | high | high | open-known |
 | 5 | `REL-RISK-005` | availability | 4 | 3 | 4 | 48 | high | high | open-known |
 | 6 | `REL-RISK-006` | correctness/integration | 4 | 3 | 4 | 48 | high | medium | open-inferred |
-| 7 | `REL-RISK-010` | integration/correctness | 3 | 4 | 4 | 48 | high | high | open-known |
-| 8 | `REL-RISK-012` | availability/performance | 3 | 4 | 4 | 48 | high | medium | open-inferred |
+| 7 | `REL-RISK-010` | integration/correctness | 3 | 4 | 4 | 48 | high | high | partially controlled |
+| 8 | `REL-RISK-012` | availability/performance | 3 | 4 | 4 | 48 | high | medium | partially controlled |
 | 9 | `REL-RISK-023` | correctness/maintainability | 3 | 4 | 4 | 48 | high | high | open-known |
 | 10 | `REL-RISK-016` | destination security | 5 | 2 | 4 | 40 | high | medium | residual-known |
 | 11 | `REL-RISK-007` | correctness/data integrity | 4 | 3 | 3 | 36 | high | high | open-demonstrated |
@@ -514,9 +514,15 @@ a higher product score.
 
 - **Affected IDs/objectives:** SAVE-001–SAVE-004, API-009; SAVE-INV-001–003;
   `REL-OBJ-009`.
-- **Present status/evidence:** **open-known**. Local-first persistence is correct, but
-  timeout-after-remote-success is collapsed into `linkding_saved=false/error`; no
-  idempotency, outbox or reconciliation exists.
+- **Present status/evidence:** **partially controlled**. Local-first persistence is
+  correct, and the ambiguity is no longer collapsed into a boolean: a `LinkdingDelivery`
+  records queued/succeeded/transient-failed/permanent-failed with attempts, timestamps
+  and a classified error, a retry reconciles by canonical URL before creating, and the
+  refresh worker or `deliver_saved_articles` drains what is owed. Provider semantics were
+  verified against the live instance on 2026-08-17: `POST /api/bookmarks/` upserts by URL
+  and the bookmark check endpoint answers as modeled, so a retry cannot duplicate and
+  adoption prevents overwriting a reader's edits. Residual: separate-connection drain
+  races are unproved and there is no remote delete.
 - **Owner boundary:** save service and Linkding gateway; provider owns remote create
   semantics. This risk excludes insecure URL configuration (`REL-RISK-022`).
 - **Triggers:** lost response, process crash after POST, malformed success, provider
@@ -524,8 +530,10 @@ a higher product score.
 - **Current → preferred detection:** SavedArticle boolean/error → durable attempt state
   separating definite failure from ambiguity, provider key/upsert evidence and
   reconciliation result.
-- **Mitigation sequence:** investigate provider idempotency/upsert; model explicit
-  pending/confirmed/failed/ambiguous; outbox/reconcile; never blind retry ambiguity.
+- **Mitigation sequence:** **done** — provider upsert verified, explicit delivery states
+  modeled, outbox drained with bounded backoff, and reconciliation adopts rather than
+  re-creating. Remaining: separate-connection race coverage and an operator view of
+  permanently failed deliveries.
 - **Rollback/containment:** keep local save; suppress remote retry while ambiguous;
   allow operator reconciliation; preserve attempt records through rollback.
 - **Residual risk:** exactly-once remote effect may be impossible; objective is an
@@ -552,7 +560,7 @@ a higher product score.
 - **Rollback/containment:** preserve cleanup export/backup. A dual-reader comparison and
   old-reader switch are **future rollout prerequisites**, not current controls; dropping
   constraints cannot recover deleted duplicates.
-- **Residual risk:** large marker evaluation remains until `REL-RISK-012` mitigation.
+- **Residual risk:** marker evaluation is now one SQL predicate; capacity review under `REL-RISK-012` remains.
 - **Linked Witan work:** `tk-enforce-bulkreadmarker-scope-and-uniqueness-inva-db62c6`,
   `tk-extract-validated-transactional-commands-for-mut-466545`.
 
@@ -560,19 +568,25 @@ a higher product score.
 
 - **Affected IDs/objectives:** WEB-004–WEB-006, WEB-011, API-006–API-007;
   DATA-INV-002, READ-INV-001–005; `REL-OBJ-004`–`006`.
-- **Present status/evidence:** **open-inferred**. Marker evaluation is Python
-  marker×article work, date extraction lacks a dedicated index, and API arbitrary
-  windows are unpaginated/unbounded. Production-sized latency is unknown.
+- **Present status/evidence:** **partially controlled**. Marker×article Python
+  evaluation is gone: read, unread-precedence, bulk-marker and saved state compose into
+  one SQL predicate, and folding coverage into it removed a query. Every window is
+  bounded by `DIGEST_ARTICLE_LIMIT`/`FEED_ARTICLE_LIMIT` after the visibility exclusion
+  rather than before it, and a bounded surface reports `has_more` so truncation is never
+  mistaken for exhaustion. Residual: date extraction still lacks a dedicated index,
+  there is no cursor pagination past the cap, and production-sized latency is unknown.
 - **Owner boundary:** shared visibility/query policy, ORM/PostgreSQL and API contract.
 - **Triggers:** article/marker growth, large explicit date window, many users/markers,
   concurrent requests, or unfavorable query plan.
 - **Current → preferred detection:** tests and user latency → query count/rows/memory,
   p50/p95, production-sized fixture and PostgreSQL plan fingerprints.
-- **Mitigation sequence:** extract shared policy; establish cardinality/latency baseline;
-  bound/paginate contract; half-open indexed times; dual-read before removing marker
-  evaluation.
+- **Mitigation sequence:** shared policy extracted and marker evaluation moved into SQL;
+  windows bounded and reported. Remaining: production-sized cardinality/latency baseline,
+  half-open indexed times, `EXPLAIN`-driven indexes, and cursor pagination for callers
+  that need to page past the cap.
 - **Rollback/containment:** **present:** deactivate an abusive bearer token and use code
-  rollback while preserving data; no API window cap/flag is current. **Future rollout:**
+  rollback while preserving data; the API window cap is now current and tunable through
+  `DIGEST_ARTICLE_LIMIT`. **Future rollout:**
   a prior-reader/pagination compatibility switch is prerequisite; indexes may remain.
 - **Residual risk:** larger data always increases cost; SLO-based capacity review remains.
 - **Linked Witan work:** `tk-bound-query-size-pagination-and-read-state-cost-1f9da0`,
