@@ -477,6 +477,33 @@ a claim that every normative rule is presently satisfied.
   safely after uniqueness races.
 - **Source / feature IDs:** `feeds/services.py`, `feeds/models.py`; ING-002, ING-011.
 
+## Route posture invariants
+
+### ROUTE-INV-001 — Every route declares and enforces an auth, method, and isolation posture
+
+- **Normative current contract:** every route in the URLconf is classified as session,
+  bearer, signed, webhook, or deliberately public. A session route redirects an
+  anonymous caller to the login page; a bearer route answers `401`; a signed route
+  without a signature and a webhook without credentials are refused. No protected
+  mutation writes anything for an anonymous caller. A route answers `405` to every
+  method it does not implement, reading surfaces accept only safe methods, and every
+  session mutation requires a CSRF token and commits nothing without one. A reader's
+  read state, saves, archive, and preferences are visible and writable only to that
+  reader.
+- **Scope / precedence:** the classification table is driven from the URLconf, so a
+  route added without a declared posture fails the inventory test rather than escaping
+  the sweep. The legacy digest is the one deliberate exception to the method rule and
+  keeps its API-COMPAT-INV-001 characterization; CSRF still guards its unsafe methods.
+  Django admin owns its own redirect behavior and is out of scope here.
+- **Executable evidence:** `test_route_contracts.py` inventory, anonymous-access,
+  method, CSRF, and isolation sweeps.
+- **Known violation status:** **Conformant.** Reading surfaces were the outstanding
+  looseness — `today`, `week`, `month`, `archived`, `saved-links`, `feed-detail`,
+  `opml-export`, and the public newsletter archive answered `200` to POST, PUT, PATCH,
+  and DELETE. 73 subtests fail against the undecorated views.
+- **Source / feature IDs:** `feeds/views.py`, `feeds/api.py`, `feeds/urls.py`,
+  `daily_firehose/urls.py`; AUTH-001–AUTH-005, WEB-001–WEB-021, API-001–API-019.
+
 ## API authentication, input, schema, and capability invariants
 
 ### API-AUTH-INV-001 — Matched bearer routes enforce method before authentication
@@ -816,7 +843,7 @@ a claim that every normative rule is presently satisfied.
 
 ## Traceability matrix
 
-This post-snapshot companion maps the **current suite: 29 test modules, 433 test
+This post-snapshot companion maps the **current suite: 30 test modules, 452 test
 methods, and 2 expected failures**. The pinned catalog retains its independent
 15/191/8 snapshot counts. Exact `module::class::method` identities, evidence levels,
 and dimension-specific gaps are maintained in the [detailed matrix](test-traceability.md).

@@ -11,7 +11,11 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import (
+    require_POST,
+    require_http_methods,
+    require_safe,
+)
 
 from daily_firehose.redirects import safe_redirect_target
 
@@ -54,6 +58,7 @@ def _redirect_to_posted_next(request: HttpRequest, *, fallback: str) -> HttpResp
     )
 
 
+@require_safe
 def newsletter_detail(request: HttpRequest, public_id) -> HttpResponse:
     issue = get_object_or_404(
         NewsletterIssue.objects.select_related("article", "article__feed"),
@@ -95,6 +100,7 @@ def newsletter_detail(request: HttpRequest, public_id) -> HttpResponse:
     return response
 
 
+@require_safe
 @login_required
 @never_cache
 def today(request: HttpRequest) -> HttpResponse:
@@ -118,6 +124,7 @@ def today(request: HttpRequest) -> HttpResponse:
     )
 
 
+@require_safe
 @login_required
 def week(request: HttpRequest) -> HttpResponse:
     start, end = week_bounds(timezone.localdate())
@@ -139,6 +146,7 @@ def week(request: HttpRequest) -> HttpResponse:
     )
 
 
+@require_safe
 @login_required
 def month(request: HttpRequest) -> HttpResponse:
     start, end = month_bounds(timezone.localdate())
@@ -160,6 +168,7 @@ def month(request: HttpRequest) -> HttpResponse:
     )
 
 
+@require_safe
 @login_required
 def archived(request: HttpRequest) -> HttpResponse:
     return render(
@@ -175,6 +184,7 @@ def archived(request: HttpRequest) -> HttpResponse:
     )
 
 
+@require_safe
 @login_required
 def saved_links(request: HttpRequest) -> HttpResponse:
     return render(
@@ -189,6 +199,7 @@ def saved_links(request: HttpRequest) -> HttpResponse:
     )
 
 
+@require_safe
 @login_required
 def feed_detail(request: HttpRequest, feed_id: int) -> HttpResponse:
     feed = get_object_or_404(Feed, id=feed_id)
@@ -209,6 +220,7 @@ def feed_detail(request: HttpRequest, feed_id: int) -> HttpResponse:
     )
 
 
+@require_http_methods(["GET", "HEAD", "POST"])
 @login_required
 def feed_list(request: HttpRequest) -> HttpResponse:
     form = FeedForm(request.POST or None)
@@ -240,6 +252,7 @@ def feed_list(request: HttpRequest) -> HttpResponse:
     )
 
 
+@require_http_methods(["GET", "HEAD", "POST"])
 @login_required
 def opml_import(request: HttpRequest) -> HttpResponse:
     form = OPMLImportForm(request.POST or None, request.FILES or None)
@@ -261,6 +274,7 @@ def opml_import(request: HttpRequest) -> HttpResponse:
     )
 
 
+@require_safe
 @login_required
 def opml_export(request: HttpRequest) -> HttpResponse:
     response = HttpResponse(export_opml(), content_type="text/x-opml; charset=utf-8")
@@ -268,6 +282,7 @@ def opml_export(request: HttpRequest) -> HttpResponse:
     return response
 
 
+@require_http_methods(["GET", "HEAD", "POST"])
 @login_required
 def preferences(request: HttpRequest) -> HttpResponse:
     prefs = user_preference(request.user)

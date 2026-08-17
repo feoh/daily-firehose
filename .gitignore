@@ -8,3 +8,4 @@ db.sqlite3
 staticfiles/
 test-artifacts/
 .pi-subagents/
+.pi/
