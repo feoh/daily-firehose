@@ -19,6 +19,7 @@ from django.core.exceptions import (
     ValidationError,
 )
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.http import Http404, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -65,10 +66,13 @@ from .models import (
     UserPreference,
 )
 from .queries import (
-    article_cards,
+    article_card_page,
     articles_between,
+    digest_article_limit,
     month_bounds,
     read_article_ids,
+    read_predicate,
+    saved_predicate,
     user_preference,
     week_bounds,
 )
@@ -479,27 +483,44 @@ def article_list(request: HttpRequest, user) -> JsonResponse:
     articles = articles_between(start, end, feed).select_related(
         "feed", "feed__category", "newsletter_issue"
     )
-    read_ids = read_article_ids(user, articles)
-    article_ids = list(articles.values_list("id", flat=True))
-    saved_ids = set(
-        SavedArticle.objects.filter(user=user, article_id__in=article_ids).values_list(
-            "article_id", flat=True
+    # Exclude in SQL before bounding, so the limit applies to rows the caller
+    # actually asked for rather than to rows that were about to be discarded.
+    excluded = Q(pk__in=[])
+    if not include_read:
+        excluded |= read_predicate(user, articles)
+    if not include_saved:
+        excluded |= saved_predicate(user)
+    limit = digest_article_limit()
+    rows = list(articles.exclude(excluded)[: limit + 1])
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    page_ids = [_pk(article) for article in rows]
+    page = Article.objects.filter(id__in=page_ids)
+    read_ids = read_article_ids(user, page) if include_read else set()
+    saved_ids = (
+        set(
+            SavedArticle.objects.filter(user=user, article_id__in=page_ids).values_list(
+                "article_id", flat=True
+            )
         )
+        if include_saved
+        else set()
     )
-    payload = []
-    for article in articles:
-        article_id = _pk(article)
-        is_read = article_id in read_ids
-        is_saved = article_id in saved_ids
-        if (is_read and not include_read) or (is_saved and not include_saved):
-            continue
-        payload.append(_article_payload(article, is_read=is_read, is_saved=is_saved))
     return JsonResponse(
         {
             "period": period,
             "start": start.isoformat(),
             "end": end.isoformat(),
-            "articles": payload,
+            "has_more": has_more,
+            "limit": limit,
+            "articles": [
+                _article_payload(
+                    article,
+                    is_read=_pk(article) in read_ids,
+                    is_saved=_pk(article) in saved_ids,
+                )
+                for article in rows
+            ],
         }
     )
 
@@ -512,11 +533,14 @@ def morning_briefing(request: HttpRequest, user) -> JsonResponse:
     articles = articles_between(current, current).select_related(
         "feed", "feed__category", "newsletter_issue"
     )
-    cards = article_cards(user, articles)
+    page = article_card_page(user, articles)
+    cards = page.cards
     return JsonResponse(
         {
             "title": "Today’s Firehose",
             "date": current.isoformat(),
+            "has_more": page.has_more,
+            "limit": page.limit,
             "articles": [
                 _article_payload(
                     card["article"], is_read=card["is_read"], is_saved=card["is_saved"]

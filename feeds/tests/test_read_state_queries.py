@@ -176,7 +176,9 @@ class MarkerNarrowingTests(TestCase):
         self.article_ids = [model_id(self.article)]
 
     def _loaded(self) -> list[BulkReadMarker]:
-        return _covering_markers(self.user, self.article_ids)
+        return _covering_markers(
+            self.user, Article.objects.filter(id__in=self.article_ids)
+        )
 
     def test_a_marker_set_before_every_article_is_excluded(self) -> None:
         _set_marked_read_at(
@@ -316,8 +318,8 @@ class ReadStateQueryCostTests(TestCase):
 
         self.assertEqual(self._query_count(), baseline)
 
-    def test_a_digest_with_no_applicable_markers_skips_the_coverage_query(self) -> None:
-        """Nothing to resolve means the covering query is never issued."""
+    def test_an_applicable_marker_costs_no_extra_query(self) -> None:
+        """Coverage is a predicate inside the visibility query, not a follow-up."""
 
         self._build_articles(3)
         self._add_stale_markers(5)
@@ -330,7 +332,7 @@ class ReadStateQueryCostTests(TestCase):
             self.clock.now + timedelta(minutes=1),
         )
 
-        self.assertEqual(self._query_count(), without_markers + 1)
+        self.assertEqual(self._query_count(), without_markers)
 
 
 class SurfaceAgreementTests(TestCase):

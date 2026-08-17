@@ -114,10 +114,34 @@ a claim that every normative rule is presently satisfied.
   visibility filtering also applies to Feed detail. Explicit bearer include flags are
   the supported collection exception.
 - **Executable evidence:** `test_digest_views.py` and
-  `test_article_state_propagation.py` cross-surface visibility tests.
-- **Known violation status:** **Conformant**.
-- **Source / feature IDs:** `feeds/views.py`, `feeds/api.py`; WEB-002–WEB-006,
-  WEB-011, API-001, API-006–API-007.
+  `test_article_state_propagation.py` cross-surface visibility tests, plus
+  `test_query_bounds.py` proving the SQL visibility filter obeys every read-state rule.
+- **Known violation status:** **Conformant**. The exclusion is now applied in SQL rather
+  than in Python after the rows were fetched, which is what makes READ-INV-007's bound
+  safe.
+- **Source / feature IDs:** `feeds/queries.py`, `feeds/views.py`, `feeds/api.py`;
+  WEB-002–WEB-006, WEB-011, API-001, API-006–API-007.
+
+### READ-INV-007 — A reading window is bounded and says when it bounded
+
+- **Normative current contract:** every period surface, Feed detail, the legacy digest
+  JSON, and the default bearer collection fetch at most `DIGEST_ARTICLE_LIMIT` (Feed
+  detail: `FEED_ARTICLE_LIMIT`) rows, and the bound is applied *after* the read/save
+  exclusion so it counts articles the reader can still see. A surface that reached its
+  bound reports it: the HTML views render an explicit notice and the JSON surfaces carry
+  `has_more` and `limit`. Resolving read state costs a fixed number of queries
+  regardless of how many articles or historical markers exist.
+- **Scope / precedence:** Archive and Saved keep their own separate 50-row bounds. The
+  bearer `include_read`/`include_saved` flags change which rows are eligible, and the
+  bound then applies to that eligible set.
+- **Executable evidence:** `test_query_bounds.py` limit-counts-visible-rows,
+  exact-`has_more`-boundary, bounded-surface notice, fixed-query-cost, and bearer
+  include-flag tests; `test_read_state_queries.py` marker-narrowing and cost tests.
+- **Known violation status:** **Conformant.** The limit-counts-visible-rows and Feed
+  detail tests both fail against the previous ordering, which sliced before excluding
+  and so rendered nothing at all when the first page of a window was entirely read.
+- **Source / feature IDs:** `feeds/queries.py`, `feeds/views.py`, `feeds/api.py`;
+  WEB-002–WEB-006, API-001, API-006–API-007.
 
 ### READ-INV-003 — Explicit unread is the final read-precedence override
 
@@ -792,7 +816,7 @@ a claim that every normative rule is presently satisfied.
 
 ## Traceability matrix
 
-This post-snapshot companion maps the **current suite: 28 test modules, 414 test
+This post-snapshot companion maps the **current suite: 29 test modules, 433 test
 methods, and 2 expected failures**. The pinned catalog retains its independent
 15/191/8 snapshot counts. Exact `module::class::method` identities, evidence levels,
 and dimension-specific gaps are maintained in the [detailed matrix](test-traceability.md).

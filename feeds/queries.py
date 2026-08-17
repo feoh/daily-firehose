@@ -7,9 +7,11 @@ two surfaces cannot answer the same question differently.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any, cast
 
+from django.conf import settings
 from django.db.models import Max, Min, Q, QuerySet
 from django.utils import timezone
 
@@ -31,6 +33,14 @@ PERIOD_SCOPES = (ReadScope.DAY, ReadScope.WEEK, ReadScope.MONTH)
 
 def _pk(model: Any) -> int:
     return cast(int, model.id)
+
+
+def digest_article_limit() -> int:
+    return int(settings.DIGEST_ARTICLE_LIMIT)
+
+
+def feed_article_limit() -> int:
+    return int(settings.FEED_ARTICLE_LIMIT)
 
 
 def week_bounds(day: date) -> tuple[date, date]:
@@ -59,7 +69,7 @@ def articles_between(
     return queryset.order_by("feed__title", "-fetched_at", "title")
 
 
-def _covering_markers(user, article_ids: list[int]) -> list[BulkReadMarker]:
+def _covering_markers(user, articles: QuerySet[Article]) -> list[BulkReadMarker]:
     """Bulk markers that could possibly cover any of these articles.
 
     Narrowed in SQL before any row is examined: a marker set before the oldest
@@ -68,7 +78,6 @@ def _covering_markers(user, article_ids: list[int]) -> list[BulkReadMarker]:
     rather than to the reader's whole history of marking things read.
     """
 
-    articles = Article.objects.filter(id__in=article_ids)
     bounds = articles.aggregate(earliest=Min("fetched_at"), latest=Max("fetched_at"))
     earliest, latest = bounds["earliest"], bounds["latest"]
     if earliest is None:
@@ -85,10 +94,11 @@ def _covering_markers(user, article_ids: list[int]) -> list[BulkReadMarker]:
     )
 
 
-def _bulk_read_article_ids(user, article_ids: list[int]) -> set[int]:
-    covered = Q()
-    applicable = False
-    for marker in _covering_markers(user, article_ids):
+def _bulk_read_predicate(user, articles: QuerySet[Article]) -> Q:
+    # An empty disjunction must be false, not absent: with no applicable marker,
+    # nothing is bulk-read. A bare Q() would match every row instead.
+    covered = Q(pk__in=[])
+    for marker in _covering_markers(user, articles):
         if marker.scope == ReadScope.FEED:
             scope_matches = Q(feed_id=marker.feed_id)
         else:
@@ -99,28 +109,52 @@ def _bulk_read_article_ids(user, article_ids: list[int]) -> set[int]:
         # A marker never reaches forward to an article fetched after it was set,
         # which is what keeps newly arrived articles unread.
         covered |= scope_matches & Q(fetched_at__lte=marker.marked_read_at)
-        applicable = True
-    if not applicable:
-        return set()
-    return set(
-        Article.objects.filter(id__in=article_ids)
-        .filter(covered)
-        .values_list("id", flat=True)
+    return covered
+
+
+def _explicit_state_predicate(user, *, is_read: bool) -> Q:
+    return Q(
+        id__in=ArticleReadState.objects.filter(user=user, is_read=is_read).values(
+            "article_id"
+        )
     )
 
 
-def read_article_ids(user, articles: QuerySet[Article]) -> set[int]:
-    article_ids = list(articles.values_list("id", flat=True))
-    if not article_ids:
-        return set()
-    explicit_read: set[int] = set()
-    explicit_unread: set[int] = set()
-    for article_id, is_read in ArticleReadState.objects.filter(
-        user=user, article_id__in=article_ids
-    ).values_list("article_id", "is_read"):
-        (explicit_read if is_read else explicit_unread).add(article_id)
+def read_predicate(user, articles: QuerySet[Article]) -> Q:
+    """The read test, as SQL rather than as a set of materialized ids.
+
+    Expressing it as a predicate is what lets a caller filter and *then* limit,
+    so a bound applies to what the reader can actually see. ``articles`` is used
+    to narrow candidate markers and so must not already be sliced.
+    """
+
     # An explicit unread always wins: it is the reader overriding a bulk mark.
-    return (explicit_read | _bulk_read_article_ids(user, article_ids)) - explicit_unread
+    return (
+        _explicit_state_predicate(user, is_read=True)
+        | _bulk_read_predicate(user, articles)
+    ) & ~_explicit_state_predicate(user, is_read=False)
+
+
+def read_article_ids(user, articles: QuerySet[Article]) -> set[int]:
+    return set(
+        articles.filter(read_predicate(user, articles)).values_list("id", flat=True)
+    )
+
+
+def saved_predicate(user) -> Q:
+    return Q(id__in=SavedArticle.objects.filter(user=user).values("article_id"))
+
+
+def visible_articles(user, articles: QuerySet[Article]) -> QuerySet[Article]:
+    """The articles a reader should still see: neither read nor saved.
+
+    Filtering in SQL rather than in Python is what makes a row limit safe. When
+    the exclusion happened after the database had already returned a page, a
+    window whose first rows were all read looked empty while unread articles sat
+    just past the limit.
+    """
+
+    return articles.exclude(read_predicate(user, articles) | saved_predicate(user))
 
 
 def mark_articles_read(user, articles: QuerySet[Article]) -> None:
@@ -145,17 +179,42 @@ def mark_articles_read(user, articles: QuerySet[Article]) -> None:
 
 
 def article_cards(user, articles: QuerySet[Article]) -> list[dict]:
-    read_ids = read_article_ids(user, articles)
-    saved_ids = set(
-        SavedArticle.objects.filter(
-            user=user, article_id__in=articles.values_list("id", flat=True)
-        ).values_list("article_id", flat=True)
-    )
     return [
         {"article": article, "is_read": False, "is_saved": False}
-        for article in articles
-        if _pk(article) not in read_ids and _pk(article) not in saved_ids
+        for article in visible_articles(user, articles)
     ]
+
+
+@dataclass(frozen=True)
+class ArticlePage:
+    """One bounded page of visible articles, and whether it was bounded."""
+
+    cards: list[dict]
+    has_more: bool
+    limit: int
+
+
+def article_card_page(
+    user, articles: QuerySet[Article], *, limit: int | None = None
+) -> ArticlePage:
+    """Build at most ``limit`` cards, and say whether more were left behind.
+
+    Reads one row past the limit purely to answer that question, so a truncated
+    view can say so instead of being indistinguishable from an exhausted one.
+    """
+
+    limit = digest_article_limit() if limit is None else limit
+    if limit < 1:
+        raise ValueError("limit must be at least 1")
+    rows = list(visible_articles(user, articles)[: limit + 1])
+    return ArticlePage(
+        cards=[
+            {"article": article, "is_read": False, "is_saved": False}
+            for article in rows[:limit]
+        ],
+        has_more=len(rows) > limit,
+        limit=limit,
+    )
 
 
 def archived_article_cards(user) -> list[dict]:

@@ -21,8 +21,9 @@ from .forms import FeedForm, OPMLImportForm, ThemeForm
 from .models import Article, Feed, NewsletterIssue, ReadScope
 from .queries import (
     archived_article_cards,
-    article_cards,
+    article_card_page,
     articles_between,
+    feed_article_limit,
     month_bounds,
     read_article_ids,
     saved_article_cards,
@@ -99,14 +100,16 @@ def newsletter_detail(request: HttpRequest, public_id) -> HttpResponse:
 def today(request: HttpRequest) -> HttpResponse:
     current = timezone.localdate()
     articles = articles_between(current, current)
-    cards = article_cards(request.user, articles)
+    page = article_card_page(request.user, articles)
     return render(
         request,
         "feeds/digest.html",
         {
             "title": "Today’s Firehose",
             "period_label": current.strftime("%B %-d, %Y"),
-            "cards": cards,
+            "cards": page.cards,
+            "has_more": page.has_more,
+            "article_limit": page.limit,
             "scope": ReadScope.DAY,
             "period_start": current,
             "period_end": current,
@@ -118,14 +121,16 @@ def today(request: HttpRequest) -> HttpResponse:
 @login_required
 def week(request: HttpRequest) -> HttpResponse:
     start, end = week_bounds(timezone.localdate())
-    articles = articles_between(start, end)
+    page = article_card_page(request.user, articles_between(start, end))
     return render(
         request,
         "feeds/digest.html",
         {
             "title": "This Week’s Firehose",
             "period_label": f"{start:%B %-d} – {end:%B %-d, %Y}",
-            "cards": article_cards(request.user, articles),
+            "cards": page.cards,
+            "has_more": page.has_more,
+            "article_limit": page.limit,
             "scope": ReadScope.WEEK,
             "period_start": start,
             "period_end": end,
@@ -137,14 +142,16 @@ def week(request: HttpRequest) -> HttpResponse:
 @login_required
 def month(request: HttpRequest) -> HttpResponse:
     start, end = month_bounds(timezone.localdate())
-    articles = articles_between(start, end)
+    page = article_card_page(request.user, articles_between(start, end))
     return render(
         request,
         "feeds/digest.html",
         {
             "title": "This Month’s Firehose",
             "period_label": f"{start:%B %Y}",
-            "cards": article_cards(request.user, articles),
+            "cards": page.cards,
+            "has_more": page.has_more,
+            "article_limit": page.limit,
             "scope": ReadScope.MONTH,
             "period_start": start,
             "period_end": end,
@@ -187,13 +194,16 @@ def feed_detail(request: HttpRequest, feed_id: int) -> HttpResponse:
     feed = get_object_or_404(Feed, id=feed_id)
     articles = Article.objects.select_related("feed", "feed__category").filter(
         feed=feed
-    )[:100]
+    )
+    page = article_card_page(request.user, articles, limit=feed_article_limit())
     return render(
         request,
         "feeds/feed_detail.html",
         {
             "feed": feed,
-            "cards": article_cards(request.user, articles),
+            "cards": page.cards,
+            "has_more": page.has_more,
+            "article_limit": page.limit,
             "preferences": user_preference(request.user),
         },
     )
@@ -410,11 +420,14 @@ def save_article_view(request: HttpRequest, article_id: int) -> HttpResponse:
 def digest_json(request: HttpRequest) -> JsonResponse:
     current = timezone.localdate()
     articles = articles_between(current, current)
-    cards = article_cards(request.user, articles)
+    page = article_card_page(request.user, articles)
+    cards = page.cards
     return JsonResponse(
         {
             "title": "Today’s Firehose",
             "date": current.isoformat(),
+            "has_more": page.has_more,
+            "limit": page.limit,
             "articles": [
                 {
                     "id": card["article"].id,

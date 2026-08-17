@@ -7,6 +7,9 @@
     <p class="eyebrow">{{ period_label }}</p>
     <h1 id="digest-heading">{{ title }}</h1>
     <p>{{ cards|length }} articles in this view.</p>
+    {% if has_more %}
+    <p class="inline-message" role="status">Showing the first {{ article_limit }}. Mark some read to reveal the rest.</p>
+    {% endif %}
     {% if scope %}
     <form method="post" action="{% url 'mark-period-read' %}">
       {% csrf_token %}

@@ -422,6 +422,14 @@ LINKDING_TOKEN = os.environ.get("LINKDING_TOKEN", "")
 LINKDING_MAX_DELIVERY_ATTEMPTS = _env_int("LINKDING_MAX_DELIVERY_ATTEMPTS", "8")
 if LINKDING_MAX_DELIVERY_ATTEMPTS < 1:
     raise ImproperlyConfigured("LINKDING_MAX_DELIVERY_ATTEMPTS must be at least 1.")
+# A reading window is bounded so one request cannot hydrate an unbounded number of
+# rows. The bound is applied to articles the reader can still see, and a view that
+# hits it says so, so it never quietly means "nothing left to read".
+DIGEST_ARTICLE_LIMIT = _env_int("DIGEST_ARTICLE_LIMIT", "200")
+FEED_ARTICLE_LIMIT = _env_int("FEED_ARTICLE_LIMIT", "100")
+for _limit_name in ("DIGEST_ARTICLE_LIMIT", "FEED_ARTICLE_LIMIT"):
+    if locals()[_limit_name] < 1:
+        raise ImproperlyConfigured(f"{_limit_name} must be at least 1.")
 AGENT_LINK_SECRET = os.environ.get("AGENT_LINK_SECRET", "")
 AGENT_LINK_USERNAME = os.environ.get("AGENT_LINK_USERNAME", "")
 # A signed action is a bearer capability in a URL. Bounding how far ahead one may

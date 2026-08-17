@@ -202,6 +202,9 @@ Environment variables:
 - `LINKDING_MAX_DELIVERY_ATTEMPTS` — how many times a bookmark whose delivery keeps
   failing transiently is retried before it is recorded as permanently failed.
   Defaults to `8`.
+- `DIGEST_ARTICLE_LIMIT` — most articles a Today/week/month or API window returns in
+  one request. Defaults to `200`.
+- `FEED_ARTICLE_LIMIT` — the same bound for a single feed's page. Defaults to `100`.
 - `FEED_FETCH_CONNECT_TIMEOUT_SECONDS` — feed connection timeout, default `5`.
 - `FEED_FETCH_READ_TIMEOUT_SECONDS` — maximum socket inactivity while reading a feed, default `20`.
 - `FEED_FETCH_TOTAL_TIMEOUT_SECONDS` — deadline checked before requests and between chunks, default `60`.
@@ -423,6 +426,22 @@ A retry looks the URL up through Linkding's bookmark check endpoint before creat
 anything, so a save whose bookmark was created but whose response was lost to a
 timeout is adopted rather than duplicated. Unsaving cancels a delivery that is still
 owed; a bookmark already in Linkding is left alone, since Linkding is your archive.
+
+## Reading windows are bounded
+
+A reading window returns at most `DIGEST_ARTICLE_LIMIT` articles (`FEED_ARTICLE_LIMIT`
+for one feed's page) so a single request cannot grow without limit as the article table
+does. Two details make that safe rather than lossy:
+
+- The read and saved exclusion happens in SQL, *before* the bound is applied, so the
+  limit is spent on articles you can actually still see. Previously a feed page took the
+  newest hundred articles and only then dropped the ones you had read, which meant a feed
+  you had caught up on could render completely empty while unread articles sat just past
+  the cut.
+- A view that reached its bound says so, and the JSON surfaces carry `has_more` and
+  `limit`. A truncated window is never presented as an exhausted one.
+
+Marking articles read is what reveals the next batch.
 
 ## Agent-friendly API
 

@@ -180,13 +180,13 @@ Legend: **session** means `login_required` and CSRF middleware protects mutation
 
 | Method | Path / name | Auth | Input → output | Command/service and side effects |
 | --- | --- | --- | --- | --- |
-| GET* | `/` / `today` | session | Current UTC-local date → `digest.html` | Reads articles by `fetched_at` date; creates default `UserPreference` if absent; hides effective-read and saved articles. `never_cache`. |
+| GET* | `/` / `today` | session | Current UTC-local date → `digest.html` | Reads articles by `fetched_at` date; creates default `UserPreference` if absent; excludes effective-read and saved articles in SQL, then bounds the page at `DIGEST_ARTICLE_LIMIT` and reports when it did. `never_cache`. |
 | GET* | `/week/` / `week` | session | Current Monday–Sunday → `digest.html` | Same reads/preference creation for week. |
 | GET* | `/month/` / `month` | session | Current calendar month → `digest.html` | Same reads/preference creation for month. |
 | GET* | `/archived/` / `archived` | session | None → latest 50 explicit-read cards | Reads `ArticleReadState`; preference may be created. Bulk-only history is absent unless explicit rows were materialized. |
 | GET* | `/saved-links/` / `saved-links` | session | None → latest 50 saves | Reads saved snapshots/live articles and read state; preference may be created. |
 | GET/POST* | `/feeds/` / `feeds` | session | `FeedForm`; blank title triggers remote discovery → HTML/redirect | Reads all feeds. Valid POST may call bounded feed fetch then insert Feed and message. |
-| GET* | `/feeds/<feed_id>/` / `feed-detail` | session | Integer ID → first 100 model-ordered articles in HTML | Reads Feed/articles/state; preference may be created. |
+| GET* | `/feeds/<feed_id>/` / `feed-detail` | session | Integer ID → up to `FEED_ARTICLE_LIMIT` model-ordered visible articles in HTML | Reads Feed/articles/state; preference may be created. **[F]** The bound now follows the read/save exclusion; it previously preceded it, so a feed whose newest page was entirely read rendered empty. |
 | POST | `/feeds/<feed_id>/mark-read/` / `mark-feed-read` | session | ID and optional `next` → redirect | Materializes explicit read rows, then upserts feed marker. **[D]** No encompassing transaction; `next` is not same-origin validated. |
 | GET* | `/newsletters/<public_id>/` / `newsletter-detail` | public | UUID → archive HTML or 404 | Reads issue/article; sanitizes stored HTML on every render; sets `X-Robots-Tag: noindex`. Authenticated access may create preferences and reads state. No open event is persisted. |
 | GET/POST* | `/opml/import/` / `opml-import` | session | Multipart `opml_file` → HTML/redirect | Parses the complete XML tree before writes, then incrementally creates/updates Category/Feed. **[D]** Malformed XML escapes form handling as an error but cannot partially write; a later failure while processing valid XML can leave partial writes because there is no transaction. |
@@ -261,7 +261,7 @@ flowchart TD
 
 **[F]** Normal direction is adapter → application service/query → ORM/integration. Browser JS submits routes embedded by templates. CLI commands call services/models. Admin usually writes ORM directly.
 
-**[F] Resolved layering.** Article visibility, read-state resolution, period bounds, and preference lookup live in [`feeds/queries.py`](../../feeds/queries.py), which both [`feeds/views.py`](../../feeds/views.py) and [`feeds/api.py`](../../feeds/api.py) consume. The API no longer imports private helpers from the presentation adapter, so [`feeds/urls.py`](../../feeds/urls.py) imports both modules directly instead of deferring the API import to break a cycle.
+**[F] Resolved layering.** Article visibility, read-state resolution, window bounding, period bounds, and preference lookup live in [`feeds/queries.py`](../../feeds/queries.py), which both [`feeds/views.py`](../../feeds/views.py) and [`feeds/api.py`](../../feeds/api.py) consume. The API no longer imports private helpers from the presentation adapter, so [`feeds/urls.py`](../../feeds/urls.py) imports both modules directly instead of deferring the API import to break a cycle.
 
 **[F] Shared mutation commands.** Read-state mutation and refresh orchestration live in [`feeds/commands.py`](../../feeds/commands.py). Marking an article, a period, or a Feed read, and tallying a refresh, each have exactly one implementation that the session, bearer, and signed-link adapters call. A command validates the marker shape and commits explicit-state materialization together with the marker upsert, so the session surface no longer differs from the other two in atomicity, validation, or counts. Adapters retain only their own wire-format parsing and error rendering.
 
@@ -896,7 +896,7 @@ Everything in this section is **[R] recommendation**, not implemented capability
 - Before optimization, record the production-sized fixture's exact Article, marker, state, user, feed, and date-window cardinalities; set a numeric maximum query count and numeric p95 latency threshold for each benchmarked surface.
 - Replace `fetched_at__date` with timezone-aware half-open timestamps.
 - Add indexes only from PostgreSQL `EXPLAIN (ANALYZE, BUFFERS)` evidence.
-- Paginate/cap API windows and eliminate marker×article Python evaluation after dual-read confidence.
+- **[F] Done.** Windows are capped after a SQL read/save exclusion, marker coverage is a predicate inside that query rather than a Python marker×article evaluation, and every capped surface reports `has_more`. Remaining: timezone-aware half-open timestamps, `EXPLAIN`-driven indexes, and cursor pagination for callers that want to page past the cap.
 - **Migration:** additive concurrent indexes where warranted; contract/version plan for pagination limits.
 - **Compatibility:** preserve ordering and Article ID sets; offer bounded transition for API pagination.
 - **Observability:** p50/p95 latency, query count, rows examined, memory, plan fingerprints and pagination adoption.
