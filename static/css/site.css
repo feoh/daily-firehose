@@ -245,6 +245,13 @@ textarea {
 	padding: 0.45rem 0.65rem;
 }
 
+/* Checkboxes default to roughly 13px, below the WCAG 2.5.8 target minimum. */
+input[type="checkbox"],
+input[type="radio"] {
+	min-width: 1.5rem;
+	min-height: 1.5rem;
+}
+
 button,
 .button-link {
 	display: inline-flex;

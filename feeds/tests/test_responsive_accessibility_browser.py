@@ -239,6 +239,8 @@ class ResponsiveAccessibilityPlaywrightTests(StaticLiveServerTestCase):
                         'a[href], button, input:not([type=hidden]), select, textarea'
                     )].filter(visible).map(element => ({
                         description: element.outerHTML.slice(0, 120),
+                        inlineLink: element.matches('a[href]') &&
+                            getComputedStyle(element).display === 'inline',
                         ...targetRect(element),
                     })),
                 };
@@ -250,10 +252,13 @@ class ResponsiveAccessibilityPlaywrightTests(StaticLiveServerTestCase):
             f"{label}: page has horizontal overflow",
         )
         self.assertTrue(metrics["mainVisible"], f"{label}: main content is not visible")
+        # WCAG 2.5.8 exempts inline links, whose box is set by the surrounding
+        # line-height. Measuring them compares host font metrics, not layout.
         undersized = [
             target
             for target in metrics["targets"]
-            if target["width"] < 24 or target["height"] < 24
+            if not target["inlineLink"]
+            and (target["width"] < 24 or target["height"] < 24)
         ]
         self.assertEqual(undersized, [], f"{label}: targets smaller than 24 CSS px")
         self.assertEqual(
