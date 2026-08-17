@@ -36,6 +36,19 @@ def configure_request_timeout(
     return error
 
 
+def configure_linkding_lookup(
+    mock_get: Mock,
+    *,
+    bookmark: dict[str, Any] | None,
+    status_code: int = 200,
+) -> Mock:
+    """Configure the ``/api/bookmarks/check/`` reconciliation lookup."""
+
+    return configure_json_response(
+        mock_get, payload={"bookmark": bookmark}, status_code=status_code
+    )
+
+
 def configure_linkding_response(
     mock_post: Mock,
     *,

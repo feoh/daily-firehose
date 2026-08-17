@@ -27,7 +27,11 @@ from feeds.jobs import (
     finish_job,
 )
 from feeds.models import JobRun
-from feeds.services import iter_refresh_active_feeds
+from feeds.services import (
+    DELIVERY_DRAIN_LIMIT,
+    deliver_pending_saved_articles,
+    iter_refresh_active_feeds,
+)
 
 logger = logging.getLogger("daily_firehose.worker")
 
@@ -62,6 +66,7 @@ class Command(BaseCommand):
         try:
             while True:
                 self._cycle(stop)
+                self._deliver_bookmarks()
                 if options["once"] or stop.is_set():
                     break
                 if stop.wait(interval):
@@ -70,6 +75,34 @@ class Command(BaseCommand):
             for number, handler in previous.items():
                 signal.signal(number, handler)
         logger.info("refresh_worker_stopped")
+
+    def _deliver_bookmarks(self) -> None:
+        """Drain owed Linkding deliveries alongside the refresh cycle.
+
+        Kept outside the refresh JobRun on purpose: worker staleness is the
+        signal that ingestion stopped, and a bookmark backlog must not be able
+        to change that reading or fail the cycle that produced it.
+        """
+
+        try:
+            tally = deliver_pending_saved_articles(
+                base_url=settings.LINKDING_URL,
+                token=settings.LINKDING_TOKEN,
+                limit=DELIVERY_DRAIN_LIMIT,
+            )
+        except Exception:
+            logger.exception("linkding_delivery_cycle_failed")
+            return
+        if tally.attempted:
+            logger.info(
+                "linkding_delivery_cycle_completed",
+                extra={
+                    "attempted": tally.attempted,
+                    "succeeded": tally.succeeded,
+                    "transient": tally.transient,
+                    "permanent": tally.permanent,
+                },
+            )
 
     def _cycle(self, stop: threading.Event) -> None:
         correlation_id = new_correlation_id()

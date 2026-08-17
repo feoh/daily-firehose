@@ -416,6 +416,12 @@ LINKDING_URL = os.environ.get(
     "LINKDING_URL", "https://linkding.reedfish-regulus.ts.net"
 )
 LINKDING_TOKEN = os.environ.get("LINKDING_TOKEN", "")
+# A bookmark delivery that keeps failing transiently is retried with backoff
+# until this many attempts have been made, then recorded as permanently failed
+# so it stops consuming worker cycles and becomes visible as a real failure.
+LINKDING_MAX_DELIVERY_ATTEMPTS = _env_int("LINKDING_MAX_DELIVERY_ATTEMPTS", "8")
+if LINKDING_MAX_DELIVERY_ATTEMPTS < 1:
+    raise ImproperlyConfigured("LINKDING_MAX_DELIVERY_ATTEMPTS must be at least 1.")
 AGENT_LINK_SECRET = os.environ.get("AGENT_LINK_SECRET", "")
 AGENT_LINK_USERNAME = os.environ.get("AGENT_LINK_USERNAME", "")
 # A signed action is a bearer capability in a URL. Bounding how far ahead one may

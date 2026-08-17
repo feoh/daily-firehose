@@ -187,6 +187,101 @@ class SavedArticle(models.Model):
         return self.title
 
 
+class LinkdingDelivery(models.Model):
+    """Remote delivery of one local save intent.
+
+    Separating this from ``SavedArticle`` is what makes a failed bookmark
+    recoverable: the local row records that the user wants the article, this row
+    records how far the remote side has got, so a transient outage leaves work
+    owed instead of silently dropping it.
+
+    There is deliberately no ``attempting`` state. A worker claims a row by
+    compare-and-set on ``next_attempt_at``, so a process that dies mid-attempt
+    simply becomes due again instead of stranding a row in a state that nothing
+    is left alive to clear.
+    """
+
+    class State(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        SUCCEEDED = "succeeded", "Succeeded"
+        TRANSIENT_FAILED = "transient_failed", "Transient failure"
+        PERMANENT_FAILED = "permanent_failed", "Permanent failure"
+
+    class ErrorClass(models.TextChoices):
+        NOT_CONFIGURED = "not_configured", "Not configured"
+        TIMEOUT = "timeout", "Timeout"
+        CONNECTION = "connection", "Connection error"
+        RATE_LIMITED = "rate_limited", "Rate limited"
+        SERVER_ERROR = "server_error", "Remote server error"
+        AUTH = "auth", "Rejected credentials"
+        CLIENT_ERROR = "client_error", "Rejected request"
+        INVALID_RESPONSE = "invalid_response", "Unreadable response"
+        URL_MISMATCH = "url_mismatch", "Bookmark URL mismatch"
+        UNEXPECTED = "unexpected", "Unexpected error"
+        UNKNOWN = "unknown", "Unknown (predates delivery tracking)"
+
+    RETRYABLE_STATES: ClassVar[tuple[str, ...]] = (
+        State.QUEUED,
+        State.TRANSIENT_FAILED,
+    )
+
+    saved_article = models.OneToOneField(
+        SavedArticle, on_delete=models.CASCADE, related_name="delivery"
+    )
+    url = models.URLField(max_length=1000)
+    state = models.CharField(max_length=20, choices=State.choices, default=State.QUEUED)
+    attempts = models.PositiveIntegerField(default=0)
+    last_attempt_at = models.DateTimeField(blank=True, null=True)
+    next_attempt_at = models.DateTimeField(blank=True, null=True)
+    delivered_at = models.DateTimeField(blank=True, null=True)
+    bookmark_id = models.CharField(max_length=64, blank=True)
+    error_class = models.CharField(
+        max_length=32, choices=ErrorClass.choices, blank=True
+    )
+    error_message = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = "Linkding deliveries"
+        # Serves the drain's "owed and due" scan.
+        indexes = [models.Index(fields=["state", "next_attempt_at"])]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(
+                    state="succeeded",
+                    delivered_at__isnull=False,
+                    next_attempt_at__isnull=True,
+                    error_class="",
+                )
+                | models.Q(
+                    state="queued",
+                    delivered_at__isnull=True,
+                    next_attempt_at__isnull=False,
+                )
+                | models.Q(
+                    state="transient_failed",
+                    delivered_at__isnull=True,
+                    next_attempt_at__isnull=False,
+                )
+                | models.Q(
+                    state="permanent_failed",
+                    delivered_at__isnull=True,
+                    next_attempt_at__isnull=True,
+                ),
+                name="linkding_delivery_state_fields_agree",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(state__in=["queued", "succeeded"])
+                | ~models.Q(error_class=""),
+                name="linkding_delivery_failure_is_classified",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.url} ({self.state})"
+
+
 class ArticleReadState(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     article = models.ForeignKey(

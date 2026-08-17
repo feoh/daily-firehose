@@ -7,8 +7,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-EXPECTED_MODULES = 27
-EXPECTED_TESTS = 392
+EXPECTED_MODULES = 28
+EXPECTED_TESTS = 413
 EXPECTED_XFAILS = 2
 DIMENSIONS = (
     "positive",
@@ -122,8 +122,8 @@ REQUIRED_HEADINGS = {
     "## Maintenance and review protocol",
 }
 INTRO_BASELINE = (
-    "Current AST baseline: **82 feature IDs**, **45 invariant IDs**, "
-    "**27 app test modules**, **392 app test methods**, and "
+    "Current AST baseline: **82 feature IDs**, **47 invariant IDs**, "
+    "**28 app test modules**, **413 app test methods**, and "
     "**2 `expectedFailure` methods**."
 )
 BROAD_GAP_BASELINE = (
@@ -142,8 +142,8 @@ CONTRACTS_EXPECTED_FAILURE_SENTENCE = (
     "The current suite contains **2 expected failures**."
 )
 CONTRACTS_CURRENT_SUITE = (
-    "This post-snapshot companion maps the **current suite: 27 test modules, "
-    "392 test methods, and 2 expected failures**."
+    "This post-snapshot companion maps the **current suite: 28 test modules, "
+    "413 test methods, and 2 expected failures**."
 )
 CONTRACTS_PROGRESSIVE_EVIDENCE = (
     "| Progressive/a11y/mobile | UI-INV-001–005 | `test_article_actions.py`, "
@@ -163,7 +163,7 @@ PINNED_TEXT = {
         "**8/8** snapshot expected failures mapped",
     ),
     "docs/features/contracts.md": (
-        "**current suite: 27 test modules, 392 test",
+        "**current suite: 28 test modules, 413 test",
         "15/191/8 snapshot counts",
     ),
 }
@@ -1055,7 +1055,7 @@ def _stable_ids(root: Path) -> tuple[set[str], set[str]]:
     invariants = set(
         re.findall(rf"^### ({INVARIANT_PATTERN}) —", contracts, re.MULTILINE)
     )
-    if len(features) != 82 or len(invariants) != 45:
+    if len(features) != 82 or len(invariants) != 47:
         raise AssertionError(
             f"stable-ID baseline drift: features={len(features)}, invariants={len(invariants)}"
         )

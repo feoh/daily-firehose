@@ -215,16 +215,61 @@ a claim that every normative rule is presently satisfied.
 
 ### SAVE-INV-003 — Local save survives Linkding failure
 
-- **Normative current contract:** local state commits before synchronous Linkding I/O.
-  Exact returned URL confirms success; missing credentials, request/HTTP/JSON errors,
-  or URL mismatch persist `linkding_saved=false` plus an error. Unsave is local only.
+- **Normative current contract:** local state and its owed delivery commit together,
+  before synchronous Linkding I/O. A canonically equal returned URL confirms success;
+  missing credentials, request/HTTP/JSON errors, or URL mismatch persist
+  `linkding_saved=false` plus an error. Unsave is local only.
 - **Scope / precedence:** local visibility follows the local row regardless of remote
   success; adapters must not treat remote failure as no local save.
-- **Executable evidence:** `test_article_actions.py` exact payload/URL tests and
-  `test_article_state_propagation.py` local-failure visibility tests.
-- **Known violation status:** **Conformant**; timeout-after-remote-success remains an
-  acknowledged integration ambiguity.
+- **Executable evidence:** `test_article_actions.py` exact payload/URL tests,
+  `test_article_state_propagation.py` local-failure visibility tests, and
+  `test_linkding_delivery.py` survival of the local row and its delivery.
+- **Known violation status:** **Conformant.** Timeout-after-remote-success is no longer
+  an ambiguity; SAVE-INV-006 now owns it.
 - **Source / feature IDs:** `feeds/services.py`; SAVE-002–SAVE-004, API-009.
+
+### SAVE-INV-005 — Remote delivery is a bounded, recoverable state machine
+
+- **Normative current contract:** a `LinkdingDelivery` records each save's remote
+  progress as `queued`, `succeeded`, `transient_failed`, or `permanent_failed`, with
+  attempts, timestamps, a classified error, and the remote bookmark id. Timeouts,
+  connection errors, 429, 401/403, 5xx, and missing credentials are transient and are
+  retried with exponential backoff until `LINKDING_MAX_DELIVERY_ATTEMPTS`; other 4xx
+  and a URL mismatch are permanent and never retried. The save request makes the first
+  attempt, and the refresh worker or `deliver_saved_articles` drains what remains owed.
+  Database check constraints reject any state whose timestamps or error class disagree
+  with it. `SavedArticle.linkding_saved` and `linkding_error` are projections of the
+  delivery, so every existing adapter reads unchanged fields.
+- **Scope / precedence:** deleting a local save cancels its owed delivery, because the
+  delivery exists only to serve a live save intent. Re-saving is a fresh intent and
+  restarts the retry budget, which is also how a permanent failure is retried
+  deliberately. Already-delivered remote bookmarks are never deleted.
+- **Executable evidence:** `test_linkding_delivery.py` state, classification, backoff,
+  bounded-budget, claim-race, cancel-on-unsave, requeue, and constraint tests.
+- **Known violation status:** **Conformant** at service, model, and command
+  boundaries. A drain race is proved by compare-and-set on a single connection only;
+  separate-connection PostgreSQL coverage belongs with the other concurrency work.
+- **Source / feature IDs:** `feeds/models.py`, `feeds/services.py`,
+  `feeds/management/commands/deliver_saved_articles.py`; SAVE-002–SAVE-004, API-009.
+
+### SAVE-INV-006 — A retry reconciles by canonical URL before creating
+
+- **Normative current contract:** an attempt after the first looks the delivery URL up
+  through Linkding's bookmark check endpoint and adopts an existing bookmark instead of
+  creating a second one, which is what repairs a create whose response was lost. URLs
+  are compared canonically: scheme and host case and a bare-versus-slash root do not
+  read as different bookmarks, while path and query differences do. The lookup is
+  total — an unavailable endpoint, transport error, unreadable body, or a bookmark for
+  another URL all mean "no match" and fall back to creating.
+- **Scope / precedence:** a first attempt never performs the lookup, because no earlier
+  attempt could have created anything. Reconciliation never widens what is sent to
+  Linkding: the bookmark still carries the article's exact URL.
+- **Executable evidence:** `test_linkding_delivery.py` timeout-after-create adoption,
+  first-attempt-skips-lookup, lookup degradation matrix, and canonical matching tests.
+- **Known violation status:** **Conformant** against a modeled Linkding. The remote
+  contract itself is unverified against a live instance, which is why every unexpected
+  response degrades to creating rather than being trusted.
+- **Source / feature IDs:** `feeds/services.py`; SAVE-002, SAVE-003, API-009.
 
 ### SAVE-INV-004 — Newsletter save denial is domain-owned
 
@@ -739,7 +784,7 @@ a claim that every normative rule is presently satisfied.
 
 ## Traceability matrix
 
-This post-snapshot companion maps the **current suite: 27 test modules, 392 test
+This post-snapshot companion maps the **current suite: 28 test modules, 413 test
 methods, and 2 expected failures**. The pinned catalog retains its independent
 15/191/8 snapshot counts. Exact `module::class::method` identities, evidence levels,
 and dimension-specific gaps are maintained in the [detailed matrix](test-traceability.md).

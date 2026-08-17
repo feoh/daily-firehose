@@ -85,7 +85,7 @@ flowchart TB
 | [`feeds/models.py`](../../feeds/models.py) | **[F]** All nine application-owned persistent models, `ReadScope`, constraints, ordering, token hashing/generation. Depends on Django ORM and configured auth user. |
 | [`feeds/forms.py`](../../feeds/forms.py) | **[F]** `FeedForm`, uploaded-file `OPMLImportForm`, and `ThemeForm`. |
 | [`feeds/feed_fetch.py`](../../feeds/feed_fetch.py) | **[F]** Application-owned outbound feed transport. Validates URL, port and all resolved addresses at each redirect; disables environment proxies; bounds redirects, bytes, connect/read time, and a cooperative total deadline; maps failures to safe codes. Uses Requests, urllib3 exceptions, DNS, and settings. |
-| [`feeds/services.py`](../../feeds/services.py) | **[F]** Application/integration layer: save capability policy; feed parse/refresh/backoff/logging; newsletter import/archive URL/sanitization; feed discovery; OPML import/export; local save and Linkding POST. Uses ORM, `feed_fetch`, feedparser, Bleach, Requests, and XML parsing. |
+| [`feeds/services.py`](../../feeds/services.py) | **[F]** Application/integration layer: save capability policy; feed parse/refresh/backoff/logging; newsletter import/archive URL/sanitization; feed discovery; OPML import/export; local save, Linkding delivery state machine, reconciliation, and drain. Uses ORM, `feed_fetch`, feedparser, Bleach, Requests, and XML parsing. |
 | [`feeds/views.py`](../../feeds/views.py) | **[F]** Session/browser controllers and legacy digest JSON. Also owns shared period, visibility, read-state, card-query, and preference helpers. Uses forms, models, services, templates/messages. |
 | [`feeds/api_validation.py`](../../feeds/api_validation.py) | **[F]** Strict primitive/query/body validation and normalized JSON problem responses. |
 | [`feeds/api.py`](../../feeds/api.py) | **[F]** Postmark, signed-action and bearer-API adapters; authentication, capability enforcement, serializers, input mapping and exception mapping. Uses models, services, commands and validation. |
@@ -211,7 +211,7 @@ All rows are CSRF-exempt. Authentication hashes the supplied Bearer/Token key, s
 | GET | `/api/v1/articles/` / `api-articles` | `period=today\|week\|month`, or ordered`start` + `end`; optional positive`feed_id`,`include_read`,`include_saved` → unpaginated article list | Reads articles, feed/category, newsletter capability, read markers/states and saves. Arbitrary date windows have no configured cap. |
 | POST, PATCH | `/api/v1/articles/<id>/read/` / `api-article-read` | Optional JSON boolean `is_read` (default true) → article representation | Validates then upserts `ArticleReadState`; no explicit transaction. |
 | POST, PATCH | `/api/v1/articles/<id>/saved/` / `api-article-saved` | `is_saved` or alias `saved`; optional notes and nullable 0–5 finite score → save + article representation | Save true validates local object, performs local save + Linkding, then separately updates notes/score. Save false deletes local row only. **[D]** Metadata phase is not atomic with save/external call. |
-| DELETE | same / `api-article-saved` | Empty body → unsaved article representation | Deletes local `SavedArticle`; does not delete Linkding bookmark. |
+| DELETE | same / `api-article-saved` | Empty body → unsaved article representation | Deletes local `SavedArticle`, cascading its delivery so an owed bookmark is cancelled; an already-delivered Linkding bookmark is not deleted. |
 | POST | `/api/v1/mark-period-read/` / `api-mark-period-read` | Scope and optional ordered date pair → marked scope/dates | In one DB transaction materializes explicit rows and upserts period marker. |
 | GET | `/api/v1/feeds/` / `api-feeds` | Empty body/query → all feeds | Read only apart from token timestamp. |
 | POST | same / `api-feeds` | Required HTTP(S) `feed_url`; optional title/site/description/category/is_active → feed and created flag | If title absent, synchronously discovers metadata. Creates or updates by unique URL after validation. |
@@ -357,6 +357,21 @@ erDiagram
         datetime saved_at
         datetime updated_at
     }
+    LINKDING_DELIVERY {
+        bigint id PK
+        bigint saved_article_id FK
+        string url
+        string state
+        int attempts
+        datetime last_attempt_at
+        datetime next_attempt_at
+        datetime delivered_at
+        string bookmark_id
+        string error_class
+        text error_message
+        datetime created_at
+        datetime updated_at
+    }
     ARTICLE_READ_STATE {
         bigint id PK
         bigint user_id FK
@@ -401,6 +416,7 @@ erDiagram
 | `Article` | Composite unique `(feed,guid)` and `(feed,url)`; required title max 500, URL/GUID max 1000; author max 255 and summary may be blank; publication defaults now. | Exactly one Feed; deleting Feed cascades Articles; deleting Article cascades its issue, saves, and read states. | `(-published_at,title)`; `fetched_at` insert time; `updated_at` model save time. Bulk update paths require explicit timestamps. |
 | `NewsletterIssue` | `article`, `public_id`, `message_id` (max 1000) each unique; UUID generated and non-editable; subject max 500; email fields use Django EmailField limits, sender name max 255; bodies/addresses may be blank. | Exactly one Article, at most one issue per Article; Article deletion cascades issue. | `(-received_at,subject)`; `received_at` payload date or now; `created_at` insert; `updated_at` save. |
 | `SavedArticle` | Composite unique `(user,article)`; required denormalized URL max 1000/title max 500; `linkding_saved=false`, error/notes blank; score nullable with no DB range check. | Required User and Article cascade; optional Feed/Category snapshots set null. | `-saved_at`; `saved_at` first insert and does not change on re-save; `updated_at` save. |
+| `LinkdingDelivery` | One per SavedArticle; state one of queued/succeeded/transient_failed/permanent_failed with check constraints tying delivered/scheduled timestamps and a non-empty error class to the state; attempts nonnegative; URL max 1000; bookmark id max 64. | Exactly one SavedArticle; deleting the save cascades the delivery, which is how unsave cancels an owed bookmark. | Indexed by `(state,next_attempt_at)` for the drain; `created_at` insert; `updated_at` save. |
 | `ArticleReadState` | Composite unique `(user,article)`; `is_read=true` default. | User or Article deletion cascades. | No default ordering; `updated_at` changes on update/upsert. |
 | `BulkReadMarker` | Scope max 10 with day/week/month/feed choices; nominal composite unique `(user,scope,feed,period_start,period_end)`; all scope-detail columns nullable. | User deletion cascades; optional Feed deletion cascades marker. | `-marked_read_at`; `auto_now_add` sets insert time, while current `update_or_create` paths explicitly replace the timestamp on an existing marker. |
 | `ApiToken` | Globally unique SHA-256 `key_hash` max 64; name max 120; composite unique `(user,name)`; prefix max 12; active true. Raw token is generated from 32 URL-safe bytes, returned once and never stored. | User deletion cascades tokens. | `-created_at`; created once; nullable `last_used_at` updates on successful authentication attempt. |
@@ -517,14 +533,21 @@ sequenceDiagram
     alt newsletter-backed
         Policy-->>Adapter: save_not_allowed
     else ordinary article
-        Policy->>DB: update_or_create SavedArticle snapshots
-        DB-->>Policy: local save committed
-        Policy->>Linkding: POST bookmark with Token, 15s timeout
-        alt exception, HTTP/JSON error, or returned URL mismatch
-            Policy->>DB: persist linkding_saved=false and error text
-        else exact URL match
-            Policy->>DB: persist linkding_saved=true and clear error
+        Policy->>DB: one transaction: SavedArticle snapshots + queued LinkdingDelivery
+        DB-->>Policy: local save and owed delivery committed
+        opt retry attempt only
+            Policy->>Linkding: GET bookmark check by canonical URL
+            Linkding-->>Policy: existing bookmark adopted, or no match
         end
+        Policy->>Linkding: POST bookmark with Token, 15s timeout
+        alt transient failure (timeout, connection, 429, 401/403, 5xx, no token)
+            Policy->>DB: transient_failed, classified error, next_attempt_at backoff
+        else permanent failure (other 4xx or URL mismatch)
+            Policy->>DB: permanent_failed, classified error, no retry
+        else canonical URL match
+            Policy->>DB: succeeded, delivered_at, bookmark id, error cleared
+        end
+        Policy->>DB: project linkding_saved and linkding_error onto SavedArticle
         opt bearer notes or interest score
             Adapter->>DB: separate validation and save
         end
@@ -544,7 +567,13 @@ flowchart LR
     ORM -. "does not call save_article or Linkding" .-> NoRemote["No Linkding request"]
 ```
 
-**[F]** Browser, bearer, and signed adapters use the save service. Local save intentionally survives Linkding failure. Re-save refreshes snapshots and retries. Unsave deletes only the local row. Linkding has no retry/circuit breaker or deletion integration. The configured URL defaults to HTTPS, but neither settings nor `save_to_linkding` enforces HTTPS.
+**[F]** Browser, bearer, and signed adapters use the save service. Local save intentionally survives Linkding failure. Re-save refreshes snapshots, restarts the delivery budget, and retries. Unsave deletes the local row, which cascades to its delivery and so cancels an owed bookmark; an already-delivered remote bookmark is never deleted. The configured URL defaults to HTTPS, but neither settings nor `save_to_linkding` enforces HTTPS.
+
+**[F] Recoverable delivery.** A `LinkdingDelivery` row separates local save intent from remote progress, so a transient failure is retried instead of dropped. The save request makes the first attempt for immediate feedback; the refresh worker drains what remains owed each cycle, and `deliver_saved_articles` does the same on demand. Retries use exponential backoff (5 minutes doubling to a 6-hour cap) bounded by `LINKDING_MAX_DELIVERY_ATTEMPTS`, after which the delivery is recorded permanently failed rather than retried forever. A drainer claims a due row by compare-and-set on `next_attempt_at`, so a process that dies mid-attempt becomes due again rather than stranding the row, and a second drainer cannot repeat an attempt. Check constraints reject any state whose timestamps or error class disagree with it.
+
+**[D] Unverified remote contract.** Reconciliation reads Linkding's bookmark check endpoint, whose behavior is taken from documentation rather than confirmed against a live instance. It is therefore written to be total: an unavailable endpoint, transport error, unreadable body, or a bookmark for another URL all degrade to creating, which is what the code did before reconciliation existed. There is still no circuit breaker, hostname allowlist, or remote delete.
+
+**[D] Backfilled history.** Migration `0014` records existing confirmed saves as succeeded and everything else as permanently failed with error class `unknown`, deliberately not queueing a backlog of previously dropped bookmarks at deploy time. `deliver_saved_articles --requeue-failed` is the explicit opt-in to deliver them.
 
 **[F] Admin bypass.** `SavedArticleAdminForm.clean_article` consults `article_save_capability` only when creating a row or reassigning its Article; it blocks a newsletter selection at that form layer. A normal admin save otherwise writes the model directly and does not call `save_article` or Linkding. Direct ORM/shell writes bypass even that form-layer capability check.
 
@@ -636,7 +665,7 @@ flowchart LR
 | Signed link → mutation | **[F]** HMAC-SHA256 and constant-time comparison; configured active username. | **[D]** Global deterministic, replayable, non-expiring mutating GET; URL query may leak in history/logs. |
 | Postmark → webhook | **[F]** Secret path, constant-time compare before body validation, POST-only, CSRF exemption, no query, strict JSON, message ID uniqueness. | **[D]** No transaction/race-safe idempotency. No Postmark signature/header or source restriction. Path secret may enter upstream logs. **[U]** Upstream redaction/source controls. |
 | Application → feed origins | **[F]** Credential-free absolute HTTP(S), ports 80/443, every resolved address must be global, redirect revalidation, environment proxies disabled, identity encoding, redirect/byte/connect/read/cooperative-total bounds, safe errors. | **[D]** Validation DNS and Requests connection DNS are separate (rebinding interval); total deadline cannot interrupt a socket call and slow drip can extend it. **[U]** Host egress policy. |
-| Application → Linkding | **[F]** Configured URL with an HTTPS default, token header, JSON payload, 15-second Requests timeout, HTTP success and exact returned-URL check; exceptions persisted. | **[D]** HTTPS is not enforced: an operator can configure another scheme and the value reaches Requests without startup/service validation. There is also no hostname allowlist, idempotency key, retry, circuit breaker, async isolation, readiness check or remote delete. |
+| Application → Linkding | **[F]** Configured URL with an HTTPS default, token header, JSON payload, 15-second Requests timeout, HTTP success and canonical returned-URL check; every failure is classified, persisted, and either retried with bounded backoff or terminated. A retry reconciles by canonical URL before creating, so a create whose response was lost is adopted rather than duplicated. | **[D]** HTTPS is not enforced: an operator can configure another scheme and the value reaches Requests without startup/service validation. There is still no hostname allowlist, circuit breaker, readiness check or remote delete, and the reconciliation endpoint's contract is unverified against a live instance. |
 | Newsletter archive → remote content | **[F]** Bleach sanitization, restricted protocols/tags/attributes, link hardening, noindex. | **[I]** Allowed remote images disclose viewer network metadata to image hosts. No CSP/image proxy/click-to-load policy. |
 | Processes → PostgreSQL | **[F]** Default Compose network with no published database port, credentials via environment, production rejects SQLite/incomplete/default development credentials; 600-second persistent connections. | **[F]** The network is not declared `internal`, so Compose does not prohibit egress. **[U]** Runtime role privilege, host/Docker security, database encryption and credential rotation history. |
 | Secrets → runtime | **[F]** `.env` is gitignored; Compose injects ordinary environment variables. Values are not inventoried here. | **[F]** No SOPS/Vault/Docker secrets integration or repository rotation procedure. Environment/process inspection can expose values to privileged operators. |

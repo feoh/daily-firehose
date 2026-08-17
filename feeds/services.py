@@ -12,13 +12,14 @@ from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
 from typing import Any, Literal, cast
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urljoin, urlsplit, urlunsplit
 from xml.etree import ElementTree
 
 import bleach
 import feedparser
 import requests
 from bleach.html5lib_shim import Filter
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, connection, transaction
 from django.urls import reverse
@@ -26,7 +27,14 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 from .feed_fetch import FeedFetchError, fetch_feed_document
-from .models import Article, Category, Feed, NewsletterIssue, SavedArticle
+from .models import (
+    Article,
+    Category,
+    Feed,
+    LinkdingDelivery,
+    NewsletterIssue,
+    SavedArticle,
+)
 
 LINKDING_TOREAD_TAG = "toread"
 # Postmark field bounds, matching the columns they are stored in.
@@ -41,6 +49,14 @@ NEWSLETTER_FEED_TITLE = "Email Newsletters"
 logger = logging.getLogger(__name__)
 _REFRESH_BACKOFF_BASE = timedelta(minutes=5)
 _REFRESH_BACKOFF_CAP = timedelta(hours=24)
+_DELIVERY_BACKOFF_BASE = timedelta(minutes=5)
+_DELIVERY_BACKOFF_CAP = timedelta(hours=6)
+# How long a claimed delivery stays reserved before another worker may retry it.
+_DELIVERY_ATTEMPT_LEASE = timedelta(minutes=15)
+# One worker cycle attempts at most this many bookmarks. Each attempt can burn the
+# full 15-second timeout, so an unbounded backlog against a dead Linkding would
+# otherwise stall the cycle that refreshes feeds.
+DELIVERY_DRAIN_LIMIT = 50
 _SAFE_FEED_TITLE_MAX_LENGTH = 160
 OPML_MAX_BYTES = 1024 * 1024
 OPML_MAX_OUTLINES = 1000
@@ -50,6 +66,14 @@ _OPML_UNSAFE_DECLARATION = re.compile(r"<!\s*(?:DOCTYPE|ENTITY)\b", re.IGNORECAS
 
 class _ArticleIdentityConflict(Exception):
     """Incoming GUID and URL identify two different Articles in one Feed."""
+
+
+class LinkdingNotConfigured(ValueError):
+    """No Linkding token is configured, so no bookmark can be delivered."""
+
+
+class LinkdingBookmarkUrlMismatch(ValueError):
+    """Linkding acknowledged a bookmark for a URL we did not ask it to save."""
 
 
 class _TextExtractor(HTMLParser):
@@ -1078,37 +1102,46 @@ def export_opml() -> str:
 def save_article(
     *, user: Any, article: Article, base_url: str, token: str
 ) -> SavedArticle:
+    """Record the local save intent, then attempt remote delivery once.
+
+    The local row and its owed delivery commit together, so a crash between them
+    cannot leave a save with nothing tracking its bookmark. The remote attempt
+    happens afterwards and outside that transaction: it is slow, it can fail, and
+    the whole point of the delivery row is that failing it is survivable.
+    """
+
     _enforce_article_save_policy(article)
 
-    saved, _ = SavedArticle.objects.update_or_create(
-        user=user,
-        article=article,
-        defaults={
-            "url": article.url,
-            "title": article.title,
-            "feed": article.feed,
-            "category": article.feed.category,
-        },
-    )
-    try:
-        save_to_linkding(base_url=base_url, token=token, article=article)
-    except Exception as exc:  # noqa: BLE001 - record external integration errors for the user.
-        saved.linkding_saved = False
-        saved.linkding_error = str(exc)
-    else:
-        saved.linkding_saved = True
-        saved.linkding_error = ""
-    saved.save(
-        update_fields=[
-            "url",
-            "title",
-            "feed",
-            "category",
-            "linkding_saved",
-            "linkding_error",
-            "updated_at",
-        ]
-    )
+    with transaction.atomic():
+        saved, _ = SavedArticle.objects.update_or_create(
+            user=user,
+            article=article,
+            defaults={
+                "url": article.url,
+                "title": article.title,
+                "feed": article.feed,
+                "category": article.feed.category,
+            },
+        )
+        # A re-save is a fresh intent, so it restarts the retry budget. That is
+        # also the manual recovery path for a permanently failed delivery.
+        delivery, _ = LinkdingDelivery.objects.update_or_create(
+            saved_article=saved,
+            defaults={
+                "url": article.url,
+                "state": LinkdingDelivery.State.QUEUED,
+                "attempts": 0,
+                "next_attempt_at": timezone.now(),
+                "last_attempt_at": None,
+                "delivered_at": None,
+                "bookmark_id": "",
+                "error_class": "",
+                "error_message": "",
+            },
+        )
+
+    delivery.saved_article = saved
+    attempt_linkding_delivery(delivery, base_url=base_url, token=token, article=article)
     return saved
 
 
@@ -1123,9 +1156,23 @@ def _linkding_description(article: Article) -> str:
     return description
 
 
+def canonical_bookmark_url(url: str) -> str:
+    """Normalize a URL for identity comparison only.
+
+    Never used for what gets sent to Linkding: the bookmark keeps the article's
+    exact URL. This only decides whether two URLs name the same bookmark, so a
+    case-different host or a bare-vs-slash root does not read as a mismatch.
+    """
+
+    parts = urlsplit(url.strip())
+    return urlunsplit(
+        (parts.scheme.lower(), parts.netloc.lower(), parts.path or "/", parts.query, "")
+    )
+
+
 def save_to_linkding(*, base_url: str, token: str, article: Article) -> dict[str, Any]:
     if not token:
-        raise ValueError("LINKDING_TOKEN is not configured")
+        raise LinkdingNotConfigured("LINKDING_TOKEN is not configured")
     payload = {
         "url": article.url,
         "title": article.title,
@@ -1141,9 +1188,241 @@ def save_to_linkding(*, base_url: str, token: str, article: Article) -> dict[str
     response.raise_for_status()
     bookmark = cast(dict[str, Any], response.json())
     returned_url = str(bookmark.get("url") or "")
-    if returned_url != article.url:
-        raise ValueError(
+    if canonical_bookmark_url(returned_url) != canonical_bookmark_url(article.url):
+        raise LinkdingBookmarkUrlMismatch(
             "Linkding returned a different bookmark URL: "
             f"expected {article.url!r}, received {returned_url!r}"
         )
     return bookmark
+
+
+def find_linkding_bookmark(
+    *, base_url: str, token: str, url: str
+) -> dict[str, Any] | None:
+    """Return the existing bookmark for ``url``, or ``None`` if there is none.
+
+    Deliberately total: any transport error, rejection, or response shape this
+    does not recognize returns ``None`` rather than raising. A negative answer
+    only costs a create attempt, which is what the caller would have done anyway,
+    so reconciliation can never make delivery worse than not reconciling.
+    """
+
+    if not token:
+        return None
+    try:
+        response = requests.get(
+            f"{base_url.rstrip('/')}/api/bookmarks/check/",
+            headers={"Authorization": f"Token {token}"},
+            params={"url": url},
+            timeout=15,
+        )
+        if response.status_code >= 400:
+            return None
+        payload = response.json()
+    except (requests.RequestException, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    bookmark = payload.get("bookmark")
+    if not isinstance(bookmark, dict):
+        return None
+    if canonical_bookmark_url(str(bookmark.get("url") or "")) != canonical_bookmark_url(
+        url
+    ):
+        return None
+    return cast(dict[str, Any], bookmark)
+
+
+def _classify_linkding_error(exc: Exception) -> tuple[str, bool]:
+    """Map a delivery exception to its error class and whether retrying can help."""
+
+    classes = LinkdingDelivery.ErrorClass
+    if isinstance(exc, LinkdingNotConfigured):
+        # Retryable because an operator supplying the token later is exactly the
+        # case that should recover without the user re-saving.
+        return classes.NOT_CONFIGURED, True
+    if isinstance(exc, LinkdingBookmarkUrlMismatch):
+        return classes.URL_MISMATCH, False
+    if isinstance(exc, requests.Timeout):
+        return classes.TIMEOUT, True
+    if isinstance(exc, requests.ConnectionError):
+        return classes.CONNECTION, True
+    if isinstance(exc, requests.HTTPError):
+        status = getattr(exc.response, "status_code", None)
+        if status == 429:
+            return classes.RATE_LIMITED, True
+        if status in (401, 403):
+            return classes.AUTH, True
+        if status is not None and 500 <= status < 600:
+            return classes.SERVER_ERROR, True
+        return classes.CLIENT_ERROR, False
+    if isinstance(exc, ValueError):
+        # Includes JSON decode failures, which an intercepting proxy can cause.
+        return classes.INVALID_RESPONSE, True
+    if isinstance(exc, requests.RequestException):
+        return classes.CONNECTION, True
+    return classes.UNEXPECTED, True
+
+
+def _delivery_retry_delay(attempts: int) -> timedelta:
+    multiplier = 2 ** min(max(attempts - 1, 0), 16)
+    return min(_DELIVERY_BACKOFF_BASE * multiplier, _DELIVERY_BACKOFF_CAP)
+
+
+def _max_delivery_attempts() -> int:
+    return int(settings.LINKDING_MAX_DELIVERY_ATTEMPTS)
+
+
+def _deliver_bookmark(
+    *, base_url: str, token: str, article: Article, delivery: LinkdingDelivery
+) -> dict[str, Any]:
+    """Reconcile before creating, but only when a previous attempt could have created.
+
+    A first attempt cannot have left a bookmark behind, so it posts directly and
+    costs no extra request. A retry might be following an attempt that created
+    the bookmark and then failed to hear back — the timeout-after-create case —
+    so it looks the URL up first and adopts what is already there instead of
+    creating a duplicate.
+    """
+
+    if delivery.attempts > 1:
+        existing = find_linkding_bookmark(
+            base_url=base_url, token=token, url=delivery.url
+        )
+        if existing is not None:
+            return existing
+    return save_to_linkding(base_url=base_url, token=token, article=article)
+
+
+def attempt_linkding_delivery(
+    delivery: LinkdingDelivery,
+    *,
+    base_url: str,
+    token: str,
+    article: Article | None = None,
+) -> LinkdingDelivery:
+    """Make one delivery attempt and record its outcome on the delivery row."""
+
+    now = timezone.now()
+    if article is None:
+        article = delivery.saved_article.article
+    delivery.attempts += 1
+    delivery.last_attempt_at = now
+    try:
+        bookmark = _deliver_bookmark(
+            base_url=base_url, token=token, article=article, delivery=delivery
+        )
+    except Exception as exc:  # noqa: BLE001 - every failure is classified and recorded.
+        error_class, retryable = _classify_linkding_error(exc)
+        delivery.error_class = error_class
+        delivery.error_message = str(exc)
+        delivery.delivered_at = None
+        if retryable and delivery.attempts < _max_delivery_attempts():
+            delivery.state = LinkdingDelivery.State.TRANSIENT_FAILED
+            delivery.next_attempt_at = now + _delivery_retry_delay(delivery.attempts)
+        else:
+            delivery.state = LinkdingDelivery.State.PERMANENT_FAILED
+            delivery.next_attempt_at = None
+    else:
+        delivery.state = LinkdingDelivery.State.SUCCEEDED
+        delivery.delivered_at = now
+        delivery.next_attempt_at = None
+        delivery.bookmark_id = str(bookmark.get("id") or "")[:64]
+        delivery.error_class = ""
+        delivery.error_message = ""
+    delivery.save(
+        update_fields=[
+            "state",
+            "attempts",
+            "last_attempt_at",
+            "next_attempt_at",
+            "delivered_at",
+            "bookmark_id",
+            "error_class",
+            "error_message",
+            "updated_at",
+        ]
+    )
+    _project_delivery(delivery)
+    logger.info(
+        "linkding_delivery_attempted",
+        extra={
+            "saved_article_id": delivery.saved_article_id,
+            "state": delivery.state,
+            "attempts": delivery.attempts,
+            "error_class": delivery.error_class,
+        },
+    )
+    return delivery
+
+
+def _project_delivery(delivery: LinkdingDelivery) -> None:
+    """Mirror delivery state onto the SavedArticle fields every adapter reads."""
+
+    saved = delivery.saved_article
+    saved.linkding_saved = delivery.state == LinkdingDelivery.State.SUCCEEDED
+    saved.linkding_error = delivery.error_message
+    SavedArticle.objects.filter(pk=saved.pk).update(
+        linkding_saved=saved.linkding_saved,
+        linkding_error=saved.linkding_error,
+        updated_at=timezone.now(),
+    )
+
+
+def _claim_delivery(delivery: LinkdingDelivery, *, now: datetime) -> bool:
+    """Reserve a due delivery by compare-and-set on the schedule it was read at.
+
+    Pushing ``next_attempt_at`` out to a lease claims the row without a state
+    that a dying process could strand, and without holding a row lock across a
+    slow HTTP call. A racing worker's update matches zero rows and it moves on.
+    """
+
+    claimed = LinkdingDelivery.objects.filter(
+        pk=delivery.pk,
+        state__in=LinkdingDelivery.RETRYABLE_STATES,
+        next_attempt_at=delivery.next_attempt_at,
+    ).update(next_attempt_at=now + _DELIVERY_ATTEMPT_LEASE, updated_at=now)
+    return claimed == 1
+
+
+@dataclass(frozen=True)
+class DeliveryTally:
+    attempted: int = 0
+    succeeded: int = 0
+    transient: int = 0
+    permanent: int = 0
+
+
+def deliver_pending_saved_articles(
+    *, base_url: str, token: str, limit: int | None = None
+) -> DeliveryTally:
+    """Attempt every delivery that is owed and due, newest schedule first."""
+
+    now = timezone.now()
+    attempted = succeeded = transient = permanent = 0
+    due = (
+        LinkdingDelivery.objects.filter(
+            state__in=LinkdingDelivery.RETRYABLE_STATES, next_attempt_at__lte=now
+        )
+        .select_related("saved_article", "saved_article__article__feed")
+        .order_by("next_attempt_at", "id")
+    )
+    if limit is not None:
+        due = due[:limit]
+    for delivery in list(due):
+        if not _claim_delivery(delivery, now=timezone.now()):
+            continue
+        attempt_linkding_delivery(delivery, base_url=base_url, token=token)
+        attempted += 1
+        if delivery.state == LinkdingDelivery.State.SUCCEEDED:
+            succeeded += 1
+        elif delivery.state == LinkdingDelivery.State.TRANSIENT_FAILED:
+            transient += 1
+        else:
+            permanent += 1
+    return DeliveryTally(
+        attempted=attempted,
+        succeeded=succeeded,
+        transient=transient,
+        permanent=permanent,
+    )

@@ -132,9 +132,23 @@ class TokenCapabilityTests(StaticFilesTestCase):
 class LegacyTokenCapabilityMigrationTests(TransactionTestCase):
     """Tokens that predate capabilities keep working."""
 
+    @staticmethod
+    def _restore_latest_migrations() -> None:
+        """Return the shared test database to the newest migration.
+
+        This test rewinds real schema, which every later test in the run then
+        inherits. Targeting the leaf node rather than a pinned name means adding
+        a migration cannot silently strand the suite one migration behind.
+        """
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(executor.loader.graph.leaf_nodes("feeds"))
+
     def test_migration_grants_preexisting_tokens_the_scope_they_already_had(
         self,
     ) -> None:
+        self.addCleanup(self._restore_latest_migrations)
         executor = MigrationExecutor(connection)
         executor.migrate([("feeds", "0012_read_state_query_indexes")])
         executor.loader.build_graph()

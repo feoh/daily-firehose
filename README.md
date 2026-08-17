@@ -199,6 +199,9 @@ Environment variables:
 - `DATABASE_URL` — optional alternative for non-Compose deployments. Direct uv development uses SQLite when neither it nor discrete PostgreSQL fields are set; production accepts only a complete PostgreSQL URL with a non-development password.
 - `LINKDING_URL` — defaults to `https://linkding.reedfish-regulus.ts.net`.
 - `LINKDING_TOKEN` — API token used by **Save to Linkding**.
+- `LINKDING_MAX_DELIVERY_ATTEMPTS` — how many times a bookmark whose delivery keeps
+  failing transiently is retried before it is recorded as permanently failed.
+  Defaults to `8`.
 - `FEED_FETCH_CONNECT_TIMEOUT_SECONDS` — feed connection timeout, default `5`.
 - `FEED_FETCH_READ_TIMEOUT_SECONDS` — maximum socket inactivity while reading a feed, default `20`.
 - `FEED_FETCH_TOTAL_TIMEOUT_SECONDS` — deadline checked before requests and between chunks, default `60`.
@@ -390,6 +393,36 @@ sender, plus `loading="lazy"` and `decoding="async"`.
 ## Saved articles
 
 When an article is saved, Daily Firehose records the article URL, title, feed, category, timestamp, and Linkding status locally. This preserves a history that can later be used to highlight articles likely to be interesting.
+
+Saving locally and delivering the bookmark to Linkding are tracked separately. The
+save itself always commits, and the request still attempts delivery immediately so
+you get the same success or failure message as before. What changed is what happens
+when that attempt fails: instead of the bookmark being dropped, the delivery stays
+owed and is retried with exponential backoff, bounded by
+`LINKDING_MAX_DELIVERY_ATTEMPTS`. Timeouts, connection errors, rate limiting,
+rejected or missing credentials, and server errors are treated as transient; other
+rejections and a bookmark returned for a different URL are permanent and are not
+retried.
+
+The refresh worker drains owed deliveries each cycle. You can also run one on
+demand:
+
+```bash
+uv run python manage.py deliver_saved_articles              # deliver what is owed
+uv run python manage.py deliver_saved_articles --limit 20   # bound one run
+uv run python manage.py deliver_saved_articles --requeue-failed
+```
+
+`--requeue-failed` returns permanently failed deliveries to the queue and will post
+their bookmarks to Linkding. It exists because the migration that introduced this
+tracking records every previously unconfirmed save as permanently failed rather than
+silently posting a backlog of old bookmarks on deploy. Run it once, deliberately, if
+you want those delivered.
+
+A retry looks the URL up through Linkding's bookmark check endpoint before creating
+anything, so a save whose bookmark was created but whose response was lost to a
+timeout is adopted rather than duplicated. Unsaving cancels a delivery that is still
+owed; a bookmark already in Linkding is left alone, since Linkding is your archive.
 
 ## Agent-friendly API
 
