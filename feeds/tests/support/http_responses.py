@@ -42,11 +42,16 @@ def configure_linkding_lookup(
     bookmark: dict[str, Any] | None,
     status_code: int = 200,
 ) -> Mock:
-    """Configure the ``/api/bookmarks/check/`` reconciliation lookup."""
+    """Configure the ``/api/bookmarks/check/`` reconciliation lookup.
 
-    return configure_json_response(
-        mock_get, payload={"bookmark": bookmark}, status_code=status_code
-    )
+    The envelope is the one a live Linkding returned on 2026-08-17: a `bookmark`
+    that is the object or ``null``, alongside `metadata` and `auto_tags` the
+    delivery code must ignore.
+    """
+
+    payload = fixture_json("linkding-check.json")
+    payload["bookmark"] = bookmark
+    return configure_json_response(mock_get, payload=payload, status_code=status_code)
 
 
 def configure_linkding_response(

@@ -359,7 +359,12 @@ class LinkdingDeliveryDrainTests(TestCase):
 
 @override_settings(**DELIVERY_SETTINGS)
 class LinkdingReconciliationTests(TestCase):
-    """The timeout-after-remote-create case, which used to duplicate bookmarks."""
+    """The timeout-after-remote-create case, which used to duplicate bookmarks.
+
+    A live Linkding was probed on 2026-08-17: ``POST /api/bookmarks/`` upserts by
+    URL, so a retry could not in fact duplicate. It would, however, overwrite the
+    stored bookmark, which is why adopting is still the correct retry behavior.
+    """
 
     def setUp(self) -> None:
         self.user = build_user(username="reconciler")
@@ -399,6 +404,39 @@ class LinkdingReconciliationTests(TestCase):
         delivery = LinkdingDelivery.objects.get(saved_article=saved)
         self.assertEqual(delivery.state, LinkdingDelivery.State.SUCCEEDED)
         self.assertEqual(delivery.bookmark_id, "555")
+        mock_post.assert_not_called()
+
+    @patch("feeds.services.requests.get")
+    @patch("feeds.services.requests.post")
+    def test_a_retry_adopts_rather_than_overwriting_an_edited_bookmark(
+        self, mock_post: Mock, mock_get: Mock
+    ) -> None:
+        configure_request_timeout(mock_post)
+        saved = self.save()
+
+        # The bookmark exists remotely and has since been retitled in Linkding.
+        # A plain re-POST would silently overwrite that, because Linkding upserts
+        # by URL rather than rejecting a duplicate.
+        configure_linkding_lookup(
+            mock_get,
+            bookmark={
+                "id": 606,
+                "url": self.article.url,
+                "title": "Renamed by hand in Linkding",
+            },
+        )
+        mock_post.reset_mock()
+        LinkdingDelivery.objects.filter(pk=saved.delivery.pk).update(
+            next_attempt_at=timezone.now() - timedelta(seconds=1)
+        )
+
+        deliver_pending_saved_articles(
+            base_url="https://linkding.example.com", token="delivery-test-token"
+        )
+
+        delivery = LinkdingDelivery.objects.get(saved_article=saved)
+        self.assertEqual(delivery.state, LinkdingDelivery.State.SUCCEEDED)
+        self.assertEqual(delivery.bookmark_id, "606")
         mock_post.assert_not_called()
 
     @patch("feeds.services.requests.get")

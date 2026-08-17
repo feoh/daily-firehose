@@ -265,10 +265,18 @@ a claim that every normative rule is presently satisfied.
   attempt could have created anything. Reconciliation never widens what is sent to
   Linkding: the bookmark still carries the article's exact URL.
 - **Executable evidence:** `test_linkding_delivery.py` timeout-after-create adoption,
-  first-attempt-skips-lookup, lookup degradation matrix, and canonical matching tests.
-- **Known violation status:** **Conformant** against a modeled Linkding. The remote
-  contract itself is unverified against a live instance, which is why every unexpected
-  response degrades to creating rather than being trusted.
+  adopt-rather-than-overwrite, first-attempt-skips-lookup, lookup degradation matrix, and
+  canonical matching tests, all against fixtures carrying the live response envelope.
+- **Known violation status:** **Conformant.** The remote contract was verified against
+  the live instance on 2026-08-17: `GET /api/bookmarks/check/?url=` answers `200` with
+  a `bookmark` object or `null` alongside `metadata`/`auto_tags`, matching the modeled
+  envelope; it treats a trailing-slash and host-case difference as the same bookmark and
+  an added fragment as a different one; and a missing or bad token answers `401`. The
+  probe also established that `POST /api/bookmarks/` upserts by URL, so a retry could
+  not have duplicated a bookmark after all — but it would have overwritten one the
+  reader had since edited, which is why adopting remains the correct retry behavior.
+  Every unexpected response still degrades to creating; that fallback is now a
+  belt-and-braces guard rather than the load-bearing assumption.
 - **Source / feature IDs:** `feeds/services.py`; SAVE-002, SAVE-003, API-009.
 
 ### SAVE-INV-004 — Newsletter save denial is domain-owned
@@ -784,7 +792,7 @@ a claim that every normative rule is presently satisfied.
 
 ## Traceability matrix
 
-This post-snapshot companion maps the **current suite: 28 test modules, 413 test
+This post-snapshot companion maps the **current suite: 28 test modules, 414 test
 methods, and 2 expected failures**. The pinned catalog retains its independent
 15/191/8 snapshot counts. Exact `module::class::method` identities, evidence levels,
 and dimension-specific gaps are maintained in the [detailed matrix](test-traceability.md).

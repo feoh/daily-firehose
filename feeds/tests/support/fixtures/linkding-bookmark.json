@@ -1,5 +1,18 @@
 {
   "id": 123,
   "url": "https://example.com/article",
-  "title": "Example article"
+  "title": "Example article",
+  "description": "",
+  "notes": "",
+  "web_archive_snapshot_url": "",
+  "favicon_url": null,
+  "preview_image_url": null,
+  "is_archived": false,
+  "unread": true,
+  "shared": false,
+  "tag_names": ["toread"],
+  "date_added": "2026-08-17T12:00:00Z",
+  "date_modified": "2026-08-17T12:00:00Z",
+  "website_title": null,
+  "website_description": null
 }
