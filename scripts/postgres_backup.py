@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import subprocess
 import tempfile
 from typing import BinaryIO
 
@@ -50,7 +51,9 @@ def _push(kind: str, backup_id: str, source: BinaryIO) -> None:
 
 def main() -> int:
     require_production_compose_db()
-    run(ssh_command("health"), capture_output=True)
+    # Discard the receiver's banner but leave ssh's stderr on the inherited
+    # descriptor, so a transport failure is diagnosable from the journal.
+    run(ssh_command("health"), stdout=subprocess.DEVNULL)
 
     started_at = utc_now()
     backup_id = f"{started_at.strftime('%Y%m%dT%H%M%SZ')}-{secrets.token_hex(4)}"

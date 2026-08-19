@@ -245,7 +245,7 @@ def main() -> int:
     with tempfile.TemporaryFile(mode="w+b") as archive:
         os.fchmod(archive.fileno(), 0o600)
         try:
-            run(ssh_command("health"), capture_output=True)
+            run(ssh_command("health"), stdout=subprocess.DEVNULL)
             metadata = _fetch_metadata(backup_id)
             validate_backup_metadata(metadata, backup_id)
             checks["metadata_complete"] = True

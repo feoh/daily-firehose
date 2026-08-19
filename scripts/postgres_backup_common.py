@@ -62,7 +62,8 @@ def run(
         ) from error
     except subprocess.CalledProcessError as error:
         raise OperatorError(
-            f"command failed safely: {Path(command[0]).name}"
+            f"command failed safely: {Path(command[0]).name} "
+            f"exited {error.returncode}"
         ) from error
 
 

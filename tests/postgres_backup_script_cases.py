@@ -894,6 +894,16 @@ class DeploymentArtifactCases(unittest.TestCase):
         self.assertIn("LoadCredential=ssh-known-hosts:", service)
         self.assertNotIn("EnvironmentFile", service)
         self.assertNotIn("/nas/", service)
+        # A transient receiver outage must be retried inside the +2h completion
+        # objective instead of forfeiting the cycle until the next activation.
+        self.assertIn("Restart=on-failure", service)
+        self.assertIn("RestartSec=10min", service)
+        self.assertIn("StartLimitIntervalSec=4h", service)
+        self.assertIn("StartLimitBurst=6", service)
+        self.assertIn("TimeoutStartSec=30min", service)
+        # Type=oneshot rejects these, and both would retry without any bound.
+        self.assertNotIn("Restart=always", service)
+        self.assertNotIn("Restart=on-success", service)
         self.assertIn("OnCalendar=*-*-* 00,12:00:00 UTC", timer)
         self.assertIn("Persistent=true", timer)
         self.assertNotIn("enable --now", service + timer)

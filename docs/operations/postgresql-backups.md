@@ -402,6 +402,45 @@ Require `Result=success`, `ExecMainStatus=0`, and a reviewed bounded journal. Us
 credential paths. Independently inspect the exact `.dump`, `.json`, and `.receipt.json`
 pair and any separate off-site system.
 
+### Bounded retry inside the completion objective
+
+The receiver is a single NAS that reboots for its own maintenance, and the next timer
+activation is 12 hours away. A first-attempt failure therefore used to forfeit the whole
+cycle and guarantee a 20-hour critical page, even when the NAS returned minutes later.
+The service now retries:
+
+| Setting | Value | Purpose |
+| --- | --- | --- |
+| `Restart=on-failure` | — | Retry a failed attempt rather than forfeiting the cycle. `Type=oneshot` permits `on-failure`; `always`/`on-success` are rejected. |
+| `RestartSec` | `10min` | Space attempts so a rebooting receiver has time to return. |
+| `StartLimitBurst` | `6` | Hard cap of six attempts, so retries cannot run unbounded. |
+| `StartLimitIntervalSec` | `4h` | Rate window. Longer than the retry span so the cap reliably trips; far shorter than the 12h cycle so the next activation is never refused. |
+| `TimeoutStartSec` | `30min` | Per-attempt bound. Prevents a hung attempt from consuming the retry budget or overlapping the next cycle. |
+
+Fast failures are retried at roughly `+0`, `+10`, `+20`, `+30`, `+40`, and `+50` minutes,
+so a receiver outage of up to about an hour is absorbed inside the `+2h` completion
+objective with no page. After the sixth attempt the unit stops with
+`Result=start-limit-hit` and waits for the next scheduled activation; the receipt-age
+monitor still pages at 14/20/24 hours, so a genuine outage is never silently swallowed.
+
+A retried cycle produces one dump per attempt, and each attempt takes a fresh recovery
+point. Only the successful attempt uploads a pair, so retries do not create duplicates.
+
+Because the start limit is a rate window rather than a latch, an exhausted unit recovers
+on its own: once `StartLimitIntervalSec` has elapsed, the next activation starts normally
+with no `systemctl reset-failed`. Verify that claim rather than assuming it:
+
+```bash
+systemctl show daily-firehose-postgresql-backup.service \
+  --property=Restart --property=RestartSec --property=StartLimitBurst \
+  --property=StartLimitIntervalUSec --property=TimeoutStartUSec
+systemctl show daily-firehose-postgresql-backup.service \
+  --property=NRestarts --property=Result
+```
+
+A `Result=start-limit-hit` with `NRestarts=5` is the expected record of an exhausted
+retry budget, not a misconfiguration.
+
 ## Manual isolated restore through a transient credential unit
 
 Build the current web image and create an ubuntu-owned evidence directory. Run the

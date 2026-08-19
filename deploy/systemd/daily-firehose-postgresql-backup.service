@@ -4,6 +4,10 @@ Documentation=file:/home/ubuntu/daily-firehose/docs/operations/postgresql-backup
 Wants=network-online.target
 After=network-online.target docker.service
 ConditionPathExists=/home/ubuntu/daily-firehose/docker-compose.yml
+# Bounds retries to roughly one hour of fast failures, well inside the +2h
+# completion objective and far below the 12h gap to the next scheduled cycle.
+StartLimitIntervalSec=4h
+StartLimitBurst=6
 
 [Service]
 Type=oneshot
@@ -16,7 +20,11 @@ LoadCredential=ssh-known-hosts:/etc/daily-firehose-backup/ssh/known_hosts
 Environment=BACKUP_SSH_IDENTITY_FILE=%d/ssh-private-key
 Environment=BACKUP_SSH_KNOWN_HOSTS_FILE=%d/ssh-known-hosts
 ExecStart=/usr/bin/python3 -m scripts.postgres_backup
-TimeoutStartSec=2h
+# A transient receiver outage must not forfeit the whole cycle: the NAS is
+# routinely back inside the hour, but the next timer activation is 12h away.
+Restart=on-failure
+RestartSec=10min
+TimeoutStartSec=30min
 Nice=10
 NoNewPrivileges=true
 PrivateTmp=true
