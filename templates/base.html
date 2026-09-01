@@ -30,6 +30,7 @@
         <a href="{% url 'today' %}" data-keyboard-nav="T">Today</a>
         <a href="{% url 'week' %}" data-keyboard-nav="W">Week</a>
         <a href="{% url 'month' %}" data-keyboard-nav="M">Month</a>
+        <a href="{% url 'recommended' %}" data-keyboard-nav="R">R)ecommended</a>
         <a href="{% url 'archived' %}" data-keyboard-nav="A"
           >Archived (Marked Read)</a
         >
@@ -103,6 +104,10 @@
           <div>
             <dt><kbd>M</kbd></dt>
             <dd>Go to Month</dd>
+          </div>
+          <div>
+            <dt><kbd>R</kbd></dt>
+            <dd>Go to personalized recommendations</dd>
           </div>
           <div>
             <dt><kbd>A</kbd></dt>

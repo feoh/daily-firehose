@@ -6,6 +6,7 @@ urlpatterns = [
     path("", views.today, name="today"),
     path("week/", views.week, name="week"),
     path("month/", views.month, name="month"),
+    path("recommended/", views.recommended, name="recommended"),
     path("archived/", views.archived, name="archived"),
     path("saved-links/", views.saved_links, name="saved-links"),
     path("feeds/", views.feed_list, name="feeds"),

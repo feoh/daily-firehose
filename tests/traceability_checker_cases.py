@@ -164,8 +164,8 @@ class TraceabilityCheckerMutationTests(unittest.TestCase):
     def test_rejects_stale_intro_feature_count(self) -> None:
         self.mutate(
             "docs/features/test-traceability.md",
+            "**83 feature IDs**",
             "**82 feature IDs**",
-            "**81 feature IDs**",
         )
         self.assert_rejected("stale rendered 82/44/20/276/2 intro")
 

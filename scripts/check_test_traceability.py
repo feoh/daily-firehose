@@ -7,8 +7,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-EXPECTED_MODULES = 30
-EXPECTED_TESTS = 452
+EXPECTED_MODULES = 31
+EXPECTED_TESTS = 463
 EXPECTED_XFAILS = 2
 DIMENSIONS = (
     "positive",
@@ -80,7 +80,7 @@ MECHANISMS = {
     "service/PostgreSQL separate connections/row lock",
     "service/PostgreSQL fault injection",
 }
-FEATURE_PATTERN = r"(?:AUTH|WEB|ING|NEWS|SAVE|API|OPS)-\d{3}"
+FEATURE_PATTERN = r"(?:AUTH|WEB|REC|ING|NEWS|SAVE|API|OPS)-\d{3}"
 INVARIANT_PATTERN = r"[A-Z]+(?:-[A-Z]+)*-INV-\d{3}"
 IDENTITY_PATTERN = (
     r"feeds/tests/test_[^`:\s]+\.py::(?:[A-Za-z_][A-Za-z0-9_]*|<module>)"
@@ -108,6 +108,7 @@ KNOWN_WITAN_TASKS = {
     "tk-make-postmark-newsletter-ingestion-atomic-and-ra-e3d06e",
     "tk-reconcile-article-identity-and-concurrent-refres-7a1b44",
     "tk-validate-all-browser-redirect-targets-99209e",
+    "tk-validate-recommendation-quality-and-regressions-302a06",
 }
 REQUIRED_HEADINGS = {
     "## Feature matrix",
@@ -122,8 +123,8 @@ REQUIRED_HEADINGS = {
     "## Maintenance and review protocol",
 }
 INTRO_BASELINE = (
-    "Current AST baseline: **82 feature IDs**, **49 invariant IDs**, "
-    "**30 app test modules**, **452 app test methods**, and "
+    "Current AST baseline: **83 feature IDs**, **50 invariant IDs**, "
+    "**31 app test modules**, **463 app test methods**, and "
     "**2 `expectedFailure` methods**."
 )
 BROAD_GAP_BASELINE = (
@@ -142,8 +143,8 @@ CONTRACTS_EXPECTED_FAILURE_SENTENCE = (
     "The current suite contains **2 expected failures**."
 )
 CONTRACTS_CURRENT_SUITE = (
-    "This post-snapshot companion maps the **current suite: 30 test modules, "
-    "452 test methods, and 2 expected failures**."
+    "This post-snapshot companion maps the **current suite: 31 test modules, "
+    "463 test methods, and 2 expected failures**."
 )
 CONTRACTS_PROGRESSIVE_EVIDENCE = (
     "| Progressive/a11y/mobile | UI-INV-001–005 | `test_article_actions.py`, "
@@ -158,12 +159,12 @@ PINNED_TEXT = {
     ),
     "docs/features/catalog.md": (
         "> Snapshot: commit [`03965d98aa51522a98266df28aa2ba45e80c03e7`](https://github.com/feoh/daily-firehose/tree/03965d98aa51522a98266df28aa2ba45e80c03e7).",
-        "| **Total** | **82 IDs** | **72 fact, 8 known-defect, 1 deferred, 1 unknown** |",
+        "| **Total** | **83 IDs** | **73 fact, 8 known-defect, 1 deferred, 1 unknown** |",
         "**15/15** snapshot executable test modules mapped; **191** `def test_...` methods",
         "**8/8** snapshot expected failures mapped",
     ),
     "docs/features/contracts.md": (
-        "**current suite: 30 test modules, 452 test",
+        "**current suite: 31 test modules, 463 test",
         "15/191/8 snapshot counts",
     ),
 }
@@ -1055,7 +1056,7 @@ def _stable_ids(root: Path) -> tuple[set[str], set[str]]:
     invariants = set(
         re.findall(rf"^### ({INVARIANT_PATTERN}) —", contracts, re.MULTILINE)
     )
-    if len(features) != 82 or len(invariants) != 49:
+    if len(features) != 83 or len(invariants) != 50:
         raise AssertionError(
             f"stable-ID baseline drift: features={len(features)}, invariants={len(invariants)}"
         )

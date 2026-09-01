@@ -12,8 +12,8 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import (
-    require_POST,
     require_http_methods,
+    require_POST,
     require_safe,
 )
 
@@ -34,6 +34,7 @@ from .queries import (
     user_preference,
     week_bounds,
 )
+from .recommendations import recommendation_cards
 from .services import (
     ArticleSaveNotAllowed,
     OPMLImportError,
@@ -163,6 +164,33 @@ def month(request: HttpRequest) -> HttpResponse:
             "scope": ReadScope.MONTH,
             "period_start": start,
             "period_end": end,
+            "preferences": user_preference(request.user),
+        },
+    )
+
+
+@require_safe
+@login_required
+@never_cache
+def recommended(request: HttpRequest) -> HttpResponse:
+    page = recommendation_cards(request.user)
+    return render(
+        request,
+        "feeds/digest.html",
+        {
+            "title": "R)ecommended",
+            "period_label": "Your saved-link taste profile",
+            "intro": (
+                f"Ranked from every article using {page.profile_size} saved "
+                f"article{'s' if page.profile_size != 1 else ''}; article age is not "
+                "part of the score."
+                if page.profile_size
+                else "Save some articles and personalized recommendations will appear here."
+            ),
+            "cards": page.cards,
+            "empty_message": (
+                "No personalized matches yet. Save articles you value and try again."
+            ),
             "preferences": user_preference(request.user),
         },
     )

@@ -8,7 +8,7 @@ The [cross-feature behavioral contracts](contracts.md) and detailed [current-sui
 
 A **feature** below is an observable capability or an operational boundary. A **contract** is behavior pinned by code, tests, or operator documentation. Implementation facts are not automatically desirable product contracts: limitations and accidents are recorded so maintainers can decide compatibility deliberately. No deferred or unknown item implies that a fix exists.
 
-Stable IDs have a domain prefix and never change meaning: `AUTH` (identity), `WEB` (browser UI), `ING` (feed ingestion), `NEWS` (newsletters), `SAVE` (saving), `API` (machine adapters), and `OPS` (configuration/runtime). Retire an ID rather than reusing it. Status has exactly one of these meanings:
+Stable IDs have a domain prefix and never change meaning: `AUTH` (identity), `WEB` (browser UI), `REC` (recommendations), `ING` (feed ingestion), `NEWS` (newsletters), `SAVE` (saving), `API` (machine adapters), and `OPS` (configuration/runtime). Retire an ID rather than reusing it. Status has exactly one of these meanings:
 
 - **fact** — directly evidenced current behavior, whether intentional or not;
 - **known-defect** — current behavior contradicts an executable or documented expectation;
@@ -32,11 +32,12 @@ For every behavior-changing change:
 | --- | --- | --- |
 | Authentication/session/admin | AUTH-001–AUTH-005 | 5 fact |
 | Browser reading and interaction | WEB-001–WEB-021 | 19 fact, 2 known-defect |
+| Personalized recommendations | REC-001 | 1 fact |
 | Feeds, discovery, refresh, OPML | ING-001–ING-013 | 10 fact, 3 known-defect |
 | Newsletters and saving | NEWS-001–NEWS-005, SAVE-001–SAVE-004 | 8 fact, 1 known-defect |
 | Legacy, bearer, webhook, signed APIs | API-001–API-019 | 18 fact, 1 known-defect |
 | Configuration, build, deployment, operations | OPS-001–OPS-015 | 12 fact, 1 known-defect, 1 deferred, 1 unknown |
-| **Total** | **82 IDs** | **72 fact, 8 known-defect, 1 deferred, 1 unknown** |
+| **Total** | **83 IDs** | **73 fact, 8 known-defect, 1 deferred, 1 unknown** |
 
 The summary is mechanically checked against the detailed `###` records; see [coverage summary](#coverage-summary).
 
@@ -355,6 +356,22 @@ The summary is mechanically checked against the detailed `###` records; see [cov
 - **Test evidence:** four expected failures: missing feed, missing dates, period with feed, reversed dates.
 - **Known gaps / expected failures:** browser period parsing also can 500; concurrency uniqueness requires PostgreSQL-specific coverage.
 - **Source:** [`models.py`](https://github.com/feoh/daily-firehose/blob/03965d98aa51522a98266df28aa2ba45e80c03e7/feeds/models.py), [`test_known_correctness_failures.py`](https://github.com/feoh/daily-firehose/blob/03965d98aa51522a98266df28aa2ba45e80c03e7/feeds/tests/test_known_correctness_failures.py).
+
+## Personalized recommendations
+
+> `REC-001` is an explicitly post-snapshot addition. Its current relative source references do not alter the immutable evidence links above.
+
+### REC-001 — All-time personalized article recommendations
+
+- **Actor / status / owner:** authenticated reader; **fact**; recommendation ranking service and Recommended view.
+- **Entry / validated input:** safe `GET|HEAD /recommended/`; authenticated user, every current Article, and that user's complete SavedArticle history. The rendered result count is bounded by `RECOMMENDATION_ARTICLE_LIMIT`.
+- **Output / presentation:** a deterministic ranked card list with a concise escaped explanation, accurate read state, existing save/read actions, and explicit cold-start guidance. `R` is the global navigation shortcut.
+- **State / side effects:** GET may lazily create UserPreference and process-cache serializable ranked IDs/reasons. Ranking writes no article or user state. Saving and marking continue through existing POST commands.
+- **Failure:** zero saves or no usable matches renders an honest empty state. HTML-only text cannot execute markup. A stale cache entry rechecks saved/deleted IDs before hydration.
+- **Mobile / accessibility:** shared card/grid semantics; Recommended is included in the existing 375/768/1280 and 320 CSS-pixel Chromium route matrices.
+- **Test evidence:** `test_recommendations.py` covers deterministic topical ranking, explicit notes/ratings, save and URL exclusion, cold start, all-date/read eligibility, per-user isolation, cache invalidation, escaping, and the view contract; route and browser suites cover auth/method/navigation/reflow.
+- **Known gaps / expected failures:** lexical features may miss synonym-only relationships; no explicit negative-feedback signal exists; process-local cache work may duplicate across Gunicorn workers. Production temporal holdout evidence and cold-cache timing are recorded in project validation rather than this pinned catalog.
+- **Source:** `feeds/recommendations.py`, `feeds/views.py`, `feeds/urls.py`, `templates/base.html`, `templates/feeds/digest.html`, `feeds/tests/test_recommendations.py`.
 
 ## Feeds, discovery, refresh, and OPML
 

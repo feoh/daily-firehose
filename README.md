@@ -8,7 +8,7 @@ Daily Firehose is a personal, accessible Django RSS reader for daily information
 
 ## Goals
 
-- Show Today’s Firehose, plus week/month/feed views.
+- Show Today’s Firehose, week/month/feed views, and all-time personalized recommendations.
 - Keep readability and WCAG AA accessibility central.
 - Support Django auth, spacious article cards, keyboard-friendly controls, and high-contrast themes.
 - Import and export feed subscriptions as OPML.
@@ -205,6 +205,8 @@ Environment variables:
 - `DIGEST_ARTICLE_LIMIT` — most articles a Today/week/month or API window returns in
   one request. Defaults to `200`.
 - `FEED_ARTICLE_LIMIT` — the same bound for a single feed's page. Defaults to `100`.
+- `RECOMMENDATION_ARTICLE_LIMIT` — most personalized all-time recommendations rendered at once. Defaults to `30`.
+- `RECOMMENDATION_CACHE_SECONDS` — lifetime of a ranked-ID cache entry. Corpus and saved-profile fingerprints invalidate entries earlier; defaults to `900`.
 - `FEED_FETCH_CONNECT_TIMEOUT_SECONDS` — feed connection timeout, default `5`.
 - `FEED_FETCH_READ_TIMEOUT_SECONDS` — maximum socket inactivity while reading a feed, default `20`.
 - `FEED_FETCH_TOTAL_TIMEOUT_SECONDS` — deadline checked before requests and between chunks, default `60`.

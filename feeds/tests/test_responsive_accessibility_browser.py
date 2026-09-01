@@ -48,6 +48,7 @@ DISPLAY_MODES = (
 AUTHENTICATED_RESPONSIVE_ROUTES = (
     ("today", "Today"),
     ("week", "Week"),
+    ("recommended", "Recommended"),
     ("feeds", "Feeds"),
     ("preferences", "Preferences"),
     ("opml-import", "OPML"),
@@ -399,6 +400,7 @@ class ResponsiveAccessibilityPlaywrightTests(StaticLiveServerTestCase):
             "T": "today",
             "W": "week",
             "M": "month",
+            "R": "recommended",
             "A": "archived",
             "L": "saved-links",
             "F": "feeds",
@@ -413,7 +415,7 @@ class ResponsiveAccessibilityPlaywrightTests(StaticLiveServerTestCase):
         theme = self.page.get_by_label("Theme")
         theme.focus()
         original_value = theme.input_value()
-        for key in ("j", "k", "s", "m", "o", "?", "T"):
+        for key in ("j", "k", "s", "m", "o", "?", "T", "R"):
             theme.dispatch_event(
                 "keydown", {"key": key, "bubbles": True, "cancelable": True}
             )

@@ -27,6 +27,9 @@
   <p class="article-meta">
     Seen {{ article.fetched_at|date:"M j, Y, g:i A" }} · Published {{ article.published_at|date:"M j, Y, g:i A" }}
   </p>
+  {% if recommendation_reason %}
+  <p class="recommendation-reason"><strong>Why this:</strong> {{ recommendation_reason }}</p>
+  {% endif %}
   {% if article.summary and not article.newsletter_issue %}
   <p>{{ article.summary|striptags|truncatewords:55 }}</p>
   {% endif %}

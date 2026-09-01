@@ -427,9 +427,20 @@ if LINKDING_MAX_DELIVERY_ATTEMPTS < 1:
 # hits it says so, so it never quietly means "nothing left to read".
 DIGEST_ARTICLE_LIMIT = _env_int("DIGEST_ARTICLE_LIMIT", "200")
 FEED_ARTICLE_LIMIT = _env_int("FEED_ARTICLE_LIMIT", "100")
-for _limit_name in ("DIGEST_ARTICLE_LIMIT", "FEED_ARTICLE_LIMIT"):
+RECOMMENDATION_ARTICLE_LIMIT = _env_int("RECOMMENDATION_ARTICLE_LIMIT", "30")
+for _limit_name in (
+    "DIGEST_ARTICLE_LIMIT",
+    "FEED_ARTICLE_LIMIT",
+    "RECOMMENDATION_ARTICLE_LIMIT",
+):
     if locals()[_limit_name] < 1:
         raise ImproperlyConfigured(f"{_limit_name} must be at least 1.")
+# Ranking is expensive but its fingerprint changes with either the article corpus
+# or the authenticated user's saves. The TTL is a final safety bound for metadata
+# changes that do not have their own updated-at field.
+RECOMMENDATION_CACHE_SECONDS = _env_int("RECOMMENDATION_CACHE_SECONDS", "900")
+if RECOMMENDATION_CACHE_SECONDS < 1:
+    raise ImproperlyConfigured("RECOMMENDATION_CACHE_SECONDS must be at least 1.")
 AGENT_LINK_SECRET = os.environ.get("AGENT_LINK_SECRET", "")
 AGENT_LINK_USERNAME = os.environ.get("AGENT_LINK_USERNAME", "")
 # A signed action is a bearer capability in a URL. Bounding how far ahead one may

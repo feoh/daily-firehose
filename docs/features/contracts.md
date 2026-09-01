@@ -841,9 +841,19 @@ a claim that every normative rule is presently satisfied.
 - **Source / feature IDs:** `feeds/management/commands/refresh_feeds.py`; ING-009,
   ING-010, OPS-011.
 
+## Recommendation invariants
+
+### REC-INV-001 — Recommendations are per-user, all-time, deterministic, and honest
+
+- **Normative current contract:** Recommended ranks every unsaved Article for the authenticated user from that user's complete local SavedArticle history. Read state, feed active state, publication time, fetched time, and article age do not remove or boost a candidate. Dates are absent from the feature type and score. Results are deterministic for a fixed corpus/profile/dependency version, bounded by `RECOMMENDATION_ARTICLE_LIMIT`, deduplicated by canonical URL, and source-diversified only after personalized relevance scoring.
+- **Scope / precedence:** local save intent is positive feedback even when Linkding delivery failed. Saved titles, notes, optional finite 0–5 interest scores, Article title/author/summary, Feed, and Category may influence relevance. Another user's saves never enter the profile. Read state is presentation state only and must remain accurate on cards. Zero saves produce cold-start guidance rather than a generic recency/popularity list.
+- **Executable evidence:** `test_recommendations.py` proves topical ranking across feeds, notes/rating handling, saved and duplicate exclusion, deterministic/date-free inputs, all-date/read-state eligibility, per-user isolation, profile-fingerprint invalidation, escaped reasons, and cold-start/view behavior. `test_route_contracts.py` covers session auth and safe methods; `test_responsive_accessibility_browser.py` covers the R shortcut and responsive semantic route matrix.
+- **Known violation status:** **Conformant** for deterministic lexical ranking and tested UI/state boundaries. Lexical synonym misses, process-local duplicate fitting, and the absence of explicit negative feedback remain quality/operational limitations rather than hidden fallback behavior.
+- **Source / feature IDs:** `feeds/recommendations.py`, `feeds/views.py`, `feeds/urls.py`, `templates/base.html`; REC-001.
+
 ## Traceability matrix
 
-This post-snapshot companion maps the **current suite: 30 test modules, 452 test
+This post-snapshot companion maps the **current suite: 31 test modules, 463 test
 methods, and 2 expected failures**. The pinned catalog retains its independent
 15/191/8 snapshot counts. Exact `module::class::method` identities, evidence levels,
 and dimension-specific gaps are maintained in the [detailed matrix](test-traceability.md).
@@ -852,6 +862,7 @@ and dimension-specific gaps are maintained in the [detailed matrix](test-traceab
 | --- | --- | --- | --- |
 | Data | DATA-INV-001–004 | `test_feed_refresh.py`, `test_article_state_propagation.py`, `test_behavioral_contracts.py`, `test_postgresql_integration.py` | ING-002, ING-005–006, WEB-004–011, API-012, SAVE-001 |
 | Read | READ-INV-001–006 | `test_digest_views.py`, `test_article_state_propagation.py`, `test_api_validation.py`, `test_known_correctness_failures.py`, `test_behavioral_contracts.py`, `test_postgresql_integration.py` | WEB-002–011, WEB-019, API-007–010, API-013, API-018 |
+| Recommendation | REC-INV-001 | `test_recommendations.py`, `test_route_contracts.py`, `test_responsive_accessibility_browser.py` | REC-001 |
 | Save | SAVE-INV-001–004 | `test_article_actions.py`, `test_article_state_propagation.py`, `test_newsletter_save_policy.py`, `test_behavioral_contracts.py`, `test_postgresql_integration.py` | AUTH-005, NEWS-005, SAVE-001–004, API-005, API-009, API-018 |
 | Newsletter | NEWS-INV-001–005 | `test_newsletters.py`, `test_newsletter_save_policy.py`, `test_api_validation.py`, `test_known_correctness_failures.py`, `test_behavioral_contracts.py`, `test_postgresql_integration.py` | NEWS-001–005, API-004, API-017 |
 | Feed/OPML | FEED-INV-001–006 | `test_feed_refresh.py`, `test_opml.py`, `test_behavioral_contracts.py`, `test_postgresql_integration.py` | ING-002, ING-005, ING-007–013, API-012, API-016 |

@@ -53,6 +53,7 @@ ROUTES: dict[str, Route] = {
     "today": Route(SESSION),
     "week": Route(SESSION),
     "month": Route(SESSION),
+    "recommended": Route(SESSION),
     "archived": Route(SESSION),
     "saved-links": Route(SESSION),
     "feed-detail": Route(SESSION),
@@ -107,7 +108,7 @@ ALL_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 
 def _route_names() -> set[str]:
     names = set()
-    for name in get_resolver().reverse_dict.keys():
+    for name in get_resolver().reverse_dict:
         if not isinstance(name, str):
             continue
         if any(name.startswith(prefix) for prefix in ADMIN_PREFIXES):
