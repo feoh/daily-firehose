@@ -326,7 +326,7 @@ class RecommendedViewTests(StaticFilesTestCase):
         response = self.client.get(reverse("recommended"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "R)ecommended")
+        self.assertContains(response, "Recommended")
         self.assertContains(response, "Save some articles")
         self.assertContains(response, "No personalized matches yet")
         self.assertContains(response, 'data-keyboard-nav="R"')

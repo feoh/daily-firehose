@@ -178,7 +178,7 @@ def recommended(request: HttpRequest) -> HttpResponse:
         request,
         "feeds/digest.html",
         {
-            "title": "R)ecommended",
+            "title": "Recommended",
             "period_label": "Your saved-link taste profile",
             "intro": (
                 f"Ranked from every article using {page.profile_size} saved "
