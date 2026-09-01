@@ -364,10 +364,10 @@ The summary is mechanically checked against the detailed `###` records; see [cov
 ### REC-001 — All-time personalized article recommendations
 
 - **Actor / status / owner:** authenticated reader; **fact**; recommendation ranking service and Recommended view.
-- **Entry / validated input:** safe `GET|HEAD /recommended/`; authenticated user, every current Article, and that user's complete SavedArticle history. The rendered result count is bounded by `RECOMMENDATION_ARTICLE_LIMIT`.
-- **Output / presentation:** a deterministic ranked card list with a concise escaped explanation, accurate read state, existing save/read actions, and explicit cold-start guidance. `R` is the global navigation shortcut.
-- **State / side effects:** GET may lazily create UserPreference and process-cache serializable ranked IDs/reasons. Ranking writes no article or user state. Saving and marking continue through existing POST commands.
-- **Failure:** zero saves or no usable matches renders an honest empty state. HTML-only text cannot execute markup. A stale cache entry rechecks saved/deleted IDs before hydration.
+- **Entry / validated input:** safe `GET|HEAD /recommended/`; authenticated user, every current Article, effective read state, and that user's complete SavedArticle history. The rendered result count is bounded by `RECOMMENDATION_ARTICLE_LIMIT`.
+- **Output / presentation:** a deterministic ranked list of unread, unsaved cards with a concise escaped explanation, existing save/read actions, and explicit cold-start guidance. `R` is the global navigation shortcut.
+- **State / side effects:** GET may lazily create UserPreference and process-cache serializable ranked IDs/reasons. Ranking writes no article or user state. Marking an article read dismisses it immediately and on later loads; saving and marking continue through existing POST commands.
+- **Failure:** zero saves or no usable unread matches renders an honest empty state. HTML-only text cannot execute markup. A stale cache entry rechecks saved, read, and deleted IDs before hydration.
 - **Mobile / accessibility:** shared card/grid semantics; Recommended is included in the existing 375/768/1280 and 320 CSS-pixel Chromium route matrices.
 - **Test evidence:** `test_recommendations.py` covers deterministic topical ranking, explicit notes/ratings, save and URL exclusion, cold start, all-date/read eligibility, per-user isolation, cache invalidation, escaping, and the view contract; route and browser suites cover auth/method/navigation/reflow.
 - **Known gaps / expected failures:** lexical features may miss synonym-only relationships; no explicit negative-feedback signal exists; process-local cache work may duplicate across Gunicorn workers. Production temporal holdout evidence and cold-cache timing are recorded in project validation rather than this pinned catalog.

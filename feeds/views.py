@@ -181,7 +181,7 @@ def recommended(request: HttpRequest) -> HttpResponse:
             "title": "Recommended",
             "period_label": "Your saved-link taste profile",
             "intro": (
-                f"Ranked from every article using {page.profile_size} saved "
+                f"Ranked from every unread article using {page.profile_size} saved "
                 f"article{'s' if page.profile_size != 1 else ''}; article age is not "
                 "part of the score."
                 if page.profile_size

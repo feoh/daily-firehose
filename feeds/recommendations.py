@@ -18,20 +18,27 @@ from typing import Any, cast
 from urllib.parse import urlsplit, urlunsplit
 
 import numpy as np
-from numpy.typing import NDArray
 from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Count, Max
 from django.db.models.functions import Substr
 from django.utils.html import strip_tags
+from numpy.typing import NDArray
 from scipy import sparse
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 
-from .models import Article, Category, Feed, SavedArticle
+from .models import (
+    Article,
+    ArticleReadState,
+    BulkReadMarker,
+    Category,
+    Feed,
+    SavedArticle,
+)
 from .queries import read_article_ids
 
-ALGORITHM_VERSION = "tfidf-logistic-mmr-v1"
+ALGORITHM_VERSION = "tfidf-logistic-mmr-v2"
 MAX_SUMMARY_CHARS = 6_000
 MAX_NOTES_CHARS = 2_000
 MAX_FEATURES = 40_000
@@ -281,8 +288,9 @@ def rank_recommendations(
     saved_signals: list[SavedSignal],
     *,
     limit: int,
+    excluded_article_ids: set[int] | frozenset[int] = frozenset(),
 ) -> list[RankedRecommendation]:
-    """Rank all unsaved documents without using publication or fetch dates."""
+    """Rank undismissed, unsaved documents without using article dates."""
 
     if limit < 1:
         raise ValueError("limit must be at least 1")
@@ -311,6 +319,7 @@ def rank_recommendations(
         index
         for index, document in enumerate(documents)
         if document.article_id not in saved_ids
+        and document.article_id not in excluded_article_ids
         and _canonical_title(document.title) not in saved_titles
     ]
     if not signals or not candidate_indices:
@@ -402,6 +411,12 @@ def _corpus_fingerprint(user: Any) -> tuple[Any, ...]:
     )
     feeds = Feed.objects.aggregate(count=Count("id"), latest=Max("updated_at"))
     categories = Category.objects.aggregate(count=Count("id"), latest=Max("created_at"))
+    read_states = ArticleReadState.objects.filter(user=user).aggregate(
+        count=Count("id"), latest=Max("updated_at")
+    )
+    bulk_markers = BulkReadMarker.objects.filter(user=user).aggregate(
+        count=Count("id"), latest=Max("marked_read_at")
+    )
     return (
         ALGORITHM_VERSION,
         cast(int, user.pk),
@@ -413,6 +428,10 @@ def _corpus_fingerprint(user: Any) -> tuple[Any, ...]:
         feeds["latest"],
         categories["count"],
         categories["latest"],
+        read_states["count"],
+        read_states["latest"],
+        bulk_markers["count"],
+        bulk_markers["latest"],
         recommendation_limit(),
     )
 
@@ -481,9 +500,13 @@ def _load_saved_signals(user: Any) -> list[SavedSignal]:
 
 def _rank_for_user(user: Any) -> tuple[list[RankedRecommendation], int]:
     saved_signals = _load_saved_signals(user)
+    read_ids = read_article_ids(user, Article.objects.all())
     return (
         rank_recommendations(
-            _load_documents(), saved_signals, limit=recommendation_limit()
+            _load_documents(),
+            saved_signals,
+            limit=recommendation_limit(),
+            excluded_article_ids=read_ids,
         ),
         len(saved_signals),
     )
@@ -502,14 +525,17 @@ def recommendation_cards(user: Any) -> RecommendationPage:
     ranked_by_id = {result.article_id: result for result in ranked}
     article_ids = list(ranked_by_id)
     # Even if a cache backend briefly serves an old fingerprint, a newly saved
-    # article must never still appear as a recommendation.
+    # or dismissed article must never still appear as a recommendation.
     saved_ids = set(
         SavedArticle.objects.filter(user=user, article_id__in=article_ids).values_list(
             "article_id", flat=True
         )
     )
+    read_ids = read_article_ids(user, Article.objects.filter(id__in=article_ids))
     article_ids = [
-        article_id for article_id in article_ids if article_id not in saved_ids
+        article_id
+        for article_id in article_ids
+        if article_id not in saved_ids and article_id not in read_ids
     ]
     articles = list(
         Article.objects.select_related(
@@ -522,17 +548,11 @@ def recommendation_cards(user: Any) -> RecommendationPage:
         for article_id in article_ids
         if article_id in articles_by_id
     ]
-    read_ids = read_article_ids(
-        user,
-        Article.objects.filter(
-            id__in=[cast(int, article.pk) for article in ordered_articles]
-        ),
-    )
     return RecommendationPage(
         cards=[
             {
                 "article": article,
-                "is_read": cast(int, article.pk) in read_ids,
+                "is_read": False,
                 "is_saved": False,
                 "recommendation_reason": ranked_by_id[cast(int, article.pk)].reason,
             }

@@ -155,10 +155,12 @@ class RecommendationRankingTests(StaticFilesTestCase):
             documents,
             [SavedSignal(article_id=1, title=documents[0].title)],
             limit=4,
+            excluded_article_ids={4},
         )
 
         ids = [result.article_id for result in ranked]
         self.assertNotIn(1, ids)
+        self.assertNotIn(4, ids)
         self.assertNotIn(5, ids)
         self.assertEqual(len({result.article_id for result in ranked}), len(ranked))
         self.assertEqual(
@@ -224,19 +226,24 @@ class RecommendationOrmTests(StaticFilesTestCase):
     def tearDown(self) -> None:
         cache.clear()
 
-    def test_all_dates_and_read_states_remain_eligible_with_accurate_flags(
+    def test_all_dates_remain_eligible_but_read_articles_are_dismissed(
         self,
     ) -> None:
-        old_read = build_article(
+        old_unread = build_article(
             feed=self.feed,
             title="Old Django worker reliability",
             summary="Python Django database retries and robust workers",
             published_at=self.clock.now - timedelta(days=3_000),
         )
-        Article.objects.filter(pk=old_read.pk).update(
+        Article.objects.filter(pk=old_unread.pk).update(
             fetched_at=self.clock.now - timedelta(days=100)
         )
-        build_read_state(user=self.user, article=old_read, is_read=True)
+        dismissed = build_article(
+            feed=self.feed,
+            title="Dismissed Django database reliability",
+            summary="Python Django database retries and robust workers",
+        )
+        build_read_state(user=self.user, article=dismissed, is_read=True)
         build_article(
             feed=self.feed,
             title="New football scores",
@@ -245,13 +252,12 @@ class RecommendationOrmTests(StaticFilesTestCase):
         )
 
         page = recommendation_cards(self.user)
+        article_ids = [model_id(card["article"]) for card in page.cards]
 
-        self.assertEqual(model_id(page.cards[0]["article"]), model_id(old_read))
-        self.assertTrue(page.cards[0]["is_read"])
-        self.assertNotIn(
-            model_id(self.saved),
-            [model_id(card["article"]) for card in page.cards],
-        )
+        self.assertIn(model_id(old_unread), article_ids)
+        self.assertNotIn(model_id(dismissed), article_ids)
+        self.assertNotIn(model_id(self.saved), article_ids)
+        self.assertTrue(all(not card["is_read"] for card in page.cards))
         self.assertEqual(page.profile_size, 1)
 
     def test_another_users_saves_do_not_change_the_profile(self) -> None:
@@ -357,3 +363,14 @@ class RecommendedViewTests(StaticFilesTestCase):
         self.assertContains(response, "Why this:")
         self.assertNotContains(response, "<script>", html=True)
         self.assertContains(response, "article age is not part of the score")
+
+        mark_response = self.client.post(
+            reverse("mark-article", args=[model_id(candidate)]),
+            {"state": "read", "next": reverse("recommended")},
+            headers={"x-requested-with": "XMLHttpRequest"},
+        )
+        self.assertEqual(mark_response.status_code, 200)
+        self.assertTrue(mark_response.json()["remove"])
+
+        refreshed = self.client.get(reverse("recommended"))
+        self.assertNotContains(refreshed, candidate.title)
