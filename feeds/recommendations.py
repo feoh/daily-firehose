@@ -18,6 +18,7 @@ from typing import Any, cast
 from urllib.parse import urlsplit, urlunsplit
 
 import numpy as np
+from numpy.typing import NDArray
 from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Count, Max
@@ -196,6 +197,7 @@ def _diversified_indices(
     pool_scores = np.asarray([scores[index] for index in pool], dtype=np.float64)
     score_low = float(pool_scores.min())
     score_high = float(pool_scores.max())
+    relevance: NDArray[np.float64]
     if score_high == score_low:
         relevance = np.ones(len(pool), dtype=np.float64)
     else:
