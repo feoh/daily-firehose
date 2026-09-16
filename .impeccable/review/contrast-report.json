@@ -1,1 +1,50 @@
-[]
+{
+  "tool": "playwright + WCAG 2.x relative-luminance computation",
+  "generatedAt": "2026-09-16T06:36:25Z",
+  "threshold": "WCAG AAA (7:1 normal text, 4.5:1 large text)",
+  "matrix": {
+    "themes": [
+      "light/light",
+      "dark/dark",
+      "system/dark",
+      "system/light",
+      "signed-out/light"
+    ],
+    "routes": [
+      "/",
+      "/week/",
+      "/month/",
+      "/recommended/",
+      "/archived/",
+      "/saved-links/",
+      "/feeds/",
+      "/preferences/",
+      "/opml/import/",
+      "/accounts/login/"
+    ],
+    "widths": [
+      393,
+      1280
+    ]
+  },
+  "coverage": {
+    "pageRenders": 74,
+    "textAndControlSamples": 2743
+  },
+  "tightestMargin": {
+    "tag": "p",
+    "text": "M-01 \u00b7 V-0002",
+    "ratio": 7.92,
+    "required": 7,
+    "color": "rgb(47, 84, 112)",
+    "background": "rgb(254, 254, 251)",
+    "size": 11.2,
+    "weight": 600,
+    "margin": 0.92,
+    "theme": "light/light",
+    "route": "/",
+    "width": 393
+  },
+  "failureCount": 0,
+  "failures": []
+}

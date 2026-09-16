@@ -26,14 +26,15 @@
     {% endif %}
   </h2>
   <p class="article-meta article-time">
-    Seen {{ article.fetched_at|date:"M j, Y, g:i A" }} · Published {{ article.published_at|date:"M j, Y, g:i A" }}
+    Published {{ article.published_at|date:"M j, g:i A" }}
   </p>
   {% if recommendation_reason %}
   <p class="recommendation-reason"><strong>Why this:</strong> {{ recommendation_reason }}</p>
   {% endif %}
-  <div class="article-actions" aria-label="Actions for {% if saved_article %}{{ saved_article.title }}{% else %}{{ article.title }}{% endif %}">
+  <div class="article-actions" role="group" aria-label="Actions for {% if saved_article %}{{ saved_article.title }}{% else %}{{ article.title }}{% endif %}">
     <a class="button-link" href="{% if saved_article %}{{ saved_article.url }}{% else %}{{ article.url }}{% endif %}">
-      {% if article.newsletter_issue %}Read newsletter{% else %}Open article{% endif %}
+      <span class="action-label-full">{% if article.newsletter_issue %}Read newsletter{% else %}Open article{% endif %}</span>
+      <span class="action-label-short" aria-hidden="true">{% if article.newsletter_issue %}Read{% else %}Open{% endif %}</span>
     </a>
     {% if not article.newsletter_issue and not hide_save_action %}
     <form
@@ -48,7 +49,10 @@
       <input type="hidden" name="article_id" value="{{ article.id }}" />
       <input type="hidden" name="article_url" value="{{ article.url }}" />
       <input type="hidden" name="next" value="{{ request.get_full_path }}" />
-      <button type="submit">Save to Linkding</button>
+      <button type="submit">
+        <span class="action-label-full">Save to Linkding</span>
+        <span class="action-label-short" aria-hidden="true">Save</span>
+      </button>
     </form>
     {% endif %}
     <form
@@ -68,7 +72,8 @@
       <input type="hidden" name="remove_on_success" value="true" />
       {% endif %}
       <button type="submit">
-        {% if is_read %}Mark unread{% else %}Mark read{% endif %}
+        <span class="action-label-full">{% if is_read %}Mark unread{% else %}Mark read{% endif %}</span>
+        <span class="action-label-short" aria-hidden="true">{% if is_read %}Unread{% else %}Read{% endif %}</span>
       </button>
     </form>
   </div>

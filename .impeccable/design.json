@@ -1,128 +1,357 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-16T02:27:57Z",
+  "generatedAt": "2026-09-16T06:25:28Z",
   "title": "Design System: Daily Firehose",
   "extensions": {
     "colorMeta": {
       "sheet-field": {
         "role": "neutral",
         "displayName": "Sheet Field",
-        "canonical": "#f3f3ef",
-        "tonalRamp": ["oklch(15% 0.006 105)", "oklch(27% 0.006 105)", "oklch(39% 0.006 105)", "oklch(51% 0.006 105)", "oklch(63% 0.006 105)", "oklch(75% 0.006 105)", "oklch(87% 0.006 105)", "oklch(95% 0.006 105)"]
+        "canonical": "#f7f7f5",
+        "tonalRamp": [
+          "oklch(15% 0.004 105)",
+          "oklch(27% 0.004 105)",
+          "oklch(39% 0.004 105)",
+          "oklch(51% 0.004 105)",
+          "oklch(63% 0.004 105)",
+          "oklch(75% 0.004 105)",
+          "oklch(87% 0.004 105)",
+          "oklch(95% 0.004 105)"
+        ]
       },
       "sheet-surface": {
         "role": "neutral",
         "displayName": "Sheet Surface",
-        "canonical": "#ffffff",
-        "tonalRamp": ["oklch(15% 0 0)", "oklch(27% 0 0)", "oklch(39% 0 0)", "oklch(51% 0 0)", "oklch(63% 0 0)", "oklch(75% 0 0)", "oklch(87% 0 0)", "oklch(100% 0 0)"]
+        "canonical": "#fefefb",
+        "tonalRamp": [
+          "oklch(15% 0.003 105)",
+          "oklch(27% 0.003 105)",
+          "oklch(39% 0.003 105)",
+          "oklch(51% 0.003 105)",
+          "oklch(63% 0.003 105)",
+          "oklch(75% 0.003 105)",
+          "oklch(87% 0.003 105)",
+          "oklch(95% 0.003 105)"
+        ]
       },
       "sheet-raised": {
         "role": "neutral",
         "displayName": "Raised Sheet",
-        "canonical": "#fafaf7",
-        "tonalRamp": ["oklch(15% 0.005 105)", "oklch(27% 0.005 105)", "oklch(39% 0.005 105)", "oklch(51% 0.005 105)", "oklch(63% 0.005 105)", "oklch(75% 0.005 105)", "oklch(87% 0.005 105)", "oklch(97% 0.005 105)"]
+        "canonical": "#eeeeea",
+        "tonalRamp": [
+          "oklch(15% 0.004 105)",
+          "oklch(27% 0.004 105)",
+          "oklch(39% 0.004 105)",
+          "oklch(51% 0.004 105)",
+          "oklch(63% 0.004 105)",
+          "oklch(75% 0.004 105)",
+          "oklch(87% 0.004 105)",
+          "oklch(95% 0.004 105)"
+        ]
       },
       "ink-near-black": {
         "role": "neutral",
         "displayName": "Near-Black Ink",
-        "canonical": "#111413",
-        "tonalRamp": ["oklch(15% 0.006 165)", "oklch(27% 0.006 165)", "oklch(39% 0.006 165)", "oklch(51% 0.006 165)", "oklch(63% 0.006 165)", "oklch(75% 0.006 165)", "oklch(87% 0.006 165)", "oklch(95% 0.006 165)"]
+        "canonical": "#0e0e0e",
+        "tonalRamp": [
+          "oklch(15% 0.0 0)",
+          "oklch(27% 0.0 0)",
+          "oklch(39% 0.0 0)",
+          "oklch(51% 0.0 0)",
+          "oklch(63% 0.0 0)",
+          "oklch(75% 0.0 0)",
+          "oklch(87% 0.0 0)",
+          "oklch(95% 0.0 0)"
+        ]
       },
       "ink-muted": {
         "role": "neutral",
         "displayName": "Muted Ink",
-        "canonical": "#343b3f",
-        "tonalRamp": ["oklch(15% 0.015 225)", "oklch(27% 0.015 225)", "oklch(39% 0.015 225)", "oklch(51% 0.015 225)", "oklch(63% 0.015 225)", "oklch(75% 0.015 225)", "oklch(87% 0.015 225)", "oklch(95% 0.015 225)"]
+        "canonical": "#454545",
+        "tonalRamp": [
+          "oklch(15% 0.0 0)",
+          "oklch(27% 0.0 0)",
+          "oklch(39% 0.0 0)",
+          "oklch(51% 0.0 0)",
+          "oklch(63% 0.0 0)",
+          "oklch(75% 0.0 0)",
+          "oklch(87% 0.0 0)",
+          "oklch(95% 0.0 0)"
+        ]
       },
       "valley-link-blue": {
         "role": "secondary",
         "displayName": "Valley Link Blue",
-        "canonical": "#004b82",
-        "tonalRamp": ["oklch(15% 0.09 245)", "oklch(27% 0.11 245)", "oklch(39% 0.12 245)", "oklch(51% 0.12 245)", "oklch(63% 0.11 245)", "oklch(75% 0.09 245)", "oklch(87% 0.06 245)", "oklch(95% 0.03 245)"]
+        "canonical": "#173f5c",
+        "tonalRamp": [
+          "oklch(15% 0.07 240)",
+          "oklch(27% 0.07 240)",
+          "oklch(39% 0.07 240)",
+          "oklch(51% 0.07 240)",
+          "oklch(63% 0.07 240)",
+          "oklch(75% 0.07 240)",
+          "oklch(87% 0.07 240)",
+          "oklch(95% 0.07 240)"
+        ]
       },
       "active-matte-gold": {
         "role": "primary",
         "displayName": "Active Matte Gold",
         "canonical": "#d4af37",
-        "tonalRamp": ["oklch(15% 0.07 88)", "oklch(27% 0.10 88)", "oklch(39% 0.12 88)", "oklch(51% 0.13 88)", "oklch(63% 0.13 88)", "oklch(75% 0.11 88)", "oklch(87% 0.07 88)", "oklch(95% 0.03 88)"]
+        "tonalRamp": [
+          "oklch(15% 0.13 88)",
+          "oklch(27% 0.13 88)",
+          "oklch(39% 0.13 88)",
+          "oklch(51% 0.13 88)",
+          "oklch(63% 0.13 88)",
+          "oklch(75% 0.13 88)",
+          "oklch(87% 0.13 88)",
+          "oklch(95% 0.13 88)"
+        ]
       },
       "active-gold-deep": {
         "role": "primary",
         "displayName": "Deep Active Gold",
-        "canonical": "#a77d00",
-        "tonalRamp": ["oklch(15% 0.08 82)", "oklch(27% 0.11 82)", "oklch(39% 0.13 82)", "oklch(51% 0.14 82)", "oklch(63% 0.13 82)", "oklch(75% 0.10 82)", "oklch(87% 0.06 82)", "oklch(95% 0.03 82)"]
+        "canonical": "#916f08",
+        "tonalRamp": [
+          "oklch(15% 0.13 84)",
+          "oklch(27% 0.13 84)",
+          "oklch(39% 0.13 84)",
+          "oklch(51% 0.13 84)",
+          "oklch(63% 0.13 84)",
+          "oklch(75% 0.13 84)",
+          "oklch(87% 0.13 84)",
+          "oklch(95% 0.13 84)"
+        ]
       },
-      "border-graphite": {
+      "border-hairline": {
         "role": "neutral",
-        "displayName": "Graphite Border",
-        "canonical": "#545c60",
-        "tonalRamp": ["oklch(15% 0.012 220)", "oklch(27% 0.012 220)", "oklch(39% 0.012 220)", "oklch(51% 0.012 220)", "oklch(63% 0.012 220)", "oklch(75% 0.012 220)", "oklch(87% 0.012 220)", "oklch(95% 0.012 220)"]
+        "displayName": "Hairline Border",
+        "canonical": "#a6a6a0",
+        "tonalRamp": [
+          "oklch(15% 0.005 105)",
+          "oklch(27% 0.005 105)",
+          "oklch(39% 0.005 105)",
+          "oklch(51% 0.005 105)",
+          "oklch(63% 0.005 105)",
+          "oklch(75% 0.005 105)",
+          "oklch(87% 0.005 105)",
+          "oklch(95% 0.005 105)"
+        ]
       },
       "border-strong": {
         "role": "neutral",
-        "displayName": "Strong Graphite",
-        "canonical": "#24292c",
-        "tonalRamp": ["oklch(15% 0.01 220)", "oklch(27% 0.01 220)", "oklch(39% 0.01 220)", "oklch(51% 0.01 220)", "oklch(63% 0.01 220)", "oklch(75% 0.01 220)", "oklch(87% 0.01 220)", "oklch(95% 0.01 220)"]
+        "displayName": "Strong Border",
+        "canonical": "#0e0e0e",
+        "tonalRamp": [
+          "oklch(15% 0.0 0)",
+          "oklch(27% 0.0 0)",
+          "oklch(39% 0.0 0)",
+          "oklch(51% 0.0 0)",
+          "oklch(63% 0.0 0)",
+          "oklch(75% 0.0 0)",
+          "oklch(87% 0.0 0)",
+          "oklch(95% 0.0 0)"
+        ]
       },
-      "focus-rust": {
+      "focus-blue": {
         "role": "tertiary",
-        "displayName": "Focus Rust",
-        "canonical": "#8a4600",
-        "tonalRamp": ["oklch(15% 0.08 55)", "oklch(27% 0.11 55)", "oklch(39% 0.13 55)", "oklch(51% 0.14 55)", "oklch(63% 0.13 55)", "oklch(75% 0.10 55)", "oklch(87% 0.06 55)", "oklch(95% 0.03 55)"]
+        "displayName": "Focus Blue",
+        "canonical": "#1f5f8f",
+        "tonalRamp": [
+          "oklch(15% 0.11 245)",
+          "oklch(27% 0.11 245)",
+          "oklch(39% 0.11 245)",
+          "oklch(51% 0.11 245)",
+          "oklch(63% 0.11 245)",
+          "oklch(75% 0.11 245)",
+          "oklch(87% 0.11 245)",
+          "oklch(95% 0.11 245)"
+        ]
       },
       "success-green": {
         "role": "tertiary",
         "displayName": "Success Green",
-        "canonical": "#145c38",
-        "tonalRamp": ["oklch(15% 0.06 155)", "oklch(27% 0.08 155)", "oklch(39% 0.10 155)", "oklch(51% 0.11 155)", "oklch(63% 0.10 155)", "oklch(75% 0.08 155)", "oklch(87% 0.05 155)", "oklch(95% 0.02 155)"]
+        "canonical": "#1c5a3b",
+        "tonalRamp": [
+          "oklch(15% 0.1 155)",
+          "oklch(27% 0.1 155)",
+          "oklch(39% 0.1 155)",
+          "oklch(51% 0.1 155)",
+          "oklch(63% 0.1 155)",
+          "oklch(75% 0.1 155)",
+          "oklch(87% 0.1 155)",
+          "oklch(95% 0.1 155)"
+        ]
       },
       "warning-umber": {
         "role": "tertiary",
         "displayName": "Warning Umber",
-        "canonical": "#6d4400",
-        "tonalRamp": ["oklch(15% 0.06 75)", "oklch(27% 0.09 75)", "oklch(39% 0.11 75)", "oklch(51% 0.12 75)", "oklch(63% 0.11 75)", "oklch(75% 0.08 75)", "oklch(87% 0.05 75)", "oklch(95% 0.02 75)"]
+        "canonical": "#704b00",
+        "tonalRamp": [
+          "oklch(15% 0.11 75)",
+          "oklch(27% 0.11 75)",
+          "oklch(39% 0.11 75)",
+          "oklch(51% 0.11 75)",
+          "oklch(63% 0.11 75)",
+          "oklch(75% 0.11 75)",
+          "oklch(87% 0.11 75)",
+          "oklch(95% 0.11 75)"
+        ]
       },
       "danger-red": {
         "role": "tertiary",
         "displayName": "Danger Red",
-        "canonical": "#922323",
-        "tonalRamp": ["oklch(15% 0.08 25)", "oklch(27% 0.12 25)", "oklch(39% 0.15 25)", "oklch(51% 0.16 25)", "oklch(63% 0.14 25)", "oklch(75% 0.10 25)", "oklch(87% 0.06 25)", "oklch(95% 0.03 25)"]
+        "canonical": "#8a2121",
+        "tonalRamp": [
+          "oklch(15% 0.15 25)",
+          "oklch(27% 0.15 25)",
+          "oklch(39% 0.15 25)",
+          "oklch(51% 0.15 25)",
+          "oklch(63% 0.15 25)",
+          "oklch(75% 0.15 25)",
+          "oklch(87% 0.15 25)",
+          "oklch(95% 0.15 25)"
+        ]
       },
       "mountain-gray": {
         "role": "secondary",
         "displayName": "Mountain Gray",
-        "canonical": "#767b7d",
-        "tonalRamp": ["oklch(15% 0.008 220)", "oklch(27% 0.008 220)", "oklch(39% 0.008 220)", "oklch(51% 0.008 220)", "oklch(63% 0.008 220)", "oklch(75% 0.008 220)", "oklch(87% 0.008 220)", "oklch(95% 0.008 220)"]
+        "canonical": "#a6a6a0",
+        "tonalRamp": [
+          "oklch(15% 0.005 105)",
+          "oklch(27% 0.005 105)",
+          "oklch(39% 0.005 105)",
+          "oklch(51% 0.005 105)",
+          "oklch(63% 0.005 105)",
+          "oklch(75% 0.005 105)",
+          "oklch(87% 0.005 105)",
+          "oklch(95% 0.005 105)"
+        ]
       },
       "valley-score-blue": {
         "role": "secondary",
         "displayName": "Valley Score Blue",
-        "canonical": "#286c9e",
-        "tonalRamp": ["oklch(15% 0.07 240)", "oklch(27% 0.09 240)", "oklch(39% 0.11 240)", "oklch(51% 0.12 240)", "oklch(63% 0.11 240)", "oklch(75% 0.09 240)", "oklch(87% 0.06 240)", "oklch(95% 0.03 240)"]
+        "canonical": "#7ca5c7",
+        "tonalRamp": [
+          "oklch(15% 0.06 240)",
+          "oklch(27% 0.06 240)",
+          "oklch(39% 0.06 240)",
+          "oklch(51% 0.06 240)",
+          "oklch(63% 0.06 240)",
+          "oklch(75% 0.06 240)",
+          "oklch(87% 0.06 240)",
+          "oklch(95% 0.06 240)"
+        ]
+      },
+      "crease-ink": {
+        "role": "secondary",
+        "displayName": "Crease Ink",
+        "canonical": "#2f5470",
+        "tonalRamp": [
+          "oklch(15% 0.07 240)",
+          "oklch(27% 0.07 240)",
+          "oklch(39% 0.07 240)",
+          "oklch(51% 0.07 240)",
+          "oklch(63% 0.07 240)",
+          "oklch(75% 0.07 240)",
+          "oklch(87% 0.07 240)",
+          "oklch(95% 0.07 240)"
+        ]
       }
     },
     "typographyMeta": {
-      "display": {"displayName": "Display", "purpose": "Page titles and queue identity; large but compact."},
-      "headline": {"displayName": "Headline", "purpose": "Readable article titles and major sections."},
-      "title": {"displayName": "Title", "purpose": "Subsections and panel headings."},
-      "body": {"displayName": "Body", "purpose": "Hyperlegible interface, metadata, summary, and reading copy."},
-      "label": {"displayName": "Label", "purpose": "Navigation, buttons, states, and crease coordinates."}
+      "display": {
+        "displayName": "Display",
+        "purpose": "Uppercase letterspaced page titles and queue identity."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Readable sentence-case article titles and major sections."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Uppercase subsection and panel headings."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Hyperlegible interface, metadata, summary, and reading copy."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Uppercase tracked navigation, buttons, states, and crease coordinates."
+      }
     },
     "shadows": [
-      {"name": "overlay-low", "value": "0 1rem 2rem var(--shadow-color)", "purpose": "Mobile navigation sheet only."},
-      {"name": "focus-surface", "value": "0 1rem 2.5rem var(--shadow-color)", "purpose": "Article cards in distraction-light focus mode."},
-      {"name": "modal-high", "value": "0 1.25rem 3rem var(--shadow-color)", "purpose": "Keyboard-help dialog."},
-      {"name": "inset-selection", "value": "inset 0 0 0 0.25rem var(--focus)", "purpose": "Selected article state without layout shift."}
+      {
+        "name": "overlay-low",
+        "value": "0 1rem 2rem var(--shadow-color)",
+        "purpose": "Mobile navigation sheet only."
+      },
+      {
+        "name": "focus-surface",
+        "value": "0 1rem 2.5rem var(--shadow-color)",
+        "purpose": "Article sheets in distraction-light focus mode."
+      },
+      {
+        "name": "modal-high",
+        "value": "0 1.25rem 3rem var(--shadow-color)",
+        "purpose": "Keyboard-help dialog."
+      },
+      {
+        "name": "inset-selection",
+        "value": "inset 0 0 0 0.0625rem var(--focus)",
+        "purpose": "Selected article state without layout shift."
+      }
     ],
     "motion": [
-      {"name": "control-response", "value": "140ms cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "Button color and press response."},
-      {"name": "crease-deployment", "value": "180ms cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "Article selection, clipping, and fold removal along one axis."},
-      {"name": "row-selection", "value": "170ms cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "Feed-row directional selection."},
-      {"name": "reduced-motion", "value": "0.001ms", "purpose": "Effectively disables transitions and animations when reduced motion is requested."}
+      {
+        "name": "control-response",
+        "value": "140ms cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Button color and press response."
+      },
+      {
+        "name": "crease-deployment",
+        "value": "180ms cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Article selection, clipping, and fold removal along one axis."
+      },
+      {
+        "name": "row-selection",
+        "value": "170ms cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Feed-row directional selection."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "0.001ms",
+        "purpose": "Effectively disables transitions and animations when reduced motion is requested."
+      }
     ],
     "breakpoints": [
-      {"name": "stacked-header", "value": "68rem"},
-      {"name": "mobile-fold", "value": "42rem"}
+      {
+        "name": "stacked-header",
+        "value": "68rem"
+      },
+      {
+        "name": "mobile-fold",
+        "value": "42rem"
+      }
+    ],
+    "themes": [
+      {
+        "name": "light",
+        "label": "Miura Paper",
+        "scheme": "light"
+      },
+      {
+        "name": "dark",
+        "label": "Miura Night",
+        "scheme": "dark"
+      },
+      {
+        "name": "system",
+        "label": "Follow device",
+        "scheme": "light or dark"
+      }
     ]
   },
   "components": [
@@ -132,7 +361,7 @@
       "refersTo": "button-primary",
       "description": "Gold clipped action face for the primary operation in a local group.",
       "html": "<button class=\"ds-btn-primary\" type=\"button\">OPEN ARTICLE</button>",
-      "css": ".ds-btn-primary{min-height:3rem;padding:.55rem 1rem;border:.125rem solid var(--border-strong);border-radius:0;clip-path:polygon(.55rem 0,100% 0,calc(100% - .55rem) 100%,0 100%);background:var(--accent) var(--gold-material) center/cover;color:var(--accent-ink);font:700 .95rem/1.1 'Saira Semi Condensed','Arial Narrow',sans-serif;letter-spacing:.025em;cursor:pointer;transition:transform 140ms cubic-bezier(.22,1,.36,1)}.ds-btn-primary:hover{background-color:var(--accent-strong)}.ds-btn-primary:active{transform:translateY(.125rem)}.ds-btn-primary:focus-visible{outline:.25rem solid var(--focus);outline-offset:.2rem}"
+      "css": ".ds-btn-primary{min-height:2.75rem;padding:.5rem 1rem;border:.0625rem solid var(--border-strong);border-radius:0;clip-path:polygon(.65rem 0,100% 0,calc(100% - .65rem) 100%,0 100%);background:var(--accent) var(--gold-material) center/cover;color:var(--accent-ink);font:600 .85rem/1.1 'Saira Semi Condensed','Arial Narrow',sans-serif;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;cursor:pointer;transition:transform 140ms cubic-bezier(.22,1,.36,1)}.ds-btn-primary:hover{background-color:var(--accent-strong)}.ds-btn-primary:active{transform:translateY(.125rem)}.ds-btn-primary:focus-visible{outline:.25rem solid var(--focus);outline-offset:.2rem}"
     },
     {
       "name": "Secondary Action",
@@ -140,7 +369,7 @@
       "refersTo": "button-secondary",
       "description": "White folded-paper action with the same explicit label and target size.",
       "html": "<button class=\"ds-btn-secondary\" type=\"button\">MARK READ</button>",
-      "css": ".ds-btn-secondary{min-height:3rem;padding:.55rem 1rem;border:.125rem solid var(--border-strong);border-radius:0;clip-path:polygon(.55rem 0,100% 0,calc(100% - .55rem) 100%,0 100%);background:linear-gradient(135deg,color-mix(in srgb,var(--fold-valley),transparent 92%) 0 48%,transparent 48.5%),var(--surface);color:var(--text);font:700 .95rem/1.1 'Saira Semi Condensed','Arial Narrow',sans-serif;letter-spacing:.025em;cursor:pointer;transition:background-color 140ms cubic-bezier(.22,1,.36,1),transform 140ms cubic-bezier(.22,1,.36,1)}.ds-btn-secondary:hover{background:var(--accent);color:var(--accent-ink)}.ds-btn-secondary:active{transform:translateY(.125rem)}.ds-btn-secondary:focus-visible{outline:.25rem solid var(--focus);outline-offset:.2rem}"
+      "css": ".ds-btn-secondary{min-height:2.75rem;padding:.5rem 1rem;border:.0625rem solid var(--border-strong);border-radius:0;clip-path:polygon(.65rem 0,100% 0,calc(100% - .65rem) 100%,0 100%);background:linear-gradient(135deg,color-mix(in srgb,var(--fold-valley),transparent 92%) 0 48%,transparent 48.5%),var(--surface);color:var(--text);font:600 .85rem/1.1 'Saira Semi Condensed','Arial Narrow',sans-serif;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;cursor:pointer;transition:background-color 140ms cubic-bezier(.22,1,.36,1),transform 140ms cubic-bezier(.22,1,.36,1)}.ds-btn-secondary:hover{background:var(--accent);color:var(--accent-ink)}.ds-btn-secondary:active{transform:translateY(.125rem)}.ds-btn-secondary:focus-visible{outline:.25rem solid var(--focus);outline-offset:.2rem}"
     },
     {
       "name": "Text Field",
@@ -148,7 +377,7 @@
       "refersTo": "input",
       "description": "Strong square field for preferences, feed management, and authentication.",
       "html": "<label class=\"ds-field-label\" for=\"ds-feed\">FEED URL</label><input class=\"ds-field\" id=\"ds-feed\" type=\"url\" placeholder=\"https://example.com/feed.xml\">",
-      "css": ".ds-field-label{display:block;margin-bottom:.35rem;color:var(--text);font:700 1rem/1.2 'Atkinson Hyperlegible Next',Verdana,sans-serif}.ds-field{display:block;width:100%;min-height:3rem;padding:.55rem .75rem;border:.125rem solid var(--border-strong);border-radius:0;background:var(--surface);color:var(--text);font:400 1.125rem/1.55 'Atkinson Hyperlegible Next',Verdana,sans-serif}.ds-field::placeholder{color:var(--muted);opacity:1}.ds-field:hover{border-color:var(--focus)}.ds-field:focus-visible{outline:.25rem solid var(--focus);outline-offset:.2rem}"
+      "css": ".ds-field-label{display:block;margin-bottom:.35rem;color:var(--text);font:700 1rem/1.2 'Atkinson Hyperlegible Next',Verdana,sans-serif}.ds-field{display:block;width:100%;min-height:3rem;padding:.55rem .75rem;border:.0625rem solid var(--border-strong);border-radius:0;background:var(--surface);color:var(--text);font:400 1.0625rem/1.5 'Atkinson Hyperlegible Next',Verdana,sans-serif}.ds-field::placeholder{color:var(--muted);opacity:1}.ds-field:hover{border-color:var(--focus)}.ds-field:focus-visible{outline:.25rem solid var(--focus);outline-offset:.2rem}"
     },
     {
       "name": "Route Navigation",
@@ -156,7 +385,7 @@
       "refersTo": "nav-item",
       "description": "Ruled navigation strip with written current-route state.",
       "html": "<nav class=\"ds-nav\" aria-label=\"Example sections\"><a class=\"ds-nav-item\" aria-current=\"page\" href=\"#\">TODAY</a><a class=\"ds-nav-item\" href=\"#\">WEEK</a><a class=\"ds-nav-item\" href=\"#\">SAVED</a></nav>",
-      "css": ".ds-nav{display:flex;flex-wrap:wrap;border:.0625rem solid var(--border);background:var(--surface)}.ds-nav-item{display:inline-flex;align-items:center;min-height:2.75rem;padding:.45rem .7rem;border-right:.0625rem solid var(--border);color:var(--text);font:600 .95rem/1.1 'Saira Semi Condensed','Arial Narrow',sans-serif;letter-spacing:.025em;text-decoration:none}.ds-nav-item:hover,.ds-nav-item[aria-current=page]{background:var(--accent) var(--gold-material) center/cover;color:var(--accent-ink)}.ds-nav-item[aria-current=page]{box-shadow:inset 0 -.3rem 0 var(--accent-ink);font-weight:700}.ds-nav-item:focus-visible{outline:.25rem solid var(--focus);outline-offset:.2rem}"
+      "css": ".ds-nav{display:flex;flex-wrap:wrap;border-block:.0625rem solid var(--border);background:color-mix(in srgb,var(--surface),transparent 8%)}.ds-nav-item{display:inline-flex;align-items:center;min-height:2.65rem;padding:.45rem .6rem;border-right:.0625rem solid var(--border);color:var(--text);font:600 .74rem/1.1 'Saira Semi Condensed','Arial Narrow',sans-serif;letter-spacing:.06em;text-decoration:none;text-transform:uppercase;white-space:nowrap}.ds-nav-item:hover,.ds-nav-item[aria-current=page]{background:var(--accent) var(--gold-material) center/cover;color:var(--accent-ink)}.ds-nav-item[aria-current=page]{box-shadow:inset 0 -.16rem 0 var(--accent-ink);font-weight:700}.ds-nav-item:focus-visible{outline:.25rem solid var(--focus);outline-offset:.2rem}"
     },
     {
       "name": "State Marker",
@@ -164,46 +393,81 @@
       "refersTo": "state-marker",
       "description": "Compact written status marker; color reinforces rather than replaces meaning.",
       "html": "<span class=\"ds-state\">UNREAD</span>",
-      "css": ".ds-state{display:inline-block;padding:.22rem .5rem;background:var(--accent) var(--gold-material) center/cover;color:var(--accent-ink);font:700 .95rem/1.1 'Saira Semi Condensed','Arial Narrow',sans-serif;letter-spacing:.05em;text-transform:uppercase}.ds-state:hover{background-color:var(--accent-strong)}.ds-state:focus-visible{outline:.25rem solid var(--focus);outline-offset:.2rem}"
+      "css": ".ds-state{display:inline-block;padding:.05rem .45rem;border-left:.35rem solid var(--accent);background:transparent;color:var(--text);font:600 .78rem/1.1 'Saira Semi Condensed','Arial Narrow',sans-serif;letter-spacing:.12em;text-transform:uppercase}.ds-state[data-read=true]{border-left-color:var(--muted);color:var(--muted)}"
     },
     {
       "name": "Article Sheet",
       "kind": "card",
       "refersTo": "article-card",
       "description": "Signature Miura-fold reading unit with stable source, state, title, time, and actions.",
-      "html": "<article class=\"ds-article\"><span class=\"ds-crease\">M-01 · V-0004</span><p class=\"ds-meta\"><strong>UNREAD</strong> · ACCESSIBILITY NOTES</p><h2><a href=\"#\">Touch targets and the details that make mobile reading work</a></h2><p class=\"ds-time\">Seen today · Published today</p><div class=\"ds-actions\"><button type=\"button\">OPEN ARTICLE</button><button type=\"button\">SAVE TO LINKDING</button><button type=\"button\">MARK READ</button></div></article>",
-      "css": ".ds-article{position:relative;overflow:hidden;padding:1.2rem;border:.125rem solid var(--border-strong);clip-path:polygon(.8rem 0,calc(100% - 2.25rem) 0,100% 2.25rem,calc(100% - .8rem) 100%,0 100%,0 .8rem);background:linear-gradient(125deg,transparent 0 66%,color-mix(in srgb,var(--fold-mountain),transparent 90%) 66.2% 66.5%,transparent 66.7%),linear-gradient(55deg,transparent 0 78%,color-mix(in srgb,var(--fold-valley),transparent 92%) 78.2% 78.5%,transparent 78.7%),var(--surface);color:var(--text);font:400 1.125rem/1.55 'Atkinson Hyperlegible Next',Verdana,sans-serif}.ds-article h2{max-width:34ch;margin:.6rem 0 .45rem;font:700 2rem/1.08 'Saira Semi Condensed','Arial Narrow',sans-serif}.ds-article h2 a{color:var(--link);text-decoration-thickness:.12em;text-underline-offset:.18em}.ds-meta,.ds-time{color:var(--muted);font-weight:600}.ds-crease{float:right;margin-right:2rem;color:var(--muted);font:700 .8rem/1.1 'Saira Semi Condensed','Arial Narrow',sans-serif;letter-spacing:.12em}.ds-actions{display:flex;flex-wrap:wrap;gap:.65rem;margin-top:1rem}.ds-actions button{min-height:3rem;padding:.55rem 1rem;border:.125rem solid var(--border-strong);border-radius:0;clip-path:polygon(.55rem 0,100% 0,calc(100% - .55rem) 100%,0 100%);background:var(--surface);color:var(--text);font-weight:700}.ds-actions button:first-child,.ds-actions button:hover{background:var(--accent);color:var(--accent-ink)}.ds-article:focus-within{box-shadow:inset 0 0 0 .25rem var(--focus)}.ds-article :focus-visible{outline:.25rem solid var(--focus);outline-offset:.2rem}"
+      "html": "<article class=\"ds-article\"><span class=\"ds-crease\">M-01 &middot; V-0004</span><p class=\"ds-meta\"><strong>UNREAD</strong> &middot; ACCESSIBILITY NOTES</p><h2><a href=\"#\">Touch targets and the details that make mobile reading work</a></h2><p class=\"ds-time\">Published Sep 16, 4:23 AM</p><div class=\"ds-actions\"><a href=\"#\">Open article</a><button type=\"button\">Save to Linkding</button><button type=\"button\">Mark read</button></div></article>",
+      "css": ".ds-article{position:relative;overflow:hidden;padding:1.25rem;border:.0625rem solid var(--border);clip-path:polygon(.55rem 0,calc(100% - 1.65rem) 0,100% 1.65rem,calc(100% - .55rem) 100%,0 100%,0 .55rem);background:linear-gradient(125deg,transparent 0 66%,color-mix(in srgb,var(--fold-mountain),transparent 86%) 66.05% 66.2%,transparent 66.3%),linear-gradient(55deg,transparent 0 78%,color-mix(in srgb,var(--fold-valley),transparent 86%) 78.05% 78.2%,transparent 78.3%),var(--surface);color:var(--text);font:400 1.0625rem/1.5 'Atkinson Hyperlegible Next',Verdana,sans-serif}.ds-article::after{position:absolute;top:0;right:0;width:1.65rem;height:1.65rem;border-left:.0625rem solid var(--border-strong);border-bottom:.0625rem solid var(--border-strong);background:linear-gradient(135deg,transparent 48%,var(--border-strong) 49% 51%,transparent 52%),var(--gold-material) center/cover;content:''}.ds-article h2{max-width:42ch;margin:.35rem 0 .2rem;font:600 1.9rem/1.06 'Saira Semi Condensed','Arial Narrow',sans-serif}.ds-article h2 a{color:var(--link);text-decoration-thickness:.08em;text-underline-offset:.18em}.ds-meta,.ds-time{margin:0;color:var(--muted);font-size:.78rem;font-weight:600;letter-spacing:.035em}.ds-crease{float:right;margin-right:1.9rem;color:var(--crease-ink);font:600 .7rem/1.1 'Saira Semi Condensed','Arial Narrow',sans-serif;letter-spacing:.16em}.ds-actions{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.65rem}.ds-actions>*{display:inline-flex;align-items:center;justify-content:center;min-width:7rem;min-height:2.75rem;padding:.5rem 1rem;border:.0625rem solid var(--border-strong);clip-path:polygon(.65rem 0,100% 0,calc(100% - .65rem) 100%,0 100%);background:var(--surface);color:var(--text);font:600 .85rem/1.1 'Saira Semi Condensed','Arial Narrow',sans-serif;letter-spacing:.1em;text-transform:uppercase;text-decoration:none;white-space:nowrap}.ds-actions>:first-child{background:var(--accent) var(--gold-material) center/cover;color:var(--accent-ink)}.ds-actions>:hover{background:var(--accent);color:var(--accent-ink)}.ds-article :focus-visible{outline:.25rem solid var(--focus);outline-offset:.2rem}"
     },
     {
       "name": "Feed Sheet",
       "kind": "custom",
       "description": "Compact clipped row carrying a feed coordinate, title, and URL.",
       "html": "<div class=\"ds-feed-row\"><span>F-03</span><a href=\"#\">INDEPENDENT WEB</a><small>https://example.com/web.xml</small></div>",
-      "css": ".ds-feed-row{position:relative;display:grid;gap:.2rem;overflow:hidden;padding:.85rem 1rem;border:.125rem solid var(--border);clip-path:polygon(.55rem 0,calc(100% - 1.25rem) 0,100% 1.25rem,calc(100% - .55rem) 100%,0 100%,0 .55rem);background:linear-gradient(120deg,transparent 0 72%,color-mix(in srgb,var(--fold-valley),transparent 90%) 72.2% 72.5%,transparent 72.7%),var(--surface);color:var(--text);font:600 1rem/1.4 'Atkinson Hyperlegible Next',Verdana,sans-serif;transition:transform 170ms cubic-bezier(.22,1,.36,1)}.ds-feed-row::after{position:absolute;top:0;right:0;width:1.25rem;height:1.25rem;background:var(--accent);content:''}.ds-feed-row span{color:var(--muted);font:700 .8rem/1.1 'Saira Semi Condensed','Arial Narrow',sans-serif;letter-spacing:.12em}.ds-feed-row a{color:var(--link);font-weight:700}.ds-feed-row:hover{transform:translateX(.2rem)}.ds-feed-row:focus-within{outline:.25rem solid var(--focus);outline-offset:.125rem}"
+      "css": ".ds-feed-row{position:relative;display:grid;gap:.2rem;overflow:hidden;padding:.85rem 1rem;border:.0625rem solid var(--border);clip-path:polygon(.55rem 0,calc(100% - 1.25rem) 0,100% 1.25rem,calc(100% - .55rem) 100%,0 100%,0 .55rem);background:linear-gradient(120deg,transparent 0 72%,color-mix(in srgb,var(--fold-valley),transparent 90%) 72.2% 72.5%,transparent 72.7%),var(--surface);color:var(--text);font:600 1rem/1.4 'Atkinson Hyperlegible Next',Verdana,sans-serif;transition:transform 170ms cubic-bezier(.22,1,.36,1)}.ds-feed-row::after{position:absolute;top:0;right:0;width:1.25rem;height:1.25rem;background:var(--accent) var(--gold-material) center/cover;content:''}.ds-feed-row span{color:var(--crease-ink);font:600 .7rem/1.1 'Saira Semi Condensed','Arial Narrow',sans-serif;letter-spacing:.16em}.ds-feed-row a{color:var(--link);font-weight:700}.ds-feed-row:hover{transform:translateX(.2rem)}.ds-feed-row:focus-within{outline:.25rem solid var(--focus);outline-offset:.125rem}"
     }
   ],
   "narrative": {
     "northStar": "Miura Fold Inbox",
-    "overview": "Daily Firehose is a compact information packet that unfolds into linked, readable decisions. Near-white matte sheet stock, near-black ink, gold active faces, and restrained mountain/valley scores make the interface feel engineered and tactile without turning reading into spectacle.\n\nThe system is dense but never cramped. Text remains level, conventional, and highly legible while clipped corners, parallelogram controls, crease diagrams, and terse coordinates carry the folding metaphor. Accessibility is structural: explicit labels, large targets, visible focus, semantic state, and high contrast take priority over ornament.",
+    "overview": "Daily Firehose is a compact information packet that unfolds into linked, readable decisions. Near-white matte sheet stock, near-black ink, gold active faces, and restrained mountain/valley scores make the interface feel engineered and tactile without turning reading into spectacle.\n\nThe drawing is hairline, not heavy. Every rule is one pixel, every corner is square or cut on a fold angle, and the paper carries the weight instead of thick borders. Accessibility is structural: explicit labels, adequate targets, visible focus, semantic state, and AAA contrast take priority over ornament.\n\nThere are exactly two palettes \u2014 Miura Paper and Miura Night \u2014 plus a device-following mode. A reading tool for one owner does not need a theme gallery; it needs one world that works in daylight and one that works at night.",
     "keyCharacteristics": [
       "Matte paper and gold-foil material cues rather than glossy effects.",
-      "Squared, clipped geometry with visible mountain and valley crease axes.",
-      "Large hyperlegible text paired with condensed, emphatic display labels.",
+      "Hairline rules throughout; weight comes from type and gold, never from thick borders.",
+      "Uppercase letterspaced condensed display type over hyperlegible body copy.",
       "Explicit actions and written states; color is always supplementary.",
       "Mobile hierarchy removes secondary detail before shrinking type or targets."
     ],
     "rules": [
-      {"name": "The Gold Face Rule", "body": "Reserve gold for current route, primary action, and explicit state markers; do not wash whole reading surfaces in accent color.", "section": "colors"},
-      {"name": "The Written State Rule", "body": "Every success, warning, error, read, saved, or selected state needs text or structure in addition to color.", "section": "colors"},
-      {"name": "The Level Type Rule", "body": "Fold geometry may angle edges and scores, but never rotate, skew, or distort readable text.", "section": "typography"},
-      {"name": "The Detail-Before-Type Rule", "body": "On narrow screens, hide summaries and category markers before reducing essential title, state, time, or action text.", "section": "typography"},
-      {"name": "The Flat Sheet Rule", "body": "Resting content surfaces do not float; establish hierarchy with paper faces, borders, scores, and clipped geometry.", "section": "elevation"},
-      {"name": "The Complete Crease Rule", "body": "Use the clipped edge, corner face, score line, and coordinate as one coherent grammar; avoid arbitrary triangles or isolated diagonal decoration.", "section": "shapes"}
+      {
+        "name": "The Gold Face Rule",
+        "body": "Reserve gold for current route, primary action, and explicit state markers; do not wash whole reading surfaces in accent color.",
+        "section": "colors"
+      },
+      {
+        "name": "The Written State Rule",
+        "body": "Every success, warning, error, read, saved, or selected state needs text or structure in addition to color.",
+        "section": "colors"
+      },
+      {
+        "name": "The Hairline Rule",
+        "body": "Every border is 0.0625rem. A heavier rule is a costume for structure the paper and type already provide.",
+        "section": "colors"
+      },
+      {
+        "name": "The Level Type Rule",
+        "body": "Fold geometry may angle edges and scores, but never rotate, skew, or distort readable text.",
+        "section": "typography"
+      },
+      {
+        "name": "The Tracked Caps Rule",
+        "body": "Structural type is uppercase and letterspaced. Sentence-case is reserved for content the owner actually reads: article titles, summaries, and prose.",
+        "section": "typography"
+      },
+      {
+        "name": "The Detail-Before-Type Rule",
+        "body": "On narrow screens, hide summaries and category markers before reducing essential title, state, time, or action text.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Sheet Rule",
+        "body": "Resting content surfaces do not float; establish hierarchy with paper faces, borders, scores, and clipped geometry.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Complete Crease Rule",
+        "body": "Use the clipped edge, corner face, score line, and coordinate as one coherent grammar; avoid arbitrary triangles or isolated diagonal decoration.",
+        "section": "shapes"
+      }
     ],
     "dos": [
       "Do keep every primary action, state, and focus indicator explicit and high contrast.",
       "Do use level text inside clipped, scored paper geometry.",
-      "Do preserve 44px minimum touch targets and the complete first Today article at iPhone 16 portrait width.",
+      "Do preserve 44px article-action targets and at least three complete Today sheets in the iPhone 16 portrait first viewport.",
+      "Do keep every border at one pixel.",
       "Do remove secondary detail before reducing essential type or controls.",
       "Do carry the same semantic palette roles through every supported theme.",
       "Do provide reduced-motion behavior for every fold or deployment transition."
@@ -214,7 +478,8 @@
       "Don't use color, texture, diagonal lines, or coordinates as the sole carrier of meaning.",
       "Don't rotate or skew readable text to match a fold edge.",
       "Don't add shadows to resting cards merely to make them feel clickable.",
-      "Don't let decorative materiality compromise contrast, text zoom, keyboard operation, or progressive enhancement."
+      "Don't add palettes beyond Miura Paper, Miura Night, and the device-following mode.",
+      "Don't let a mobile article sheet grow tall enough to push the next sheet out of the first viewport."
     ]
   }
 }

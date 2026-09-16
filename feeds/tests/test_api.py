@@ -221,7 +221,7 @@ class ApiTests(StaticFilesTestCase):
     def test_api_can_update_focus_mode_preference(self) -> None:
         response = self.client.patch(
             reverse("api-preferences"),
-            data={"theme": "dracula", "compact": True, "focus_mode": True},
+            data={"theme": "dark", "compact": True, "focus_mode": True},
             content_type="application/json",
             headers=self.auth_headers(),
         )
@@ -230,10 +230,10 @@ class ApiTests(StaticFilesTestCase):
         payload = response.json()["preferences"]
         self.assertEqual(
             payload,
-            {"theme": "dracula", "compact": True, "focus_mode": True},
+            {"theme": "dark", "compact": True, "focus_mode": True},
         )
         preferences = UserPreference.objects.get(user=self.user)
-        self.assertEqual(preferences.theme, "dracula")
+        self.assertEqual(preferences.theme, "dark")
         self.assertTrue(preferences.compact)
         self.assertTrue(preferences.focus_mode)
 

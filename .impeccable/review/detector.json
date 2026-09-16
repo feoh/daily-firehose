@@ -1,1 +1,148 @@
-[]
+{
+  "tool": "impeccable detect (engine bundled)",
+  "generatedAt": "2026-09-16T06:36:41Z",
+  "authoritativeTarget": "static/css/site.css",
+  "coverage": {
+    "stylesheetFindings": 0,
+    "stylesheetBlockingFindings": 0,
+    "templateAdvisories": 10
+  },
+  "knownFalsePositive": "Template-scoped advisories are inferred against an unstyled DOM: the detector reports on stderr that it cannot read the linked stylesheet because the href is the literal Django tag {% static 'css/site.css' %}. Its own summary for the template pass is '0 anti-patterns found'. The stylesheet pass is authoritative.",
+  "targets": {
+    "static/css/site.css": {
+      "note": "shipping stylesheet; custom properties fully resolvable",
+      "stderr": null,
+      "findingCount": 0,
+      "blockingCount": 0,
+      "findings": []
+    },
+    "templates": {
+      "note": "Django templates; linked stylesheet is unresolvable via {% static %}",
+      "stderr": "impeccable detect: could not read linked stylesheet {% static 'css/site.css' %} (resolved to /home/feoh/src/personal/daily-firehose/templates/{% static 'css/site.css' %}); color and custom-property rules will be incomplete",
+      "findingCount": 10,
+      "blockingCount": 0,
+      "findings": [
+        {
+          "antipattern": "design-system-color",
+          "name": "Color outside DESIGN.md",
+          "description": "A literal color is outside the DESIGN.md palette and sidecar tonal ramps. This may be legitimate, but it should be an intentional design-system addition rather than drift.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "/home/feoh/src/personal/daily-firehose/templates/base.html",
+          "line": 0,
+          "snippet": "text color rgb(0, 0, 0) on body \"{% load static %} {% block title %}Daily\" is outside DESIGN.md colors",
+          "advisory": true,
+          "ignoreValue": "rgb(0, 0, 0)"
+        },
+        {
+          "antipattern": "design-system-color",
+          "name": "Color outside DESIGN.md",
+          "description": "A literal color is outside the DESIGN.md palette and sidecar tonal ramps. This may be legitimate, but it should be an intentional design-system addition rather than drift.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "/home/feoh/src/personal/daily-firehose/templates/feeds/digest.html",
+          "line": 0,
+          "snippet": "text color rgb(0, 0, 0) on section \"{{ title }} {{ period_label }} {% if int\" is outside DESIGN.md colors",
+          "advisory": true,
+          "ignoreValue": "rgb(0, 0, 0)"
+        },
+        {
+          "antipattern": "design-system-color",
+          "name": "Color outside DESIGN.md",
+          "description": "A literal color is outside the DESIGN.md palette and sidecar tonal ramps. This may be legitimate, but it should be an intentional design-system addition rather than drift.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "/home/feoh/src/personal/daily-firehose/templates/feeds/feed_detail.html",
+          "line": 0,
+          "snippet": "text color rgb(0, 0, 0) on section \"{{ feed.title }} Feed {% if feed.descrip\" is outside DESIGN.md colors",
+          "advisory": true,
+          "ignoreValue": "rgb(0, 0, 0)"
+        },
+        {
+          "antipattern": "design-system-color",
+          "name": "Color outside DESIGN.md",
+          "description": "A literal color is outside the DESIGN.md palette and sidecar tonal ramps. This may be legitimate, but it should be an intentional design-system addition rather than drift.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "/home/feoh/src/personal/daily-firehose/templates/feeds/feed_list.html",
+          "line": 0,
+          "snippet": "text color rgb(0, 0, 0) on h1 \"Feeds\" is outside DESIGN.md colors",
+          "advisory": true,
+          "ignoreValue": "rgb(0, 0, 0)"
+        },
+        {
+          "antipattern": "design-system-color",
+          "name": "Color outside DESIGN.md",
+          "description": "A literal color is outside the DESIGN.md palette and sidecar tonal ramps. This may be legitimate, but it should be an intentional design-system addition rather than drift.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "/home/feoh/src/personal/daily-firehose/templates/feeds/includes/article_card.html",
+          "line": 0,
+          "snippet": "text color rgb(0, 0, 0) on article \"M-{{ article.feed.id|stringformat:\"02d\" \" is outside DESIGN.md colors",
+          "advisory": true,
+          "ignoreValue": "rgb(0, 0, 0)"
+        },
+        {
+          "antipattern": "design-system-color",
+          "name": "Color outside DESIGN.md",
+          "description": "A literal color is outside the DESIGN.md palette and sidecar tonal ramps. This may be legitimate, but it should be an intentional design-system addition rather than drift.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "/home/feoh/src/personal/daily-firehose/templates/feeds/newsletter_detail.html",
+          "line": 0,
+          "snippet": "text color rgb(0, 0, 0) on header \"{{ issue.subject }} Email newsletter {% \" is outside DESIGN.md colors",
+          "advisory": true,
+          "ignoreValue": "rgb(0, 0, 0)"
+        },
+        {
+          "antipattern": "design-system-color",
+          "name": "Color outside DESIGN.md",
+          "description": "A literal color is outside the DESIGN.md palette and sidecar tonal ramps. This may be legitimate, but it should be an intentional design-system addition rather than drift.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "/home/feoh/src/personal/daily-firehose/templates/feeds/opml_import.html",
+          "line": 0,
+          "snippet": "text color rgb(0, 0, 0) on h1 \"Import OPML\" is outside DESIGN.md colors",
+          "advisory": true,
+          "ignoreValue": "rgb(0, 0, 0)"
+        },
+        {
+          "antipattern": "design-system-color",
+          "name": "Color outside DESIGN.md",
+          "description": "A literal color is outside the DESIGN.md palette and sidecar tonal ramps. This may be legitimate, but it should be an intentional design-system addition rather than drift.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "/home/feoh/src/personal/daily-firehose/templates/feeds/preferences.html",
+          "line": 0,
+          "snippet": "text color rgb(0, 0, 0) on h1 \"Preferences\" is outside DESIGN.md colors",
+          "advisory": true,
+          "ignoreValue": "rgb(0, 0, 0)"
+        },
+        {
+          "antipattern": "design-system-color",
+          "name": "Color outside DESIGN.md",
+          "description": "A literal color is outside the DESIGN.md palette and sidecar tonal ramps. This may be legitimate, but it should be an intentional design-system addition rather than drift.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "/home/feoh/src/personal/daily-firehose/templates/feeds/today.html",
+          "line": 0,
+          "snippet": "text color rgb(0, 0, 0) on h1 \"Today\u2019s Firehose\" is outside DESIGN.md colors",
+          "advisory": true,
+          "ignoreValue": "rgb(0, 0, 0)"
+        },
+        {
+          "antipattern": "design-system-color",
+          "name": "Color outside DESIGN.md",
+          "description": "A literal color is outside the DESIGN.md palette and sidecar tonal ramps. This may be legitimate, but it should be an intentional design-system addition rather than drift.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "/home/feoh/src/personal/daily-firehose/templates/registration/login.html",
+          "line": 0,
+          "snippet": "text color rgb(0, 0, 0) on h1 \"Sign in to Daily Firehose\" is outside DESIGN.md colors",
+          "advisory": true,
+          "ignoreValue": "rgb(0, 0, 0)"
+        }
+      ]
+    }
+  }
+}

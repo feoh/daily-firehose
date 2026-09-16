@@ -2,31 +2,89 @@
   "/": {
     "clientWidth": 393,
     "scrollWidth": 393,
-    "headerHeight": 109.171875,
-    "firstCardTop": 354.828125,
-    "firstCardVisible": 352.96875,
-    "minCheckbox": 999,
-    "creaseIds": 4,
-    "articleInternalOverflow": false
+    "headerHeight": 56,
+    "articleCards": 5,
+    "cardHeight": 184,
+    "cardsFullyVisible": 3,
+    "actionRowHeight": 44,
+    "internalOverflow": false,
+    "minTarget": 42
+  },
+  "/week/": {
+    "clientWidth": 393,
+    "scrollWidth": 393,
+    "headerHeight": 56,
+    "articleCards": 5,
+    "cardHeight": 184,
+    "cardsFullyVisible": 2,
+    "actionRowHeight": 44,
+    "internalOverflow": false,
+    "minTarget": 42
+  },
+  "/recommended/": {
+    "clientWidth": 393,
+    "scrollWidth": 393,
+    "headerHeight": 56,
+    "articleCards": 0,
+    "cardHeight": null,
+    "cardsFullyVisible": 0,
+    "actionRowHeight": null,
+    "internalOverflow": false,
+    "minTarget": 42
+  },
+  "/archived/": {
+    "clientWidth": 393,
+    "scrollWidth": 393,
+    "headerHeight": 56,
+    "articleCards": 0,
+    "cardHeight": null,
+    "cardsFullyVisible": 0,
+    "actionRowHeight": null,
+    "internalOverflow": false,
+    "minTarget": 42
+  },
+  "/saved-links/": {
+    "clientWidth": 393,
+    "scrollWidth": 393,
+    "headerHeight": 56,
+    "articleCards": 0,
+    "cardHeight": null,
+    "cardsFullyVisible": 0,
+    "actionRowHeight": null,
+    "internalOverflow": false,
+    "minTarget": 42
   },
   "/feeds/": {
     "clientWidth": 393,
     "scrollWidth": 393,
-    "headerHeight": 109.171875,
-    "firstCardTop": null,
-    "firstCardVisible": null,
-    "minCheckbox": 44,
-    "creaseIds": 3,
-    "articleInternalOverflow": false
+    "headerHeight": 56,
+    "articleCards": 0,
+    "cardHeight": null,
+    "cardsFullyVisible": 0,
+    "actionRowHeight": null,
+    "internalOverflow": false,
+    "minTarget": 24
   },
   "/preferences/": {
     "clientWidth": 393,
     "scrollWidth": 393,
-    "headerHeight": 109.171875,
-    "firstCardTop": null,
-    "firstCardVisible": null,
-    "minCheckbox": 44,
-    "creaseIds": 0,
-    "articleInternalOverflow": false
+    "headerHeight": 56,
+    "articleCards": 0,
+    "cardHeight": null,
+    "cardsFullyVisible": 0,
+    "actionRowHeight": null,
+    "internalOverflow": false,
+    "minTarget": 42
+  },
+  "/opml/import/": {
+    "clientWidth": 393,
+    "scrollWidth": 393,
+    "headerHeight": 56,
+    "articleCards": 0,
+    "cardHeight": null,
+    "cardsFullyVisible": 0,
+    "actionRowHeight": null,
+    "internalOverflow": false,
+    "minTarget": 42
   }
 }

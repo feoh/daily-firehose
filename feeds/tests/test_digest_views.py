@@ -137,13 +137,13 @@ class DigestArticleVisibilityTests(DigestTestCase):
     def test_focus_mode_adds_body_class_without_changing_theme(self) -> None:
         UserPreference.objects.create(
             user=self.user,
-            theme=UserPreference.Theme.CATPPUCCIN_MOCHA,
+            theme=UserPreference.Theme.DARK,
             focus_mode=True,
         )
 
         response = self.client.get(reverse("today"))
 
-        self.assertContains(response, "theme-catppuccin-mocha focus-mode")
+        self.assertContains(response, "theme-dark focus-mode")
         self.assertContains(response, "Unread article")
 
     def test_marked_read_article_is_hidden_from_week_and_month(self) -> None:

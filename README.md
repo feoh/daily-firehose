@@ -502,7 +502,7 @@ semantic request body; legacy zero-field multipart bodies remain accepted.
   `name` and `slug` fields.
 - `GET` or `PATCH /api/v1/preferences/` — inspect or update `theme`, boolean
   `compact`, and boolean `focus_mode`. Theme values are the values exposed by the
-  preferences UI (for example `system`, `light`, `dark`, or `dracula`).
+  preferences UI: `system`, `light`, or `dark`.
 - `POST /api/v1/refresh/` — refresh feeds and return succeeded, failed,
   backoff-skipped, and superseded outcomes.
 
