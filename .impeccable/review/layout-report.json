@@ -1,0 +1,32 @@
+{
+  "/": {
+    "clientWidth": 393,
+    "scrollWidth": 393,
+    "headerHeight": 109.171875,
+    "firstCardTop": 354.828125,
+    "firstCardVisible": 352.96875,
+    "minCheckbox": 999,
+    "creaseIds": 4,
+    "articleInternalOverflow": false
+  },
+  "/feeds/": {
+    "clientWidth": 393,
+    "scrollWidth": 393,
+    "headerHeight": 109.171875,
+    "firstCardTop": null,
+    "firstCardVisible": null,
+    "minCheckbox": 44,
+    "creaseIds": 3,
+    "articleInternalOverflow": false
+  },
+  "/preferences/": {
+    "clientWidth": 393,
+    "scrollWidth": 393,
+    "headerHeight": 109.171875,
+    "firstCardTop": null,
+    "firstCardVisible": null,
+    "minCheckbox": 44,
+    "creaseIds": 0,
+    "articleInternalOverflow": false
+  }
+}

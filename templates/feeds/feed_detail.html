@@ -4,8 +4,8 @@
 
 {% block content %}
   <section class="page-heading" aria-labelledby="feed-heading">
-    <p class="eyebrow">Feed</p>
     <h1 id="feed-heading">{{ feed.title }}</h1>
+    <p class="page-context">Feed</p>
     {% if feed.description %}<p>{{ feed.description }}</p>{% endif %}
     <p><a href="{{ feed.feed_url }}">Feed URL</a>{% if feed.site_url %} · <a href="{{ feed.site_url }}">Website</a>{% endif %}</p>
     <form method="post" action="{% url 'mark-feed-read' feed.id %}">

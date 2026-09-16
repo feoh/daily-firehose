@@ -4,8 +4,8 @@
 
 {% block content %}
   <section class="page-heading" aria-labelledby="feeds-heading">
-    <p class="eyebrow">Subscriptions</p>
     <h1 id="feeds-heading">Feeds</h1>
+    <p class="page-context">Subscriptions</p>
     <p><a href="{% url 'opml-import' %}">Import OPML</a> · <a href="{% url 'opml-export' %}">Export OPML</a></p>
   </section>
 
@@ -36,6 +36,7 @@
         <ul class="feed-list">
           {% for feed in category_group.list %}
             <li class="feed-list-item" tabindex="-1" data-feed-list-item>
+              <span class="crease-coordinate" aria-hidden="true">F-{{ feed.id|stringformat:"02d" }}</span>
               <a href="{% url 'feed-detail' feed.id %}" data-open-feed>{{ feed.title }}</a>
               <span class="article-meta">{{ feed.feed_url }}</span>
             </li>

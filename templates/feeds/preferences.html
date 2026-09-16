@@ -4,8 +4,8 @@
 
 {% block content %}
   <section class="form-panel" aria-labelledby="preferences-heading">
-    <p class="eyebrow">Display</p>
     <h1 id="preferences-heading">Preferences</h1>
+    <p class="page-context">Display</p>
     <form method="post">
       {% csrf_token %}
       {{ form.as_p }}

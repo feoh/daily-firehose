@@ -33,11 +33,11 @@ VIEWPORTS: dict[str, ViewportSize] = {
     "desktop-1280": {"width": 1280, "height": 900},
 }
 THEME_VARIANTS: dict[str, tuple[str, Literal["light", "dark"], str]] = {
-    "light": ("light", "light", "rgb(248, 247, 244)"),
-    "dark": ("dark", "dark", "rgb(17, 24, 39)"),
-    "dracula": ("dracula", "dark", "rgb(40, 42, 54)"),
-    "system-light": ("system", "light", "rgb(248, 247, 244)"),
-    "system-dark": ("system", "dark", "rgb(17, 24, 39)"),
+    "light": ("light", "light", "rgb(243, 243, 239)"),
+    "dark": ("dark", "dark", "rgb(13, 17, 20)"),
+    "dracula": ("dracula", "dark", "rgb(36, 37, 48)"),
+    "system-light": ("system", "light", "rgb(243, 243, 239)"),
+    "system-dark": ("system", "dark", "rgb(13, 17, 20)"),
 }
 DISPLAY_MODES = (
     (False, False),

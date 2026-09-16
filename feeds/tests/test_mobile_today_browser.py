@@ -143,12 +143,28 @@ class MobileTodayPlaywrightTests(StaticLiveServerTestCase):
         self.assertEqual("compact" in body_classes, compact)
         self.assertEqual("focus-mode" in body_classes, focus)
 
+        nav_fold = self.page.locator(".nav-fold")
+        nav_summary = nav_fold.locator("summary")
+        expect(nav_summary).to_be_visible()
+        summary_bounds = nav_summary.bounding_box()
+        self.assertIsNotNone(summary_bounds)
+        assert summary_bounds is not None
+        self.assertGreaterEqual(summary_bounds["height"], 44)
+        self.assertIsNone(nav_fold.get_attribute("open"))
+
         nav_links = self.page.locator(".site-nav a")
+        for index in range(nav_links.count()):
+            expect(nav_links.nth(index)).to_be_hidden()
+
+        nav_summary.click()
+        self.assertIsNotNone(nav_fold.get_attribute("open"))
         for index in range(nav_links.count()):
             bounds = nav_links.nth(index).bounding_box()
             self.assertIsNotNone(bounds)
             assert bounds is not None
-            self.assertGreaterEqual(bounds["height"], 24)
+            self.assertGreaterEqual(bounds["height"], 44)
+        nav_summary.click()
+        self.assertIsNone(nav_fold.get_attribute("open"))
 
         cards = self.page.locator("[data-article-card]")
         expect(cards).to_have_count(3)
@@ -159,9 +175,9 @@ class MobileTodayPlaywrightTests(StaticLiveServerTestCase):
             card = cards.nth(index)
             expect(card).to_be_visible()
             self.assertGreater(len(card.locator("h2").inner_text().strip()), 5)
-            self.assertGreater(
-                len(card.locator("p:not(.article-meta)").inner_text().strip()), 5
-            )
+            summary = card.locator(".article-summary")
+            self.assertGreater(len((summary.text_content() or "").strip()), 5)
+            expect(summary).to_be_hidden()
             self.assertGreater(
                 len(card.locator(".article-actions").inner_text().strip()), 5
             )

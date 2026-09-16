@@ -158,6 +158,21 @@ const navigateToUrl = (href, { allowExternal = false } = {}) => {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
+	const navFold = document.querySelector(".nav-fold");
+	const mobileNavigation = window.matchMedia("(max-width: 42rem)");
+	const syncNavigation = () => {
+		if (!navFold) {
+			return;
+		}
+		if (mobileNavigation.matches) {
+			navFold.removeAttribute("open");
+		} else {
+			navFold.setAttribute("open", "");
+		}
+	};
+	syncNavigation();
+	mobileNavigation.addEventListener("change", syncNavigation);
+
 	if (articleCards().length > 0) {
 		selectArticle(0, { focus: false });
 	}
@@ -386,6 +401,10 @@ document.addEventListener("submit", async (event) => {
 		message.textContent = result.message || "Done.";
 
 		if (card && result.remove) {
+			if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+				card.classList.add("is-folding");
+				await new Promise((resolve) => window.setTimeout(resolve, 180));
+			}
 			card.replaceWith(message);
 			selectArticle(cardIndex, { focus: false });
 		} else if (card) {

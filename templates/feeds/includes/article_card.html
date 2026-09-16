@@ -6,15 +6,16 @@
   data-article-id="{{ article.id }}"
   data-article-url="{% if saved_article %}{{ saved_article.url }}{% else %}{{ article.url }}{% endif %}"
 >
+  <p class="crease-coordinate" aria-hidden="true">M-{{ article.feed.id|stringformat:"02d" }} · V-{{ article.id|stringformat:"04d" }}</p>
   <div class="article-meta">
-    <span>{% if is_read %}Read{% else %}Unread{% endif %}</span>
-    {% if is_saved %}<span>Saved</span>{% endif %}
+    <span class="state-marker">{% if is_read %}Read{% else %}Unread{% endif %}</span>
+    {% if is_saved %}<span class="save-marker">Saved</span>{% endif %}
     {% if saved_article %}
       <span>Saved {{ saved_article.saved_at|date:"M j, Y, g:i A" }}</span>
       <span>{% if saved_article.linkding_saved %}Linkding confirmed{% else %}Linkding failed{% endif %}</span>
     {% endif %}
-    <span>{{ article.feed.title }}</span>
-    {% if article.feed.category %}<span>{{ article.feed.category.name }}</span
+    <span class="source-marker">{{ article.feed.title }}</span>
+    {% if article.feed.category %}<span class="category-marker">{{ article.feed.category.name }}</span
     >{% endif %}
   </div>
   <h2 id="article-{{ article.id }}">
@@ -24,14 +25,11 @@
       <a href="{{ article.url }}" data-open-article>{{ article.title }}</a>
     {% endif %}
   </h2>
-  <p class="article-meta">
+  <p class="article-meta article-time">
     Seen {{ article.fetched_at|date:"M j, Y, g:i A" }} · Published {{ article.published_at|date:"M j, Y, g:i A" }}
   </p>
   {% if recommendation_reason %}
   <p class="recommendation-reason"><strong>Why this:</strong> {{ recommendation_reason }}</p>
-  {% endif %}
-  {% if article.summary and not article.newsletter_issue %}
-  <p>{{ article.summary|striptags|truncatewords:55 }}</p>
   {% endif %}
   <div class="article-actions" aria-label="Actions for {% if saved_article %}{{ saved_article.title }}{% else %}{{ article.title }}{% endif %}">
     <a class="button-link" href="{% if saved_article %}{{ saved_article.url }}{% else %}{{ article.url }}{% endif %}">
@@ -74,4 +72,7 @@
       </button>
     </form>
   </div>
+  {% if article.summary and not article.newsletter_issue %}
+  <p class="article-summary">{{ article.summary|striptags|truncatewords:55 }}</p>
+  {% endif %}
 </article>

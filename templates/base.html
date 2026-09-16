@@ -14,42 +14,41 @@
   >
     <a class="skip-link" href="#main-content">Skip to main content</a>
     <header class="site-header">
-      <div class="brand-lockup">
-        <img
-          class="masthead-image"
-          src="{% static 'img/firehose-masthead.svg' %}"
-          alt="Red firehose spraying blue water"
-        />
-        <div>
-          <p class="eyebrow">Daily Firehose</p>
-          <p class="site-tagline">Readable daily feed flow.</p>
+      <a class="brand-lockup" href="{% if request.user.is_authenticated %}{% url 'today' %}{% else %}{% url 'login' %}{% endif %}">
+        <span class="fold-mark" aria-hidden="true"><span></span></span>
+        <span class="brand-copy">
+          <span class="brand-name">Daily Firehose</span>
+          <span class="site-tagline">Read. Route. Release.</span>
+        </span>
+      </a>
+      {% if request.user.is_authenticated %}
+      <div class="header-tools">
+        <details class="nav-fold" open>
+          <summary>Sections</summary>
+          <nav class="site-nav" aria-label="Primary">
+            <a href="{% url 'today' %}" data-keyboard-nav="T"{% if request.resolver_match.url_name == 'today' %} aria-current="page"{% endif %}>Today</a>
+            <a href="{% url 'week' %}" data-keyboard-nav="W"{% if request.resolver_match.url_name == 'week' %} aria-current="page"{% endif %}>Week</a>
+            <a href="{% url 'month' %}" data-keyboard-nav="M"{% if request.resolver_match.url_name == 'month' %} aria-current="page"{% endif %}>Month</a>
+            <a href="{% url 'recommended' %}" data-keyboard-nav="R"{% if request.resolver_match.url_name == 'recommended' %} aria-current="page"{% endif %}>Recommended</a>
+            <a href="{% url 'archived' %}" data-keyboard-nav="A"{% if request.resolver_match.url_name == 'archived' %} aria-current="page"{% endif %}>Archived</a>
+            <a href="{% url 'saved-links' %}" data-keyboard-nav="L"{% if request.resolver_match.url_name == 'saved-links' %} aria-current="page"{% endif %}>Saved</a>
+            <a href="{% url 'feeds' %}" data-keyboard-nav="F"{% if request.resolver_match.url_name == 'feeds' or request.resolver_match.url_name == 'feed-detail' or request.resolver_match.url_name == 'opml-import' %} aria-current="page"{% endif %}>Feeds</a>
+            <a href="{% url 'preferences' %}"{% if request.resolver_match.url_name == 'preferences' %} aria-current="page"{% endif %}>Preferences</a>
+            <a href="{% url 'digest-json' %}">JSON</a>
+          </nav>
+        </details>
+        <div class="account-actions">
+          <form method="post" action="{% url 'refresh-feeds' %}" data-refresh-form>
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+            <button type="submit" data-refresh-button>Refresh</button>
+          </form>
+          <form method="post" action="{% url 'logout' %}">
+            {% csrf_token %}
+            <button type="submit">Sign out</button>
+          </form>
         </div>
       </div>
-      {% if request.user.is_authenticated %}
-      <nav class="site-nav" aria-label="Primary">
-        <a href="{% url 'today' %}" data-keyboard-nav="T">Today</a>
-        <a href="{% url 'week' %}" data-keyboard-nav="W">Week</a>
-        <a href="{% url 'month' %}" data-keyboard-nav="M">Month</a>
-        <a href="{% url 'recommended' %}" data-keyboard-nav="R">Recommended</a>
-        <a href="{% url 'archived' %}" data-keyboard-nav="A"
-          >Archived (Marked Read)</a
-        >
-        <a href="{% url 'saved-links' %}" data-keyboard-nav="L"
-          >Saved (L)inks</a
-        >
-        <a href="{% url 'feeds' %}" data-keyboard-nav="F">Feeds</a>
-        <a href="{% url 'preferences' %}">Preferences</a>
-        <a href="{% url 'digest-json' %}">JSON</a>
-      </nav>
-      <form method="post" action="{% url 'refresh-feeds' %}" data-refresh-form>
-        {% csrf_token %}
-        <input type="hidden" name="next" value="{{ request.get_full_path }}" />
-        <button type="submit" data-refresh-button>Refresh feeds</button>
-      </form>
-      <form method="post" action="{% url 'logout' %}">
-        {% csrf_token %}
-        <button type="submit">Sign out</button>
-      </form>
       {% endif %}
     </header>
     <main id="main-content" tabindex="-1">

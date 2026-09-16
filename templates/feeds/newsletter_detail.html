@@ -6,8 +6,8 @@
 {% block content %}
   <article class="newsletter-issue" aria-labelledby="newsletter-{{ issue.public_id }}" tabindex="-1" data-article-card>
     <header class="page-heading">
-      <p class="eyebrow">Email Newsletter</p>
       <h1 id="newsletter-{{ issue.public_id }}">{{ issue.subject }}</h1>
+      <p class="page-context">Email newsletter</p>
       <p class="article-meta">
         {% if issue.from_name %}{{ issue.from_name }} &lt;{{ issue.from_email }}&gt;{% else %}{{ issue.from_email }}{% endif %}
         · Received {{ issue.received_at|date:"M j, Y, g:i A" }}
