@@ -600,14 +600,60 @@ button[aria-busy="true"] {
 }
 
 .form-panel form p,
-.auth-panel form p {
+.auth-panel form p,
+.form-field {
 	display: grid;
 	gap: 0.35rem;
 }
 
-.helptext {
+.form-field-primary {
+	max-width: 52rem;
+}
+
+.form-options {
+	max-width: 52rem;
+	margin-block: 1rem;
+	border-block: 0.0625rem solid var(--border);
+}
+
+.form-options summary {
+	min-height: 2.75rem;
+	padding-block: 0.7rem;
+	font-family: "Saira Semi Condensed", "Arial Narrow", sans-serif;
+	font-size: 0.85rem;
+	font-weight: 600;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	cursor: pointer;
+}
+
+.form-options > .helptext {
+	margin: 0 0 1rem;
+}
+
+.form-options-fields {
+	display: grid;
+	gap: 1rem;
+	padding-block-end: 1rem;
+}
+
+.form-submit-row {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.75rem;
+}
+
+.helptext,
+.form-status {
 	color: var(--muted);
 	font-size: 1rem;
+}
+
+.form-status:not(:empty) {
+	display: inline-block;
+	margin-inline-start: 0.75rem;
+	font-weight: 600;
 }
 
 .errorlist {

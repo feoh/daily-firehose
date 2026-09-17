@@ -346,6 +346,28 @@ document.addEventListener("submit", (event) => {
 	}
 });
 
+document.addEventListener("submit", (event) => {
+	const form = event.target.closest("form[data-feed-discovery-form]");
+	if (!form) {
+		return;
+	}
+	if (form.dataset.discoveryPending === "true") {
+		event.preventDefault();
+		return;
+	}
+	form.dataset.discoveryPending = "true";
+	form.setAttribute("aria-busy", "true");
+	const button = form.querySelector("[data-feed-discovery-submit]");
+	const status = form.querySelector("[data-feed-discovery-status]");
+	if (button) {
+		button.disabled = true;
+		button.textContent = "Finding feed…";
+	}
+	if (status) {
+		status.textContent = "Checking this URL for a valid feed.";
+	}
+});
+
 document.addEventListener("submit", async (event) => {
 	const form = event.target.closest("form[data-article-action]");
 	if (!form) {

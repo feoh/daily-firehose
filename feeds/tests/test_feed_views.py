@@ -35,6 +35,60 @@ class FeedListGroupingTests(StaticFilesTestCase):
         self.assertFalse(Feed.objects.filter(feed_url=feed_url).exists())
         mock_discover.assert_called_once_with(feed_url)
 
+    @patch("feeds.views.discover_feed_metadata")
+    def test_feed_creation_validates_and_saves_discovered_feed_url(
+        self, mock_discover
+    ) -> None:
+        mock_discover.return_value = {
+            "feed_url": "https://example.com/feed.xml",
+            "title": "Discovered title",
+            "site_url": "https://example.com/",
+            "description": "Discovered description",
+        }
+
+        response = self.client.post(
+            reverse("feeds"),
+            {
+                "feed_url": "https://example.com/blog/",
+                "title": "My custom title",
+                "is_active": "on",
+            },
+        )
+
+        self.assertRedirects(response, reverse("feeds"))
+        feed = Feed.objects.get(feed_url="https://example.com/feed.xml")
+        self.assertEqual(feed.title, "My custom title")
+        self.assertEqual(feed.site_url, "https://example.com/")
+        self.assertEqual(feed.description, "Discovered description")
+        mock_discover.assert_called_once_with("https://example.com/blog/")
+
+    @patch("feeds.views.discover_feed_metadata")
+    def test_feed_creation_rejects_an_already_subscribed_discovered_url(
+        self, mock_discover
+    ) -> None:
+        build_feed(feed_url="https://example.com/feed.xml")
+        mock_discover.return_value = {
+            "feed_url": "https://example.com/feed.xml",
+            "title": "Existing feed",
+            "site_url": "https://example.com/",
+            "description": "",
+        }
+
+        response = self.client.post(
+            reverse("feeds"), {"feed_url": "https://example.com/blog/"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "already in your subscriptions")
+        self.assertEqual(Feed.objects.count(), 1)
+
+    def test_feed_list_explains_website_discovery(self) -> None:
+        response = self.client.get(reverse("feeds"))
+
+        self.assertContains(response, "Website or feed URL")
+        self.assertContains(response, "look for an RSS or Atom feed")
+        self.assertContains(response, "data-feed-discovery-form")
+
     def test_feed_list_shows_postmark_inbound_email_reminder(self) -> None:
         response = self.client.get(reverse("feeds"))
 

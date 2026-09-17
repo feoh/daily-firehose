@@ -26,7 +26,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
 
-from .feed_fetch import FeedFetchError, fetch_feed_document
+from .feed_fetch import FeedFetchError, FetchedFeedDocument, fetch_feed_document
 from .models import (
     Article,
     Category,
@@ -58,6 +58,24 @@ _DELIVERY_ATTEMPT_LEASE = timedelta(minutes=15)
 # otherwise stall the cycle that refreshes feeds.
 DELIVERY_DRAIN_LIMIT = 50
 _SAFE_FEED_TITLE_MAX_LENGTH = 160
+_FEED_DISCOVERY_MAX_CANDIDATES = 16
+_FEED_LINK_TYPES = frozenset(
+    {
+        "application/atom+xml",
+        "application/rdf+xml",
+        "application/rss+xml",
+        "application/xml",
+        "text/xml",
+    }
+)
+_COMMON_FEED_PATHS = (
+    "feed",
+    "feed.xml",
+    "rss",
+    "rss.xml",
+    "atom.xml",
+    "index.xml",
+)
 OPML_MAX_BYTES = 1024 * 1024
 OPML_MAX_OUTLINES = 1000
 OPML_MAX_DEPTH = 32
@@ -86,6 +104,29 @@ class _TextExtractor(HTMLParser):
 
     def text(self) -> str:
         return " ".join(part.strip() for part in self.parts if part.strip())
+
+
+class _FeedLinkParser(HTMLParser):
+    """Collect standard HTML feed-autodiscovery links."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.hrefs: list[str] = []
+
+    def handle_starttag(
+        self, tag: str, attrs: list[tuple[str, str | None]]
+    ) -> None:
+        if tag.lower() != "link":
+            return
+        values = {key.lower(): value or "" for key, value in attrs}
+        href = values.get("href", "").strip()
+        relations = {value.lower() for value in values.get("rel", "").split()}
+        media_type = values.get("type", "").split(";", 1)[0].strip().lower()
+        if href and (
+            "feed" in relations
+            or ("alternate" in relations and media_type in _FEED_LINK_TYPES)
+        ):
+            self.hrefs.append(href)
 
 
 @dataclass(frozen=True)
@@ -834,21 +875,150 @@ class _NewsletterImageFilter(Filter):
             yield token
 
 
-def discover_feed_metadata(feed_url: str) -> dict[str, str]:
-    document = fetch_feed_document(feed_url)
-    parsed = cast(
-        Any,
-        feedparser.parse(
-            document.content,
-            response_headers=document.response_headers,
-        ),
-    )
+def _feed_metadata(document: FetchedFeedDocument) -> dict[str, str] | None:
+    try:
+        parsed = cast(
+            Any,
+            feedparser.parse(
+                document.content,
+                response_headers=document.response_headers,
+            ),
+        )
+    except Exception:
+        return None
+
     info = parsed.get("feed", {})
+    entries = parsed.get("entries", [])
+    # feedparser may extract HTML metadata into ``feed`` even when the document
+    # is not a syndication feed. A recognized feed version distinguishes RSS,
+    # Atom, RDF, and the other formats that the refresh path can actually read.
+    if not parsed.get("version") or not (info or entries):
+        return None
+
+    canonical_url = str(document.final_url)
+    site_url = str(info.get("link") or "")
+    try:
+        parsed_site_url = urlsplit(site_url)
+    except ValueError:
+        site_url = ""
+    else:
+        if (
+            parsed_site_url.scheme.lower() not in {"http", "https"}
+            or not parsed_site_url.netloc
+            or parsed_site_url.username is not None
+            or parsed_site_url.password is not None
+            or len(site_url) > cast(int, Feed._meta.get_field("site_url").max_length)
+        ):
+            site_url = ""
+
+    title_limit = cast(int, Feed._meta.get_field("title").max_length)
     return {
-        "title": info.get("title") or feed_url,
-        "site_url": info.get("link") or "",
-        "description": info.get("subtitle") or info.get("description") or "",
+        "feed_url": canonical_url,
+        "title": str(info.get("title") or canonical_url)[:title_limit],
+        "site_url": site_url,
+        "description": str(info.get("subtitle") or info.get("description") or ""),
     }
+
+
+def _invalid_feed(message: str) -> FeedFetchError:
+    return FeedFetchError(code="invalid_feed", message=message)
+
+
+def validate_feed_metadata(feed_url: str) -> dict[str, str]:
+    """Fetch one exact URL and require content the refresh path can parse."""
+
+    document = fetch_feed_document(feed_url)
+    metadata = _feed_metadata(document)
+    if metadata is None:
+        raise _invalid_feed("The URL did not return a valid RSS or Atom feed.")
+    if len(metadata["feed_url"]) > cast(
+        int, Feed._meta.get_field("feed_url").max_length
+    ):
+        raise _invalid_feed("The discovered feed URL is too long to save.")
+    return metadata
+
+
+def _html_feed_links(document: FetchedFeedDocument) -> list[str]:
+    content_type = document.response_headers.get("content-type", "").lower()
+    if content_type and "html" not in content_type:
+        return []
+    parser = _FeedLinkParser()
+    try:
+        parser.feed(document.content.decode("utf-8", errors="replace"))
+    except Exception:
+        return []
+    return [urljoin(document.final_url, href) for href in parser.hrefs]
+
+
+def _common_feed_urls(url: str) -> list[str]:
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        return []
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+        return []
+
+    path = parsed.path or "/"
+    bases: list[str] = []
+    if path != "/":
+        final_segment = path.rstrip("/").rsplit("/", 1)[-1]
+        if path.endswith("/") or "." not in final_segment:
+            directory = f"{path.rstrip('/')}/"
+        else:
+            directory = path.rsplit("/", 1)[0] + "/"
+        bases.append(urlunsplit((parsed.scheme, parsed.netloc, directory, "", "")))
+    bases.append(urlunsplit((parsed.scheme, parsed.netloc, "/", "", "")))
+
+    candidates: list[str] = []
+    for base in bases:
+        for common_path in _COMMON_FEED_PATHS:
+            candidates.append(urljoin(base, common_path))
+    return candidates
+
+
+def discover_feed_metadata(feed_url: str) -> dict[str, str]:
+    """Resolve a feed URL from a feed or website URL and return its metadata."""
+
+    initial_document = None
+    try:
+        initial_document = fetch_feed_document(feed_url)
+    except FeedFetchError as exc:
+        # A missing page can still have a feed at a conventional sibling path.
+        # Network, TLS, policy, and timeout failures are host-wide and should be
+        # reported immediately instead of multiplying a slow or unsafe request.
+        if exc.code not in {"http_failure", "invalid_content"}:
+            raise
+    else:
+        metadata = _feed_metadata(initial_document)
+        if metadata is not None:
+            if len(metadata["feed_url"]) > cast(
+                int, Feed._meta.get_field("feed_url").max_length
+            ):
+                raise _invalid_feed("The discovered feed URL is too long to save.")
+            return metadata
+
+    candidates: list[str] = []
+    if initial_document is not None:
+        candidates.extend(_html_feed_links(initial_document))
+        candidates.extend(_common_feed_urls(initial_document.final_url))
+    candidates.extend(_common_feed_urls(feed_url))
+
+    attempted = {feed_url, getattr(initial_document, "final_url", "")}
+    for candidate in candidates:
+        if len(attempted) >= _FEED_DISCOVERY_MAX_CANDIDATES:
+            break
+        if candidate in attempted:
+            continue
+        attempted.add(candidate)
+        try:
+            metadata = validate_feed_metadata(candidate)
+        except FeedFetchError:
+            continue
+        return metadata
+
+    raise _invalid_feed(
+        "No valid RSS or Atom feed was found at this URL or its common feed locations."
+    )
 
 
 def _xml_local_name(tag: str) -> str:

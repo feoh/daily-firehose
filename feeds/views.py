@@ -6,6 +6,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
 from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -255,17 +256,31 @@ def feed_list(request: HttpRequest) -> HttpResponse:
     if request.method == "POST" and form.is_valid():
         feed = form.save(commit=False)
         try:
-            if not feed.title:
-                metadata = discover_feed_metadata(feed.feed_url)
-                feed.title = metadata["title"]
-                feed.site_url = feed.site_url or metadata["site_url"]
-                feed.description = feed.description or metadata["description"]
+            metadata = discover_feed_metadata(feed.feed_url)
+            feed.feed_url = metadata["feed_url"]
+            feed.title = feed.title or metadata["title"]
+            feed.site_url = feed.site_url or metadata["site_url"]
+            feed.description = feed.description or metadata["description"]
         except FeedFetchError as exc:
             form.add_error("feed_url", str(exc))
         else:
-            feed.save()
-            messages.success(request, f"Added feed {feed.title}.")
-            return redirect("feeds")
+            if Feed.objects.filter(feed_url=feed.feed_url).exists():
+                form.add_error(
+                    "feed_url", "This feed is already in your subscriptions."
+                )
+            else:
+                try:
+                    with transaction.atomic():
+                        feed.save()
+                except IntegrityError:
+                    if not Feed.objects.filter(feed_url=feed.feed_url).exists():
+                        raise
+                    form.add_error(
+                        "feed_url", "This feed is already in your subscriptions."
+                    )
+                else:
+                    messages.success(request, f"Added feed {feed.title}.")
+                    return redirect("feeds")
     return render(
         request,
         "feeds/feed_list.html",

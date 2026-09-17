@@ -378,10 +378,10 @@ The summary is mechanically checked against the detailed `###` records; see [cov
 ### ING-001 — Browser feed list and create
 
 - **Actor / status / owner:** authenticated user; **fact**; feed form/view/template.
-- **Entry / validated input:** permissive `GET/POST* /feeds/`; ModelForm URL, optional title/site/description/category, active flag; blank title invokes discovery.
-- **Output / presentation:** add form, grouped category/Uncategorized feed list, OPML links and optional inbound address; valid create redirects with message.
-- **State / side effects:** creates globally shared Feed; discovery may perform bounded network GET.
-- **Failure:** model errors inline; classified discovery error attaches to URL and writes nothing; empty list has explicit state.
+- **Entry / validated input:** permissive `GET/POST* /feeds/`; ModelForm website-or-feed URL, optional title/site/description/category, active flag; every submission validates direct feed content, then checks HTML autodiscovery and bounded common feed paths.
+- **Output / presentation:** add form with discovery guidance and pending state, grouped category/Uncategorized feed list, OPML links and optional inbound address; valid create redirects with message.
+- **State / side effects:** creates a globally shared Feed at the successfully fetched canonical feed URL; discovery may perform bounded network GETs.
+- **Failure:** model errors inline; classified discovery or duplicate-canonical-feed error attaches to the URL and writes nothing; empty list has explicit state.
 - **Mobile / accessibility:** headings/native labels, keyboard-selectable feed items, responsive shared forms; no mobile feed-list test.
 - **Test evidence:** `test_feed_views.py` covers grouping, reminder and discovery failure/no-write.
 - **Known gaps / expected failures:** no dedicated duplicate-submission or discovery success browser test.

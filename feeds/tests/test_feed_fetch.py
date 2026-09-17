@@ -21,7 +21,11 @@ from ..feed_fetch import (
     fetch_feed_document,
 )
 from ..models import Article
-from ..services import discover_feed_metadata, refresh_feed
+from ..services import (
+    discover_feed_metadata,
+    refresh_feed,
+    validate_feed_metadata,
+)
 from .support.builders import build_feed
 
 PUBLIC_IPV4 = "93.184.216.34"
@@ -608,7 +612,11 @@ class FeedFetchServiceIntegrationTests(TestCase):
     ) -> None:
         document = _document(content=b"downloaded metadata feed")
         mock_fetch.return_value = document
-        mock_parse.return_value = {"feed": {"title": "Fetched"}, "entries": []}
+        mock_parse.return_value = {
+            "version": "rss20",
+            "feed": {"title": "Fetched"},
+            "entries": [],
+        }
 
         metadata = discover_feed_metadata("https://feeds.example/rss")
 
@@ -655,3 +663,87 @@ class FeedFetchServiceIntegrationTests(TestCase):
         metadata = discover_feed_metadata("https://feeds.example/rss")
 
         self.assertEqual(metadata["title"], "Caf\u00e9 feed")
+
+    @patch("feeds.services.fetch_feed_document")
+    def test_discovery_follows_html_feed_autodiscovery_link(self, mock_fetch) -> None:
+        website = _document(
+            content=(
+                b"<html><head><link rel='alternate' type='application/atom+xml' "
+                b"href='/updates.atom'></head></html>"
+            ),
+            final_url="https://example.com/articles/",
+            content_type="text/html; charset=utf-8",
+        )
+        feed = _document(
+            content=(
+                b"<feed xmlns='http://www.w3.org/2005/Atom'>"
+                b"<title>Discovered updates</title></feed>"
+            ),
+            final_url="https://example.com/updates.atom",
+            content_type="application/atom+xml",
+        )
+        mock_fetch.side_effect = [website, feed]
+
+        metadata = discover_feed_metadata("https://example.com/articles/")
+
+        self.assertEqual(metadata["feed_url"], "https://example.com/updates.atom")
+        self.assertEqual(metadata["title"], "Discovered updates")
+        self.assertEqual(
+            [call.args[0] for call in mock_fetch.call_args_list],
+            ["https://example.com/articles/", "https://example.com/updates.atom"],
+        )
+
+    @patch("feeds.services.fetch_feed_document")
+    def test_discovery_checks_common_feed_paths(self, mock_fetch) -> None:
+        website = _document(
+            content=b"<html><title>Example</title></html>",
+            final_url="https://example.com/",
+            content_type="text/html",
+        )
+        feed = _document(
+            content=(
+                b"<rss version='2.0'><channel><title>Common feed</title>"
+                b"<link>https://example.com/</link></channel></rss>"
+            ),
+            final_url="https://example.com/feed",
+        )
+        mock_fetch.side_effect = [website, feed]
+
+        metadata = discover_feed_metadata("https://example.com/")
+
+        self.assertEqual(metadata["feed_url"], "https://example.com/feed")
+        self.assertEqual(metadata["title"], "Common feed")
+
+    @patch("feeds.services.fetch_feed_document")
+    def test_discovery_rejects_html_when_no_feed_is_found(self, mock_fetch) -> None:
+        website = _document(
+            content=b"<html><title>Not a feed</title></html>",
+            final_url="https://example.com/",
+            content_type="text/html",
+        )
+        mock_fetch.side_effect = [
+            website,
+            *[
+                FeedFetchError(code="http_failure", message="Not found.")
+                for _ in range(6)
+            ],
+        ]
+
+        with self.assertRaises(FeedFetchError) as raised:
+            discover_feed_metadata("https://example.com/")
+
+        self.assertEqual(raised.exception.code, "invalid_feed")
+        self.assertIn("No valid RSS or Atom feed", str(raised.exception))
+
+    @patch("feeds.services.fetch_feed_document")
+    def test_exact_feed_validation_rejects_a_website(self, mock_fetch) -> None:
+        mock_fetch.return_value = _document(
+            content=b"<html><title>Not a feed</title></html>",
+            final_url="https://example.com/",
+            content_type="text/html",
+        )
+
+        with self.assertRaises(FeedFetchError) as raised:
+            validate_feed_metadata("https://example.com/")
+
+        self.assertEqual(raised.exception.code, "invalid_feed")

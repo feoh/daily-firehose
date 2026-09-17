@@ -10,7 +10,8 @@
   </section>
 
   <section class="form-panel" aria-labelledby="add-feed-heading">
-    <h2 id="add-feed-heading">Add a feed URL</h2>
+    <h2 id="add-feed-heading">Add a feed</h2>
+    <p>Enter a feed address or the website it belongs to. The feed is checked before it is added.</p>
     {% if postmark_inbound_email %}
       <p class="article-meta newsletter-subscription">
         <span>To add a newsletter, subscribe it to <strong>{{ postmark_inbound_email }}</strong>.</span>
@@ -18,10 +19,27 @@
         <span class="copy-feedback" data-copy-feedback role="status" aria-live="polite"></span>
       </p>
     {% endif %}
-    <form method="post">
+    <form method="post" data-feed-discovery-form>
       {% csrf_token %}
-      {{ form.as_p }}
-      <button type="submit">Add feed</button>
+      {{ form.non_field_errors }}
+      <div class="form-field form-field-primary">
+        {{ form.feed_url.as_field_group }}
+      </div>
+      <details class="form-options"{% if form.title.errors or form.site_url.errors or form.description.errors or form.category.errors or form.is_active.errors %} open{% endif %}>
+        <summary>Optional feed details</summary>
+        <p class="helptext">Feed metadata is filled automatically. Open this section only to override it or choose a category.</p>
+        <div class="form-options-fields">
+          <div class="form-field">{{ form.title.as_field_group }}</div>
+          <div class="form-field">{{ form.site_url.as_field_group }}</div>
+          <div class="form-field">{{ form.description.as_field_group }}</div>
+          <div class="form-field">{{ form.category.as_field_group }}</div>
+          <div class="form-field">{{ form.is_active.as_field_group }}</div>
+        </div>
+      </details>
+      <div class="form-submit-row">
+        <button type="submit" data-feed-discovery-submit>Add feed</button>
+        <span class="form-status" data-feed-discovery-status role="status" aria-live="polite"></span>
+      </div>
     </form>
   </section>
 

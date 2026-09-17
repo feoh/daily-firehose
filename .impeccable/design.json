@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-16T06:25:28Z",
+  "generatedAt": "2026-09-17T14:16:51Z",
   "title": "Design System: Daily Firehose",
   "extensions": {
     "colorMeta": {
@@ -267,19 +267,35 @@
       },
       "headline": {
         "displayName": "Headline",
-        "purpose": "Readable sentence-case article titles and major sections."
+        "purpose": "Readable sentence-case article titles and major section headings."
       },
       "title": {
         "displayName": "Title",
-        "purpose": "Uppercase subsection and panel headings."
+        "purpose": "Uppercase tracked subsection, panel, and empty-state headings."
+      },
+      "headline-compact": {
+        "displayName": "Compact Headline",
+        "purpose": "Article titles in compact mode and at mobile widths."
       },
       "body": {
         "displayName": "Body",
-        "purpose": "Hyperlegible interface, metadata, summary, and reading copy."
+        "purpose": "Default hyperlegible reading copy, summaries, and prose."
+      },
+      "interface": {
+        "displayName": "Interface",
+        "purpose": "Brand name, queue count, and form help text."
+      },
+      "control": {
+        "displayName": "Control",
+        "purpose": "Uppercase tracked buttons and keyboard guidance."
       },
       "label": {
         "displayName": "Label",
-        "purpose": "Uppercase tracked navigation, buttons, states, and crease coordinates."
+        "purpose": "Uppercase tracked navigation, states, contextual labels, and mobile actions."
+      },
+      "micro": {
+        "displayName": "Micro",
+        "purpose": "Crease coordinates, timestamps, tagline, and mobile metadata."
       }
     },
     "shadows": [
@@ -375,8 +391,8 @@
       "name": "Text Field",
       "kind": "input",
       "refersTo": "input",
-      "description": "Strong square field for preferences, feed management, and authentication.",
-      "html": "<label class=\"ds-field-label\" for=\"ds-feed\">FEED URL</label><input class=\"ds-field\" id=\"ds-feed\" type=\"url\" placeholder=\"https://example.com/feed.xml\">",
+      "description": "Strong square field for preferences, website-to-feed discovery, and authentication.",
+      "html": "<label class=\"ds-field-label\" for=\"ds-feed\">WEBSITE OR FEED URL</label><input class=\"ds-field\" id=\"ds-feed\" type=\"url\" placeholder=\"https://example.com/\">",
       "css": ".ds-field-label{display:block;margin-bottom:.35rem;color:var(--text);font:700 1rem/1.2 'Atkinson Hyperlegible Next',Verdana,sans-serif}.ds-field{display:block;width:100%;min-height:3rem;padding:.55rem .75rem;border:.0625rem solid var(--border-strong);border-radius:0;background:var(--surface);color:var(--text);font:400 1.0625rem/1.5 'Atkinson Hyperlegible Next',Verdana,sans-serif}.ds-field::placeholder{color:var(--muted);opacity:1}.ds-field:hover{border-color:var(--focus)}.ds-field:focus-visible{outline:.25rem solid var(--focus);outline-offset:.2rem}"
     },
     {
@@ -413,7 +429,7 @@
   ],
   "narrative": {
     "northStar": "Miura Fold Inbox",
-    "overview": "Daily Firehose is a compact information packet that unfolds into linked, readable decisions. Near-white matte sheet stock, near-black ink, gold active faces, and restrained mountain/valley scores make the interface feel engineered and tactile without turning reading into spectacle.\n\nThe drawing is hairline, not heavy. Every rule is one pixel, every corner is square or cut on a fold angle, and the paper carries the weight instead of thick borders. Accessibility is structural: explicit labels, adequate targets, visible focus, semantic state, and AAA contrast take priority over ornament.\n\nThere are exactly two palettes \u2014 Miura Paper and Miura Night \u2014 plus a device-following mode. A reading tool for one owner does not need a theme gallery; it needs one world that works in daylight and one that works at night.",
+    "overview": "Daily Firehose is a compact information packet that unfolds into linked, readable decisions. Near-white matte sheet stock, near-black ink, gold active faces, and restrained mountain/valley scores make the interface feel engineered and tactile without turning reading into spectacle.\n\nThe drawing is hairline, not heavy. Every rule is one pixel, every corner is square or cut on a fold angle, and the paper carries the weight instead of thick borders. Text remains level, conventional, and highly legible while clipped corners, parallelogram controls, crease scores, and terse blue coordinates carry the folding metaphor. Accessibility is structural: explicit labels, adequate targets, visible focus, semantic state, and AAA contrast take priority over ornament.\n\nThere are exactly two palettes \u2014 Miura Paper and Miura Night \u2014 plus a device-following mode. A reading tool for one owner does not need a theme gallery; it needs one world that works in daylight and one that works at night.",
     "keyCharacteristics": [
       "Matte paper and gold-foil material cues rather than glossy effects.",
       "Hairline rules throughout; weight comes from type and gold, never from thick borders.",
@@ -436,6 +452,11 @@
         "name": "The Hairline Rule",
         "body": "Every border is 0.0625rem. A heavier rule is a costume for structure the paper and type already provide.",
         "section": "colors"
+      },
+      {
+        "name": "The Nine-Step Rule",
+        "body": "These nine roles are the whole ramp. A literal font-size that is not one of them is drift, not a decision.",
+        "section": "typography"
       },
       {
         "name": "The Level Type Rule",
@@ -479,7 +500,8 @@
       "Don't rotate or skew readable text to match a fold edge.",
       "Don't add shadows to resting cards merely to make them feel clickable.",
       "Don't add palettes beyond Miura Paper, Miura Night, and the device-following mode.",
-      "Don't let a mobile article sheet grow tall enough to push the next sheet out of the first viewport."
+      "Don't let a mobile article sheet grow tall enough to push the next sheet out of the first viewport.",
+      "Don't let decorative materiality compromise contrast, text zoom, keyboard operation, or progressive enhancement."
     ]
   }
 }

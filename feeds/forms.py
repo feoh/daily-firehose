@@ -5,6 +5,13 @@ from .services import OPML_MAX_BYTES
 
 
 class FeedForm(forms.ModelForm):
+    feed_url = forms.URLField(
+        label="Website or feed URL",
+        help_text=(
+            "Paste a website or feed URL. Daily Firehose will verify it and look "
+            "for an RSS or Atom feed at common locations."
+        ),
+    )
     title = forms.CharField(max_length=255, required=False)
 
     class Meta:

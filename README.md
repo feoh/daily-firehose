@@ -223,7 +223,10 @@ Environment variables:
 
 ## Feeds and OPML
 
-Feeds can be added from the **Feeds** page or from Django admin.
+Feeds can be added from the **Feeds** page or from Django admin. The Feeds page
+verifies direct RSS/Atom URLs, follows standard HTML feed-autodiscovery links, and
+checks common feed paths such as `/feed`, `/rss.xml`, and `/atom.xml` when given a
+website URL. It stores the canonical feed URL returned by the successful request.
 
 OPML support:
 
@@ -244,6 +247,13 @@ PostgreSQL database. It reports only Feed IDs/counts and exits nonzero if duplic
 
 ```bash
 uv run python manage.py audit_article_identity
+```
+
+To verify that every active subscription's stored URL still returns a supported
+feed without modifying data, run:
+
+```bash
+uv run python manage.py audit_feeds
 ```
 
 Feed refresh and metadata discovery use the same bounded downloader. It accepts
