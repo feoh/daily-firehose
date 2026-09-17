@@ -62,6 +62,7 @@
       </div>
       {% endif %} {% block content %}{% endblock %}
     </main>
+    {% if request.user.is_authenticated %}
     <div class="keyboard-hint" role="status">
       Keyboard shortcuts: press <kbd>?</kbd> for help.
     </div>
@@ -130,5 +131,6 @@
         <button type="button" data-close-keyboard-help>Close</button>
       </div>
     </div>
+    {% endif %}
   </body>
 </html>
