@@ -7,8 +7,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-EXPECTED_MODULES = 31
-EXPECTED_TESTS = 463
+EXPECTED_MODULES = 33
+EXPECTED_TESTS = 480
 EXPECTED_XFAILS = 2
 DIMENSIONS = (
     "positive",
@@ -124,7 +124,7 @@ REQUIRED_HEADINGS = {
 }
 INTRO_BASELINE = (
     "Current AST baseline: **83 feature IDs**, **50 invariant IDs**, "
-    "**31 app test modules**, **463 app test methods**, and "
+    "**33 app test modules**, **480 app test methods**, and "
     "**2 `expectedFailure` methods**."
 )
 BROAD_GAP_BASELINE = (
@@ -143,8 +143,8 @@ CONTRACTS_EXPECTED_FAILURE_SENTENCE = (
     "The current suite contains **2 expected failures**."
 )
 CONTRACTS_CURRENT_SUITE = (
-    "This post-snapshot companion maps the **current suite: 31 test modules, "
-    "463 test methods, and 2 expected failures**."
+    "This post-snapshot companion maps the **current suite: 33 test modules, "
+    "480 test methods, and 2 expected failures**."
 )
 CONTRACTS_PROGRESSIVE_EVIDENCE = (
     "| Progressive/a11y/mobile | UI-INV-001–005 | `test_article_actions.py`, "
@@ -164,7 +164,7 @@ PINNED_TEXT = {
         "**8/8** snapshot expected failures mapped",
     ),
     "docs/features/contracts.md": (
-        "**current suite: 31 test modules, 463 test",
+        "**current suite: 33 test modules, 480 test",
         "15/191/8 snapshot counts",
     ),
 }
