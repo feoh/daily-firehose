@@ -368,6 +368,121 @@ document.addEventListener("submit", (event) => {
 	}
 });
 
+const ACTION_STATUS_DURATION_MS = 8000;
+let actionStatusTimer = null;
+
+const actionStatusRegion = () => {
+	let region = document.querySelector("[data-action-status]");
+	if (!region) {
+		region = document.createElement("div");
+		region.className = "action-status";
+		region.dataset.actionStatus = "";
+		region.setAttribute("role", "status");
+		region.setAttribute("aria-live", "polite");
+		region.setAttribute("aria-atomic", "true");
+		document.body.append(region);
+	}
+	return region;
+};
+
+const clearActionStatus = () => {
+	window.clearTimeout(actionStatusTimer);
+	actionStatusTimer = null;
+	const region = document.querySelector("[data-action-status]");
+	if (!region) {
+		return;
+	}
+	const hadFocus = region.contains(document.activeElement);
+	region.replaceChildren();
+	if (hadFocus) {
+		focusShortcutTarget();
+	}
+};
+
+const scheduleActionStatusClear = () => {
+	window.clearTimeout(actionStatusTimer);
+	actionStatusTimer = window.setTimeout(() => {
+		// Never yank the Undo button away from someone who has focused it.
+		const region = document.querySelector("[data-action-status]");
+		if (region?.matches(":focus-within")) {
+			scheduleActionStatusClear();
+			return;
+		}
+		clearActionStatus();
+	}, ACTION_STATUS_DURATION_MS);
+};
+
+// One shared, self-clearing status replaces per-card confirmations so removed
+// cards leave no residue and the next article moves into the tapped position.
+const showActionStatus = (text, { level = "success", undo = null } = {}) => {
+	const region = actionStatusRegion();
+	const message = document.createElement("p");
+	message.className = `message action-status-message ${level}`;
+	const label = document.createElement("span");
+	label.className = "action-status-text";
+	label.textContent = text;
+	message.append(label);
+	if (undo) {
+		const undoButton = document.createElement("button");
+		undoButton.type = "button";
+		undoButton.className = "action-status-undo";
+		undoButton.textContent = "Undo";
+		undoButton.addEventListener("click", () => undo(undoButton));
+		message.append(undoButton);
+	}
+	region.replaceChildren(message);
+	scheduleActionStatusClear();
+};
+
+const showCardMessage = (card, text, { level = "success", role = "status" }) => {
+	card.querySelector(":scope > .inline-message")?.remove();
+	const message = document.createElement("p");
+	message.className = `message inline-message ${level}`;
+	message.setAttribute("role", role);
+	message.textContent = text;
+	card.prepend(message);
+};
+
+const undoMarkAction = (form, card, placeholder) => async function undo(
+	undoButton,
+) {
+	undoButton.disabled = true;
+	const body = new FormData(form);
+	const state = body.get("state");
+	body.set("state", state === "read" ? "unread" : "read");
+	body.delete("remove_on_success");
+	try {
+		const response = await fetch(form.action, {
+			method: "POST",
+			body,
+			headers: { "X-Requested-With": "XMLHttpRequest" },
+			credentials: "same-origin",
+		});
+		if (!response.ok) {
+			throw new Error(`Request failed with status ${response.status}`);
+		}
+		await response.json();
+	} catch (error) {
+		showActionStatus("Sorry, undo failed. Please try again.", {
+			level: "error",
+			undo,
+		});
+		return;
+	}
+
+	card.classList.remove("is-folding");
+	form.dataset.actionPending = "false";
+	const button = form.querySelector("button[type='submit']");
+	if (button) {
+		button.disabled = false;
+	}
+	if (placeholder.isConnected) {
+		placeholder.replaceWith(card);
+		selectArticle(articleCards().indexOf(card));
+	}
+	showActionStatus("Restored the article.");
+};
+
 document.addEventListener("submit", async (event) => {
 	const form = event.target.closest("form[data-article-action]");
 	if (!form) {
@@ -417,20 +532,31 @@ document.addEventListener("submit", async (event) => {
 		) {
 			throw new Error("Article response verification failed");
 		}
-		const message = document.createElement("p");
-		message.className = `message inline-message ${result.level || "success"}`;
-		message.setAttribute("role", "status");
-		message.textContent = result.message || "Done.";
+		const text = result.message || "Done.";
+		const level = result.level || "success";
 
 		if (card && result.remove) {
+			const hadFocus = card.contains(document.activeElement);
 			if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
 				card.classList.add("is-folding");
 				await new Promise((resolve) => window.setTimeout(resolve, 180));
 			}
-			card.replaceWith(message);
-			selectArticle(cardIndex, { focus: false });
+			card.querySelector(":scope > .inline-message")?.remove();
+			const placeholder = document.createComment("removed article");
+			card.replaceWith(placeholder);
+			const next = selectArticle(cardIndex, { focus: false });
+			if (hadFocus) {
+				(next || document.querySelector("#main-content"))?.focus({
+					preventScroll: true,
+				});
+			}
+			const undo =
+				form.dataset.actionType === "mark-read"
+					? undoMarkAction(form, card, placeholder)
+					: null;
+			showActionStatus(text, { level, undo });
 		} else if (card) {
-			card.prepend(message);
+			showCardMessage(card, text, { level });
 			form.dataset.actionPending = "false";
 			if (button) {
 				button.disabled = false;
@@ -438,12 +564,11 @@ document.addEventListener("submit", async (event) => {
 		}
 	} catch (error) {
 		const card = form.closest(".article-card");
-		const message = document.createElement("p");
-		message.className = "message inline-message error";
-		message.setAttribute("role", "alert");
-		message.textContent = "Sorry, that action failed. Please try again.";
 		if (card) {
-			card.prepend(message);
+			showCardMessage(card, "Sorry, that action failed. Please try again.", {
+				level: "error",
+				role: "alert",
+			});
 		}
 		form.dataset.actionPending = "false";
 		if (button) {

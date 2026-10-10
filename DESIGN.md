@@ -249,6 +249,7 @@ Borders are uniformly one pixel. Terse blue IDs such as `M-01 · V-0004` sit at 
 - **Border:** one-pixel hairline frame.
 - **Internal Padding:** fluid 0.9–1.25rem on desktop and 0.7rem on mobile.
 - **Signature Behavior:** selection advances along one crease axis; removal folds vertically in 180ms with a complete reduced-motion fallback.
+- **Removal feedback:** a removed sheet leaves nothing behind in the queue. Its confirmation (with Undo for read-state changes) appears in one shared status face that each action replaces and that clears itself — over the brand in the sticky mobile header, so it never covers or displaces the next sheet, and bottom-right above the keyboard hint on desktop.
 
 ### Inputs / Fields
 - **Style:** level paper field, one-pixel outline, square corners, and at least 3rem height.
@@ -283,4 +284,5 @@ Source, written state, title, time, and crease coordinate follow a stable scan p
 - **Don't** add shadows to resting cards merely to make them feel clickable.
 - **Don't** add palettes beyond Miura Paper, Miura Night, and the device-following mode.
 - **Don't** let a mobile article sheet grow tall enough to push the next sheet out of the first viewport.
+- **Don't** leave per-article confirmations in the queue; they push the next sheet away from the reader's thumb.
 - **Don't** let decorative materiality compromise contrast, text zoom, keyboard operation, or progressive enhancement.

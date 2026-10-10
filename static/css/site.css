@@ -982,6 +982,36 @@ button[aria-busy="true"] {
 	background: var(--surface-raised);
 }
 
+.action-status {
+	position: fixed;
+	right: 1.5rem;
+	bottom: 3.5rem;
+	z-index: 7;
+	width: min(30rem, calc(100% - 3rem));
+	pointer-events: none;
+}
+
+.action-status-message {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	margin: 0;
+	padding: 0.5rem 2rem 0.5rem 1rem;
+	box-shadow: 0 1rem 2rem var(--shadow-color);
+	pointer-events: auto;
+}
+
+.action-status-text {
+	flex: 1;
+	min-width: 0;
+}
+
+.action-status-undo {
+	flex: none;
+	background: var(--accent);
+	color: var(--accent-ink);
+}
+
 .empty-state {
 	max-width: none;
 	padding: 2rem;
@@ -1285,6 +1315,45 @@ kbd {
 
 	.keyboard-hint {
 		display: none;
+	}
+
+	/* Overlay the brand inside the sticky header so feedback never covers or
+	   displaces the article the reader is about to tap. */
+	.action-status {
+		position: absolute;
+		inset: 0.25rem calc(4.8rem + 1rem) 0.25rem 0.25rem;
+		width: auto;
+		display: flex;
+		align-items: stretch;
+	}
+
+	.action-status-message {
+		flex: 1;
+		min-width: 0;
+		gap: 0.4rem;
+		padding: 0 0.3rem 0 0.6rem;
+		clip-path: none;
+		box-shadow: none;
+		font-size: 0.78rem;
+		line-height: 1.2;
+	}
+
+	.action-status-message::after {
+		display: none;
+	}
+
+	.action-status-text {
+		display: -webkit-box;
+		overflow: hidden;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+	}
+
+	.action-status-undo {
+		align-self: stretch;
+		min-height: 2.75rem;
+		padding-inline: 0.75rem;
+		font-size: 0.78rem;
 	}
 
 	.keyboard-help dl div {

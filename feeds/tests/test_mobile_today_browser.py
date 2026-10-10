@@ -356,6 +356,8 @@ class MobileTodayPlaywrightTests(StaticLiveServerTestCase):
         target = self.page.locator(
             f"[data-article-card][data-article-id='{target_id}']"
         )
+        target_bounds = target.bounding_box()
+        assert target_bounds is not None
 
         target.get_by_role("button", name=action_name).click()
 
@@ -372,7 +374,23 @@ class MobileTodayPlaywrightTests(StaticLiveServerTestCase):
             "remaining => remaining.map(card => card.dataset.articleId)"
         )
         self.assertEqual(after, survivor_ids)
-        expect(self.page.locator("p.inline-message[role='status']")).to_be_visible()
+        status = self.page.locator("[data-action-status][role='status']")
+        expect(status.locator(".action-status-message")).to_be_visible()
+        expect(self.page.locator("main .message")).to_have_count(0)
+        # The next article takes the tapped position, so triage needs no scrolling.
+        survivor = self.page.locator(
+            f"[data-article-card][data-article-id='{survivor_ids[0]}']"
+        )
+        survivor_bounds = survivor.bounding_box()
+        assert survivor_bounds is not None
+        self.assertAlmostEqual(survivor_bounds["y"], target_bounds["y"], delta=1)
+        header = self.page.locator(".site-header").bounding_box()
+        status_box = status.locator(".action-status-message").bounding_box()
+        assert header is not None and status_box is not None
+        self.assertGreaterEqual(status_box["y"], header["y"])
+        self.assertLessEqual(
+            status_box["y"] + status_box["height"], header["y"] + header["height"]
+        )
         return int(target_id), [int(survivor_id) for survivor_id in survivor_ids]
 
     def test_successful_mark_read_removes_only_the_target_card(self) -> None:

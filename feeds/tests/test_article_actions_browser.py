@@ -342,9 +342,120 @@ class ArticleActionsExecutedDOMTests(ChromiumTestMixin, SimpleTestCase):
         expect(survivor).to_have_count(1)
         expect(survivor).to_have_class("article-card is-selected")
         expect(survivor).to_have_attribute("aria-current", "true")
-        message = self.page.locator("p.inline-message[role='status']")
-        expect(message).to_have_text("Marked read.")
-        expect(message).to_have_class("message inline-message success")
+        status = self.page.locator("[data-action-status][role='status']")
+        expect(status).to_contain_text("Marked read.")
+        expect(status.locator(".action-status-message")).to_have_class(
+            "message action-status-message success"
+        )
+        expect(self.page.locator("main .message")).to_have_count(0)
+
+    def test_consecutive_removals_leave_no_messages_in_the_queue(self) -> None:
+        self.load(_card(101) + _card(202) + _card(303))
+        self.queue_response({"message": "First read.", "remove": True})
+        self.queue_response({"message": "Second read.", "remove": True})
+
+        cards = self.page.locator("[data-article-card]")
+        cards.first.get_by_role("button", name="Mark read").click()
+        expect(cards).to_have_count(2)
+        cards.first.get_by_role("button", name="Mark read").click()
+        expect(cards).to_have_count(1)
+
+        expect(self.page.locator("main .message")).to_have_count(0)
+        status = self.page.locator("[data-action-status]")
+        expect(status.locator(".action-status-message")).to_have_count(1)
+        expect(status).to_contain_text("Second read.")
+        expect(status).not_to_contain_text("First read.")
+        expect(cards.first).to_have_attribute("data-article-id", "303")
+        expect(cards.first).to_have_attribute("aria-current", "true")
+
+    def test_undo_restores_a_removed_card_in_place_with_the_opposite_state(
+        self,
+    ) -> None:
+        self.load(_card(101) + _card(202) + _card(303))
+        self.queue_response({"message": "Marked read.", "remove": True})
+        self.queue_response({"message": "Marked unread.", "remove": False})
+
+        cards = self.page.locator("[data-article-card]")
+        cards.nth(1).get_by_role("button", name="Mark read").click()
+        expect(cards).to_have_count(2)
+        self.page.locator("[data-action-status]").get_by_role(
+            "button", name="Undo"
+        ).click()
+
+        expect(cards).to_have_count(3)
+        self.assertEqual(
+            cards.evaluate_all("cards => cards.map(card => card.dataset.articleId)"),
+            ["101", "202", "303"],
+        )
+        restored = self.page.locator("[data-article-card][data-article-id='202']")
+        expect(restored).to_have_attribute("aria-current", "true")
+        expect(restored).not_to_have_class("is-folding")
+        expect(restored.get_by_role("button", name="Mark read")).to_be_enabled()
+        expect(self.page.locator("[data-action-status]")).to_contain_text(
+            "Restored the article."
+        )
+        undo_call = self.fetch_calls()[1]
+        self.assertEqual(undo_call["url"], "https://app.test/articles/202/mark/")
+        self.assertEqual(undo_call["body"]["state"], "unread")
+        self.assertNotIn("remove_on_success", undo_call["body"])
+
+    def test_failed_undo_keeps_the_card_removed_and_offers_retry(self) -> None:
+        self.load()
+        self.queue_response({"message": "Marked read.", "remove": True})
+        self.page.evaluate("window.__fetchResponses.push({reject: 'offline'})")
+
+        self.page.locator("[data-article-card]").first.get_by_role(
+            "button", name="Mark read"
+        ).click()
+        status = self.page.locator("[data-action-status]")
+        status.get_by_role("button", name="Undo").click()
+
+        expect(status).to_contain_text("Sorry, undo failed. Please try again.")
+        expect(status.get_by_role("button", name="Undo")).to_be_enabled()
+        expect(self.page.locator("[data-article-card]")).to_have_count(1)
+
+    def test_save_removal_offers_no_undo(self) -> None:
+        self.load()
+        self.queue_response(
+            {
+                "message": "Saved to Linkding.",
+                "remove": True,
+                "article": {"id": 101, "url": "https://article.test/101"},
+            }
+        )
+
+        self.page.locator("[data-article-card]").first.get_by_role(
+            "button", name="Save to Linkding"
+        ).click()
+        status = self.page.locator("[data-action-status]")
+        expect(status).to_contain_text("Saved to Linkding.")
+        expect(status.get_by_role("button", name="Undo")).to_have_count(0)
+
+    def test_action_status_clears_itself(self) -> None:
+        self.page.clock.install()
+        self.load()
+        self.queue_response({"message": "Marked read.", "remove": True})
+
+        self.page.locator("[data-article-card]").first.get_by_role(
+            "button", name="Mark read"
+        ).click()
+        status = self.page.locator("[data-action-status]")
+        expect(status).to_contain_text("Marked read.")
+        self.page.clock.run_for(8_100)
+        expect(status).to_be_empty()
+
+    def test_repeated_card_errors_replace_rather_than_stack(self) -> None:
+        self.load()
+        self.page.evaluate("window.__fetchResponses.push({reject: 'offline'})")
+        self.page.evaluate("window.__fetchResponses.push({reject: 'offline'})")
+
+        first = self.page.locator("[data-article-card]").first
+        first.get_by_role("button", name="Mark read").click()
+        expect(first.locator("[role='alert']")).to_have_count(1)
+        expect(first.get_by_role("button", name="Mark read")).to_be_enabled()
+        first.get_by_role("button", name="Mark read").click()
+        self.page.wait_for_function("window.__fetchCalls.length === 2")
+        expect(first.locator("[role='alert']")).to_have_count(1)
 
     def test_inline_success_and_error_states_keep_forms_retryable(self) -> None:
         self.load()
