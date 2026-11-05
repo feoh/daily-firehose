@@ -20,7 +20,9 @@ from scripts import postgres_backup_receiver as receiver
 from scripts.postgres_backup_common import OperatorError, format_utc
 
 CONTROL_DIRECTORY_PATH = receiver.CONTROL_DIRECTORY_PATH
-CONTROL_ZFS_DATASET_SOURCE = "nas_general/homes/backups/daily-firehose-control"
+CONTROL_ZFS_DATASET_SOURCE = (
+    "nas_general/archives/Unix_Server_Backups/daily-firehose-control"
+)
 # Test-only override. Production always uses CONTROL_DIRECTORY_PATH.
 CONTROL_DIRECTORY: Path | None = None
 STATE_NAME = ".postgres-backup-monitor-state.json"

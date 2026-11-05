@@ -629,7 +629,7 @@ class ReceiverCases(unittest.TestCase):
         cases = {
             "ordinary directory on mounted parent": (
                 f"24 23 {device} / {self.root.parent} rw - zfs "
-                f"nas_general/homes/backups rw\n"
+                f"nas_general/archives/Unix_Server_Backups rw\n"
             ),
             "masked by non-zfs mount": (
                 f"25 24 {device} / {self.root} rw - ext4 /dev/masked rw\n"
@@ -917,12 +917,15 @@ class DeploymentArtifactCases(unittest.TestCase):
             REPOSITORY_ROOT / "deploy/truenas/daily-firehose-backup-monitor"
         ).read_text()
         exact_launcher = (
-            "/mnt/nas_general/homes/backups/daily-firehose-control/"
+            "/mnt/nas_general/archives/Unix_Server_Backups/daily-firehose-control/"
             "daily-firehose-backup-receiver"
         )
         self.assertIn(f'restrict,command="{exact_launcher}"', key)
         self.assertIn("/usr/bin/python3 -I -c", launcher)
-        self.assertIn("/mnt/nas_general/homes/backups/daily-firehose-control", launcher)
+        self.assertIn(
+            "/mnt/nas_general/archives/Unix_Server_Backups/daily-firehose-control",
+            launcher,
+        )
         self.assertIn("PYTHON[A-Za-z0-9_]*", launcher)
         self.assertIn('unset "$variable"', launcher)
         self.assertIn("scripts.postgres_backup_monitor", monitor_launcher)
@@ -936,7 +939,9 @@ class DeploymentArtifactCases(unittest.TestCase):
         runbook = (
             REPOSITORY_ROOT / "docs/operations/postgresql-backups.md"
         ).read_text()
-        self.assertIn('"name":"nas_general/homes/backups/daily-firehose"', runbook)
+        self.assertIn(
+            '"name":"nas_general/archives/Unix_Server_Backups/daily-firehose"', runbook
+        )
         self.assertIn('"quota":21474836480', runbook)
         self.assertIn('"exec":"OFF"', runbook)
         self.assertIn('"username":"daily-firehose-backup"', runbook)

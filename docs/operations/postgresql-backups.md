@@ -23,6 +23,17 @@ enabled for 00:00/12:00 UTC. Remaining evidence is continuing scheduled RPO obse
 quarterly drills/full incident cutover timing, and independent attestation of the
 configured remote replicated copy.
 
+On **2026-11-05** both datasets moved from `nas_general/homes/backups` to
+`nas_general/archives/Unix_Server_Backups` by `pool.dataset.rename`, keeping their
+snapshots, quotas, and quota alerts. The receiver user's home and forced command, both
+cron jobs, and the control code were repointed, and an end-to-end push
+(`20261105T120142Z-2f0fd2a0`) and monitor check passed at the new paths. The empty
+`nas_general/homes/backups` dataset was then destroyed. Replicated copies under the old
+names on the replication target were not removed. `pool.dataset.rename` requires
+`force`, so check `pool.dataset.attachments` and `pool.dataset.processes` first. A
+single `user.update` that changed both `home` and `sshpubkey` applied only the home;
+update `sshpubkey` in a second call and read the forced command back.
+
 The application host creates an unencrypted PostgreSQL custom-format, compression-9
 dump with an exact local Docker Compose command, validates it with the exact local
 `db` container `pg_restore --list` command, then pushes the dump and metadata to
@@ -116,32 +127,48 @@ is created.
 The receiver data path is exactly:
 
 ```text
-/mnt/nas_general/homes/backups/daily-firehose
+/mnt/nas_general/archives/Unix_Server_Backups/daily-firehose
 ```
 
 Its persistent, root-controlled code path is exactly:
 
 ```text
-/mnt/nas_general/homes/backups/daily-firehose-control
+/mnt/nas_general/archives/Unix_Server_Backups/daily-firehose-control
 ```
 
 Backup data never uses the TrueNAS boot filesystem. The receiver requires the effective
 `st_dev` entry in `/proc/self/mountinfo` to be an **exact mountpoint** match for the data
 path, filesystem type `zfs`, and source dataset
-`nas_general/homes/backups/daily-firehose`. An ordinary directory on the parent dataset,
+`nas_general/archives/Unix_Server_Backups/daily-firehose`. An ordinary directory on the parent dataset,
 a parent-only mount, or a masking overmount is rejected. Verify the installed result:
 
 ```bash
-findmnt --mountpoint /mnt/nas_general/homes/backups/daily-firehose \
+findmnt --mountpoint /mnt/nas_general/archives/Unix_Server_Backups/daily-firehose \
   --noheadings --output SOURCE,FSTYPE,TARGET
 # exact expected fields:
-# nas_general/homes/backups/daily-firehose zfs /mnt/nas_general/homes/backups/daily-firehose
+# nas_general/archives/Unix_Server_Backups/daily-firehose zfs /mnt/nas_general/archives/Unix_Server_Backups/daily-firehose
 ```
 
 The launcher clears `PYTHON*`, uses `python3 -I`, and inserts only the fixed control
 dataset module path. The data dataset must be mode 0700 and owned by
 `daily-firehose-backup`; the control dataset/code remains root-owned and non-writable by
 that account, with ZFS `exec=on` only for control.
+
+Neither dataset may carry extended POSIX ACL entries. On these `acltype=posix`
+datasets a named entry makes the mode's group bits report the ACL mask, so a
+read-only grant such as `user:apps:r--` turns the 0600 monitor state into 0640. The
+monitor then refuses to run (`backup monitor notification state is unsafe`) and
+receipt-age alerting stops. Exclude both datasets from any recursive permission or
+ACL change applied to `archives` or `Unix_Server_Backups`. To recover, strip the
+entries and reset the two 0600 files:
+
+```bash
+CONTROL=/mnt/nas_general/archives/Unix_Server_Backups/daily-firehose-control
+midclt call -j filesystem.setacl "{\"path\":\"$CONTROL\",\"dacl\":[],\"acltype\":\"POSIX1E\",\"options\":{\"stripacl\":true,\"recursive\":true,\"traverse\":false}}"
+for f in .postgres-backup-monitor-state.json .receiver.lock; do
+  midclt call -j filesystem.setperm "{\"path\":\"$CONTROL/$f\",\"mode\":\"600\",\"options\":{\"stripacl\":true,\"recursive\":false}}"
+done
+```
 
 Every put, read, and local maintenance run takes the same advisory lock. Receiver file
 operations are directory-relative and use no-follow flags. Uploads enforce exact bytes
@@ -161,35 +188,38 @@ The production installation recorded above used these owner-controlled payloads.
 match the TrueNAS SCALE 25.10.5 middleware schemas used for this approved baseline. Use the UI/API/middleware, never `useradd`, `usermod`, or direct
 account-database editing.
 
-### 1. Remove dated empty paths, then create datasets
+### 1. Ensure the parent dataset, then create datasets
 
-The 2026-08-11 installation found both `/mnt/nas_general/homes/backups` and its
-`daily-firehose` child were empty ordinary directories rather than datasets. TrueNAS
-requires every parent dataset to exist before a child can be created. Reconfirm the
-exact paths are real, empty, and not mounts; use only `rmdir`, which refuses a nonempty
-directory. Never use recursive removal.
+TrueNAS requires every parent dataset to exist before a child can be created. The
+parent `nas_general/archives/Unix_Server_Backups` is an owner-facing dataset shared
+through the `archives` SMB share. It also holds unrelated owner files, so it keeps
+the owner's `feoh:feoh` mode-0777 POSIX ACL rather than root-only permissions. Until
+2026-11-05 it was an ordinary directory. It was converted in place by renaming the
+directory aside on the same filesystem, creating the dataset, restoring the
+directory's exact ACL with `getfacl`/`setfacl --restore`, copying the contents back
+with `rsync -aAXH`, and verifying SHA-256 checksums, listings, and ACLs before the
+staging copy was removed. On a fresh install, confirm it is a dataset mount:
 
 ```bash
-test "$(find /mnt/nas_general/homes/backups -mindepth 1 -maxdepth 1 -print -quit)" = ""
-findmnt --mountpoint /mnt/nas_general/homes/backups && exit 1 || true
-rmdir -- /mnt/nas_general/homes/backups
-midclt call pool.dataset.create '{"name":"nas_general/homes/backups","type":"FILESYSTEM","compression":"INHERIT","exec":"ON"}'
-midclt call filesystem.setperm '{"path":"/mnt/nas_general/homes/backups","uid":0,"gid":0,"mode":"755","options":{"stripacl":true,"recursive":false,"traverse":false}}'
+findmnt --mountpoint /mnt/nas_general/archives/Unix_Server_Backups \
+  --noheadings --output SOURCE,FSTYPE
+# exact expected fields:
+# nas_general/archives/Unix_Server_Backups zfs
 ```
 
 Create the data child dataset with an exact 20 GiB quota, inherited compression,
 execution disabled, and 80/95 percent quota alerts:
 
 ```bash
-midclt call pool.dataset.create '{"name":"nas_general/homes/backups/daily-firehose","type":"FILESYSTEM","compression":"INHERIT","exec":"OFF","quota":21474836480,"quota_warning":80,"quota_critical":95}'
+midclt call pool.dataset.create '{"name":"nas_general/archives/Unix_Server_Backups/daily-firehose","type":"FILESYSTEM","compression":"INHERIT","exec":"OFF","quota":21474836480,"quota_warning":80,"quota_critical":95}'
 ```
 
 Create the persistent control dataset separately. It must permit execution because it
 contains the forced launcher, but remains root-controlled:
 
 ```bash
-midclt call pool.dataset.create '{"name":"nas_general/homes/backups/daily-firehose-control","type":"FILESYSTEM","compression":"INHERIT","exec":"ON","quota":1073741824}'
-midclt call filesystem.setperm '{"path":"/mnt/nas_general/homes/backups/daily-firehose-control","uid":0,"gid":0,"mode":"755","options":{"stripacl":true,"recursive":false,"traverse":false}}'
+midclt call pool.dataset.create '{"name":"nas_general/archives/Unix_Server_Backups/daily-firehose-control","type":"FILESYSTEM","compression":"INHERIT","exec":"ON","quota":1073741824}'
+midclt call filesystem.setperm '{"path":"/mnt/nas_general/archives/Unix_Server_Backups/daily-firehose-control","uid":0,"gid":0,"mode":"755","options":{"stripacl":true,"recursive":false,"traverse":false}}'
 ```
 
 Before relying on the quota, configure a TrueNAS **Alert Service** under **System
@@ -205,7 +235,7 @@ Prepare the full restricted public-key line from
 `deploy/truenas/authorized_keys.example`. The forced command must remain:
 
 ```text
-/mnt/nas_general/homes/backups/daily-firehose-control/daily-firehose-backup-receiver
+/mnt/nas_general/archives/Unix_Server_Backups/daily-firehose-control/daily-firehose-backup-receiver
 ```
 
 Set `RESTRICTED_PUBLIC_KEY_LINE` to that full reviewed line and call the 25.10.5
@@ -213,8 +243,8 @@ Set `RESTRICTED_PUBLIC_KEY_LINE` to that full reviewed line and call the 25.10.5
 command; password SSH, SMB, sudo, and unrestricted commands remain unavailable.
 
 ```bash
-RESTRICTED_PUBLIC_KEY_LINE='restrict,command="/mnt/nas_general/homes/backups/daily-firehose-control/daily-firehose-backup-receiver" ssh-ed25519 <DEDICATED_PUBLIC_KEY> daily-firehose-backup'
-USER_PAYLOAD=$(jq -nc --arg key "$RESTRICTED_PUBLIC_KEY_LINE" '{"username":"daily-firehose-backup","full_name":"Daily Firehose restricted backup transport","group_create":true,"home":"/mnt/nas_general/homes/backups/daily-firehose","home_mode":"700","shell":"/usr/bin/bash","password_disabled":true,"smb":false,"ssh_password_enabled":false,"sshpubkey":$key}')
+RESTRICTED_PUBLIC_KEY_LINE='restrict,command="/mnt/nas_general/archives/Unix_Server_Backups/daily-firehose-control/daily-firehose-backup-receiver" ssh-ed25519 <DEDICATED_PUBLIC_KEY> daily-firehose-backup'
+USER_PAYLOAD=$(jq -nc --arg key "$RESTRICTED_PUBLIC_KEY_LINE" '{"username":"daily-firehose-backup","full_name":"Daily Firehose restricted backup transport","group_create":true,"home":"/mnt/nas_general/archives/Unix_Server_Backups/daily-firehose","home_mode":"700","shell":"/usr/bin/bash","password_disabled":true,"smb":false,"ssh_password_enabled":false,"sshpubkey":$key}')
 midclt call user.create "$USER_PAYLOAD"
 ```
 
@@ -226,7 +256,7 @@ USER_JSON=$(midclt call user.query '[["username","=","daily-firehose-backup"]]' 
 BACKUP_UID=$(printf '%s' "$USER_JSON" | jq -r '.uid')
 GROUP_DB_ID=$(printf '%s' "$USER_JSON" | jq -r '.group.id')
 BACKUP_GID=$(midclt call group.query "[[\"id\",\"=\",${GROUP_DB_ID}]]" '{"get":true}' | jq -r '.gid')
-SET_PERM_PAYLOAD=$(jq -nc --argjson uid "$BACKUP_UID" --argjson gid "$BACKUP_GID" '{"path":"/mnt/nas_general/homes/backups/daily-firehose","uid":$uid,"gid":$gid,"mode":"700","options":{"stripacl":true,"recursive":false,"traverse":false}}')
+SET_PERM_PAYLOAD=$(jq -nc --argjson uid "$BACKUP_UID" --argjson gid "$BACKUP_GID" '{"path":"/mnt/nas_general/archives/Unix_Server_Backups/daily-firehose","uid":$uid,"gid":$gid,"mode":"700","options":{"stripacl":true,"recursive":false,"traverse":false}}')
 midclt call filesystem.setperm "$SET_PERM_PAYLOAD"
 ```
 
@@ -239,7 +269,7 @@ and mode 0700. Do not grant the account general shell credentials.
 From a reviewed checkout staged on TrueNAS:
 
 ```bash
-CONTROL=/mnt/nas_general/homes/backups/daily-firehose-control
+CONTROL=/mnt/nas_general/archives/Unix_Server_Backups/daily-firehose-control
 install -d -m 0755 -o root -g root "$CONTROL/scripts"
 install -m 0644 -o root -g root scripts/__init__.py \
   scripts/postgres_backup_common.py scripts/postgres_backup_receiver.py \
@@ -269,7 +299,7 @@ Create this TrueNAS Cron Job through **System Settings → Advanced → Cron Job
 `daily-firehose-backup`, or use the equivalent 25.10.5 payload:
 
 ```bash
-midclt call cronjob.create '{"user":"daily-firehose-backup","command":"/mnt/nas_general/homes/backups/daily-firehose-control/daily-firehose-backup-receiver --maintenance-retention","description":"Daily Firehose local backup retention and orphan cleanup","schedule":{"minute":"17","hour":"1","dom":"*","month":"*","dow":"*"},"enabled":true,"stdout":true,"stderr":true}'
+midclt call cronjob.create '{"user":"daily-firehose-backup","command":"/mnt/nas_general/archives/Unix_Server_Backups/daily-firehose-control/daily-firehose-backup-receiver --maintenance-retention","description":"Daily Firehose local backup retention and orphan cleanup","schedule":{"minute":"17","hour":"1","dom":"*","month":"*","dow":"*"},"enabled":true,"stdout":true,"stderr":true}'
 ```
 
 Root may invoke the same exact local command for recovery maintenance. Never add the
@@ -297,14 +327,14 @@ After reviewing and installing the launcher, run a foreground check first. A sta
 missing receipt intentionally exits nonzero after alerting:
 
 ```bash
-/mnt/nas_general/homes/backups/daily-firehose-control/daily-firehose-backup-monitor
+/mnt/nas_general/archives/Unix_Server_Backups/daily-firehose-control/daily-firehose-backup-monitor
 ```
 
 Then create this exact root cron at minute 37 hourly through **System Settings →
 Advanced → Cron Jobs**, or use the equivalent 25.10.5 payload:
 
 ```bash
-midclt call cronjob.create '{"user":"root","command":"/mnt/nas_general/homes/backups/daily-firehose-control/daily-firehose-backup-monitor","description":"Daily Firehose PostgreSQL receiver receipt supervision","schedule":{"minute":"37","hour":"*","dom":"*","month":"*","dow":"*"},"enabled":true,"stdout":true,"stderr":true}'
+midclt call cronjob.create '{"user":"root","command":"/mnt/nas_general/archives/Unix_Server_Backups/daily-firehose-control/daily-firehose-backup-monitor","description":"Daily Firehose PostgreSQL receiver receipt supervision","schedule":{"minute":"37","hour":"*","dom":"*","month":"*","dow":"*"},"enabled":true,"stdout":true,"stderr":true}'
 ```
 
 Do not add paths, thresholds, recipients, or other arguments. On containment, stop
@@ -352,7 +382,7 @@ the account's authorized public key through the UI or the NAS-local middleware c
 RECOVERY_PUBLIC_KEY='<public key copied from the recovery host>'
 USER_JSON=$(midclt call user.query '[["username","=","daily-firehose-backup"]]' '{"get":true}')
 USER_ID=$(printf '%s' "$USER_JSON" | jq -r '.id')
-RECOVERY_KEY_LINE="restrict,command=\"/mnt/nas_general/homes/backups/daily-firehose-control/daily-firehose-backup-receiver\" ${RECOVERY_PUBLIC_KEY}"
+RECOVERY_KEY_LINE="restrict,command=\"/mnt/nas_general/archives/Unix_Server_Backups/daily-firehose-control/daily-firehose-backup-receiver\" ${RECOVERY_PUBLIC_KEY}"
 UPDATE_PAYLOAD=$(jq -nc --arg key "$RECOVERY_KEY_LINE" '{"sshpubkey":$key}')
 midclt call user.update "$USER_ID" "$UPDATE_PAYLOAD"
 ```

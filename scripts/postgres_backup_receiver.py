@@ -27,13 +27,15 @@ from scripts.postgres_backup_common import (
     validate_backup_metadata,
 )
 
-DATA_DIRECTORY_PATH = Path("/mnt/nas_general/homes/backups/daily-firehose")
-CONTROL_DIRECTORY_PATH = Path("/mnt/nas_general/homes/backups/daily-firehose-control")
+DATA_DIRECTORY_PATH = Path("/mnt/nas_general/archives/Unix_Server_Backups/daily-firehose")
+CONTROL_DIRECTORY_PATH = Path(
+    "/mnt/nas_general/archives/Unix_Server_Backups/daily-firehose-control"
+)
 # Test-only override. Production always uses DATA_DIRECTORY_PATH.
 DATA_DIRECTORY: Path | None = None
 DATASET_QUOTA_BYTES = 20 * 1024**3
 MOUNTINFO_PATH = Path("/proc/self/mountinfo")
-ZFS_DATASET_SOURCE = "nas_general/homes/backups/daily-firehose"
+ZFS_DATASET_SOURCE = "nas_general/archives/Unix_Server_Backups/daily-firehose"
 ORPHAN_SAFE_AGE = timedelta(hours=48)
 _MAX_METADATA_BYTES = 64 * 1024
 _BACKUP_ID = re.compile(BACKUP_ID_PATTERN)
